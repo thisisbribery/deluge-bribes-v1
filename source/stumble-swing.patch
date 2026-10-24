@@ -3899,6 +3899,319 @@ index a6d15453..288d1e2e 100644
  #include <stddef.h>
  
  template <typename T, size_t size, size_t alignment = 16>
+diff --git a/src/deluge/dsp/saturator.h b/src/deluge/dsp/saturator.h
+new file mode 100644
+index 00000000..c2bbd9b7
+--- /dev/null
++++ b/src/deluge/dsp/saturator.h
+@@ -0,0 +1,307 @@
++/*
++ * Copyright © 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++#include <algorithm>
++#include <cmath>
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++#include <iterator>
++
++namespace deluge::dsp {
++
++/// Saturation curves. CLASSIC is the original Deluge tanh table, kept so old songs sound the same.
++enum class SaturationType : uint8_t {
++	CLASSIC,
++	TAPE, // smooth, slightly lopsided (even harmonics), turns into a hard clip at the top of the knob
++	WARM, // softest knee, more lopsided, still hardens at the top
++	CLIP, // firmer knee, hardens sooner
++	HARD, // hard clip all the way
++	FOLD, // soft wavefolder: goes bright and metallic as drive rises
++	NUM_TYPES,
++};
++
++inline constexpr const char* kSaturationTypeNames[] = {"classic", "tape", "warm", "clip", "hard", "fold"};
++static_assert(std::size(kSaturationTypeNames) == static_cast<size_t>(SaturationType::NUM_TYPES));
++
++inline const char* saturationTypeToString(SaturationType type) {
++	return kSaturationTypeNames[static_cast<size_t>(type)];
++}
++inline SaturationType stringToSaturationType(const char* string) {
++	for (size_t i = 0; i < std::size(kSaturationTypeNames); i++) {
++		if (!strcmp(string, kSaturationTypeNames[i])) {
++			return static_cast<SaturationType>(i);
++		}
++	}
++	return SaturationType::TAPE;
++}
++
++/// User-facing settings, as shown in the menus.
++struct SaturationSettings {
++	SaturationType type = SaturationType::TAPE;
++	uint8_t drive = 0; // 0 = off, 1..50
++
++	static constexpr int32_t kMaxDrive = 50;
++
++	bool operator==(const SaturationSettings&) const = default;
++
++	/// The old 1..15 "clippingAmount" mapped onto the 1..50 drive scale, and back (round trip is exact).
++	static constexpr uint8_t driveFromLegacy(int32_t legacy) { return (legacy * 10 + 1) / 3; }
++	static constexpr uint8_t legacyFromDrive(int32_t drive) {
++		return drive ? std::clamp<int32_t>((drive * 3 + 5) / 10, 1, 15) : 0;
++	}
++};
++
++/// One-knob drive that behaves like an analog input stage: pure input gain into the curve (up to +36 dB, steepest
++/// at the top) with no level compensation, and a fixed ceiling at about normal peak level. So it gets denser and
++/// louder as it goes up. The soft curves morph into a hard clip over the top half of the knob.
++/// First-order antiderivative antialiasing throughout. Processes q31 audio in place.
++class Saturator {
++public:
++	struct Channel {
++		float prev = 0.f;  // previous curve input, for antialiasing
++		float prevF = 0.f; // its antiderivative
++		float dcIn = 0.f;  // DC blocker
++		float dcOut = 0.f;
++		SaturationType prevType = SaturationType::CLASSIC;
++		float prevHardness = -1.f;
++	};
++
++	/// unit is the q31 level where the curve's knee sits at drive 1: about where normal signals peak.
++	void configure(const SaturationSettings& s, float unit) {
++		type_ = s.type;
++		float t = static_cast<float>(std::max<int32_t>(s.drive, 1) - 1) * (1.f / (SaturationSettings::kMaxDrive - 1));
++		float drive = std::pow(10.f, kMaxDriveDb * std::pow(t, 1.7f) * (1.f / 20.f));
++		inGain_ = drive / unit;
++		outGain_ = unit;
++
++		switch (type_) {
++		case SaturationType::WARM:
++			bias_ = 0.25f;
++			hardness_ = smoothstep(t, 0.6f, 1.f);
++			break;
++		case SaturationType::CLIP:
++			bias_ = 0.08f;
++			hardness_ = smoothstep(t, 0.35f, 0.9f);
++			break;
++		case SaturationType::HARD:
++		case SaturationType::FOLD:
++			bias_ = 0.f;
++			hardness_ = 0.f;
++			break;
++		default:
++			bias_ = 0.12f;
++			hardness_ = smoothstep(t, 0.5f, 1.f);
++			break;
++		}
++		// Quantised so the per-channel antiderivative cache isn't invalidated by tiny changes
++		hardness_ = std::round(hardness_ * 64.f) * (1.f / 64.f);
++		biasOffset_ = shape(bias_);
++	}
++
++	/// Mono buffer, or one channel of a buffer with the given stride.
++	void process(int32_t* buffer, size_t numSamples, Channel& ch, size_t stride = 1) const {
++		switch (type_) {
++		case SaturationType::WARM:
++			return run<SaturationType::WARM>(buffer, numSamples, ch, stride);
++		case SaturationType::CLIP:
++			return run<SaturationType::CLIP>(buffer, numSamples, ch, stride);
++		case SaturationType::HARD:
++			return run<SaturationType::HARD>(buffer, numSamples, ch, stride);
++		case SaturationType::FOLD:
++			return run<SaturationType::FOLD>(buffer, numSamples, ch, stride);
++		default:
++			return run<SaturationType::TAPE>(buffer, numSamples, ch, stride);
++		}
++	}
++
++	/// Interleaved stereo.
++	void processStereo(int32_t* buffer, size_t numFrames, Channel& l, Channel& r) const {
++		process(buffer, numFrames, l, 2);
++		process(buffer + 1, numFrames, r, 2);
++	}
++
++	// Where the knee and ceiling sit for a synth voice and for a whole kit or audio clip. The old saturation put
++	// its ceiling at 2^23 and 2^25, well under normal levels, which is why it got quieter as it was turned up.
++	// These are 3 bits higher, so drive 1 is close to clean and more drive is always louder.
++	static constexpr float kVoiceUnit = 67108864.f; // 2^26
++	static constexpr float kClipUnit = 268435456.f; // 2^28
++	static constexpr float kMaxDriveDb = 36.f;
++
++private:
++	static constexpr float kMaxInput = 48.f; // keeps the antiderivative maths well conditioned
++	static constexpr float kAntialiasEpsilon = 2e-3f;
++
++	static float smoothstep(float t, float lo, float hi) {
++		float u = std::clamp((t - lo) / (hi - lo), 0.f, 1.f);
++		return u * u * (3.f - 2.f * u);
++	}
++
++	// --- Curves and their antiderivatives (F' = f). All have unity slope at zero and flatten at +-1. ---
++
++	// (15z - 10z^3 + 3z^5) / 8 on [-1, 1]: tanh-like, smooth (C2) into the flat top
++	static constexpr float kQuinticScale = 8.f / 15.f;
++	static float quintic(float z) {
++		float z2 = z * z;
++		return z * (1.875f + z2 * (-1.25f + 0.375f * z2));
++	}
++	static float quinticIntegral(float z) {
++		float z2 = z * z;
++		return z2 * (0.9375f + z2 * (-0.3125f + 0.0625f * z2));
++	}
++
++	// 1.5z - 0.5z^3 on [-1, 1]
++	static float cubic(float z) { return z * (1.5f - 0.5f * z * z); }
++	static float cubicIntegral(float z) {
++		float z2 = z * z;
++		return z2 * (0.75f - 0.125f * z2);
++	}
++
++	// Triangle with period 4 and peaks at x = 1 + 4k. Sets rising when on an upward slope.
++	static float triangle(float x, bool& rising) {
++		float u = x + 1.f;
++		float q = u * 0.25f;
++		int32_t whole = static_cast<int32_t>(q);
++		whole -= (static_cast<float>(whole) > q); // floor, without a libm call
++		u -= 4.f * static_cast<float>(whole);
++		rising = u < 2.f;
++		return rising ? u - 1.f : 3.f - u;
++	}
++
++	static float hardCurve(float x) { return std::clamp(x, -1.f, 1.f); }
++	static float hardIntegral(float x) {
++		float a = std::fabs(x);
++		return (a >= 1.f) ? a - 0.5f : 0.5f * a * a;
++	}
++
++	template <SaturationType T>
++	static float softCurve(float x) {
++		if constexpr (T == SaturationType::WARM) {
++			return x / std::sqrt(1.f + x * x);
++		}
++		else if constexpr (T == SaturationType::CLIP) {
++			float z = x * (2.f / 3.f);
++			return (z >= 1.f) ? 1.f : (z <= -1.f) ? -1.f : cubic(z);
++		}
++		else if constexpr (T == SaturationType::HARD) {
++			return hardCurve(x);
++		}
++		else if constexpr (T == SaturationType::FOLD) {
++			bool rising;
++			return cubic(triangle(x * (2.f / 3.f), rising));
++		}
++		else {
++			float z = x * kQuinticScale;
++			return (z >= 1.f) ? 1.f : (z <= -1.f) ? -1.f : quintic(z);
++		}
++	}
++
++	template <SaturationType T>
++	static float softIntegral(float x) {
++		if constexpr (T == SaturationType::WARM) {
++			return std::sqrt(1.f + x * x) - 1.f;
++		}
++		else if constexpr (T == SaturationType::CLIP) {
++			float z = std::fabs(x) * (2.f / 3.f);
++			return 1.5f * ((z >= 1.f) ? z - 0.375f : cubicIntegral(z));
++		}
++		else if constexpr (T == SaturationType::HARD) {
++			return hardIntegral(x);
++		}
++		else if constexpr (T == SaturationType::FOLD) { // periodic, falling segments mirror the rising ones
++			bool rising;
++			float c = cubicIntegral(triangle(x * (2.f / 3.f), rising));
++			return 1.5f * (rising ? c : 1.25f - c);
++		}
++		else {
++			float z = std::fabs(x) * kQuinticScale;
++			return (1.f / kQuinticScale) * ((z >= 1.f) ? z - 0.3125f : quinticIntegral(z));
++		}
++	}
++
++	// The soft curve blended towards a hard clip. Both are linear in the blend, so the antiderivative is too.
++	template <SaturationType T>
++	static float curve(float x, float hardness) {
++		float s = softCurve<T>(x);
++		return s + hardness * (hardCurve(x) - s);
++	}
++	template <SaturationType T>
++	static float antiderivative(float x, float hardness) {
++		float s = softIntegral<T>(x);
++		return s + hardness * (hardIntegral(x) - s);
++	}
++
++	float shape(float x) const {
++		switch (type_) {
++		case SaturationType::WARM:
++			return curve<SaturationType::WARM>(x, hardness_);
++		case SaturationType::CLIP:
++			return curve<SaturationType::CLIP>(x, hardness_);
++		case SaturationType::HARD:
++			return curve<SaturationType::HARD>(x, hardness_);
++		case SaturationType::FOLD:
++			return curve<SaturationType::FOLD>(x, hardness_);
++		default:
++			return curve<SaturationType::TAPE>(x, hardness_);
++		}
++	}
++
++	template <SaturationType T>
++	void run(int32_t* buffer, size_t numSamples, Channel& ch, size_t stride) const {
++		constexpr float kDcCoef = 0.9993f; // ~5 Hz, removes the DC the bias leaves behind
++		const float hardness = hardness_;
++		const bool dcBlock = bias_ != 0.f;
++
++		Channel c = ch;
++		if (c.prevType != T || c.prevHardness != hardness) { // the cached antiderivative belongs to another curve
++			c.prevF = antiderivative<T>(c.prev, hardness);
++			c.prevType = T;
++			c.prevHardness = hardness;
++		}
++		int32_t* const end = buffer + numSamples * stride;
++		for (int32_t* p = buffer; p != end; p += stride) {
++			float x = std::clamp(static_cast<float>(*p) * inGain_ + bias_, -kMaxInput, kMaxInput);
++
++			float f = antiderivative<T>(x, hardness);
++			float d = x - c.prev;
++			float y = (std::fabs(d) < kAntialiasEpsilon) ? curve<T>(0.5f * (x + c.prev), hardness) : (f - c.prevF) / d;
++			c.prev = x;
++			c.prevF = f;
++			y -= biasOffset_;
++
++			if (dcBlock) {
++				float dc = y - c.dcIn + kDcCoef * c.dcOut;
++				c.dcIn = y;
++				c.dcOut = dc;
++				y = dc;
++			}
++
++			*p = static_cast<int32_t>(std::clamp(y * outGain_, -2147483520.f, 2147483520.f));
++		}
++		ch = c;
++	}
++
++	SaturationType type_ = SaturationType::TAPE;
++	float inGain_ = 0.f;
++	float outGain_ = 0.f;
++	float bias_ = 0.f;
++	float biasOffset_ = 0.f;
++	float hardness_ = 0.f;
++};
++
++} // namespace deluge::dsp
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
 index 00000000..1a53e9a8
@@ -4003,7 +4316,7 @@ index 00000000..5f9425b4
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..6bc1bf68 100644
+index 38cab4d8..807b859d 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -533,6 +533,8 @@
@@ -4096,7 +4409,21 @@ index 38cab4d8..6bc1bf68 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -705,6 +781,11 @@
+@@ -624,6 +700,13 @@
+     "STRING_FOR_REVERB_WIDTH": "Reverb width",
+     "STRING_FOR_REVERB_PAN": "Reverb pan",
+     "STRING_FOR_SATURATION": "Saturation",
++    "STRING_FOR_SAT_TYPE": "Sat type",
++    "STRING_FOR_SAT_CLASSIC": "Classic",
++    "STRING_FOR_SAT_TAPE": "Tape",
++    "STRING_FOR_SAT_WARM": "Warm",
++    "STRING_FOR_SAT_CLIP": "Clip",
++    "STRING_FOR_SAT_HARD": "Hard",
++    "STRING_FOR_SAT_FOLD": "Fold",
+     "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
+     "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
+     "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
+@@ -705,6 +788,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -4109,7 +4436,7 @@ index 38cab4d8..6bc1bf68 100644
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..fcf5dffd 100644
+index 1f87aacf..9ad1a23b 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -546,6 +546,8 @@ PLACE_SDRAM_DATA Language english{
@@ -4202,7 +4529,21 @@ index 1f87aacf..fcf5dffd 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -718,6 +794,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -637,6 +713,13 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_REVERB_WIDTH, "Reverb width"},
+         {STRING_FOR_REVERB_PAN, "Reverb pan"},
+         {STRING_FOR_SATURATION, "Saturation"},
++        {STRING_FOR_SAT_TYPE, "Sat type"},
++        {STRING_FOR_SAT_CLASSIC, "Classic"},
++        {STRING_FOR_SAT_TAPE, "Tape"},
++        {STRING_FOR_SAT_WARM, "Warm"},
++        {STRING_FOR_SAT_CLIP, "Clip"},
++        {STRING_FOR_SAT_HARD, "Hard"},
++        {STRING_FOR_SAT_FOLD, "Fold"},
+         {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
+         {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
+         {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
+@@ -718,6 +801,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -4215,7 +4556,7 @@ index 1f87aacf..fcf5dffd 100644
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..33fa4aca 100644
+index 1af382d5..4ae68eac 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,11 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -4320,8 +4661,22 @@ index 1af382d5..33fa4aca 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
+@@ -459,6 +540,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+         {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
+         {STRING_FOR_TARGET_FULL, "FULL"},
+         {STRING_FOR_WAVEFOLD, "FOLD"},
++        {STRING_FOR_SAT_TYPE, "STYP"},
++        {STRING_FOR_SAT_CLASSIC, "CLAS"},
++        {STRING_FOR_SAT_TAPE, "TAPE"},
++        {STRING_FOR_SAT_WARM, "WARM"},
++        {STRING_FOR_SAT_CLIP, "CLIP"},
++        {STRING_FOR_SAT_HARD, "HARD"},
++        {STRING_FOR_SAT_FOLD, "FOLD"},
+         {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
+         {STRING_FOR_LOOP_HALVED, "HALF"},
+         {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..33e430ee 100644
+index 8328945b..70a921a1 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,11 @@
@@ -4426,8 +4781,29 @@ index 8328945b..33e430ee 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
+@@ -479,6 +560,20 @@
+ 
+         "STRING_FOR_WAVEFOLD": "FOLD",
+ 
++        "STRING_FOR_SAT_TYPE": "STYP",
++
++        "STRING_FOR_SAT_CLASSIC": "CLAS",
++
++        "STRING_FOR_SAT_TAPE": "TAPE",
++
++        "STRING_FOR_SAT_WARM": "WARM",
++
++        "STRING_FOR_SAT_CLIP": "CLIP",
++
++        "STRING_FOR_SAT_HARD": "HARD",
++
++        "STRING_FOR_SAT_FOLD": "FOLD",
++
+         "STRING_FOR_LOOP_TOO_SHORT": "CANT",
+         "STRING_FOR_LOOP_HALVED": "HALF",
+         "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..c0526e31 100644
+index 49b15e92..6611fad5 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -576,6 +576,8 @@ enum class String : size_t {
@@ -4520,7 +4896,21 @@ index 49b15e92..c0526e31 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -772,6 +848,11 @@ enum class String : size_t {
+@@ -683,6 +759,13 @@ enum class String : size_t {
+ 	STRING_FOR_REVERB_WIDTH,
+ 	STRING_FOR_REVERB_PAN,
+ 	STRING_FOR_SATURATION,
++	STRING_FOR_SAT_TYPE,
++	STRING_FOR_SAT_CLASSIC,
++	STRING_FOR_SAT_TAPE,
++	STRING_FOR_SAT_WARM,
++	STRING_FOR_SAT_CLIP,
++	STRING_FOR_SAT_HARD,
++	STRING_FOR_SAT_FOLD,
+ 	STRING_FOR_DECIMATION,
+ 	STRING_FOR_MIDI_DEVICE_DEFINITION,
+ 	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
+@@ -772,6 +855,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -5620,6 +6010,111 @@ index 00000000..72ed0ff6
 +};
 +
 +} // namespace deluge::gui::menu_item::drum_synth
+diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/clipping.h
+index 500789c9..13027b19 100644
+--- a/src/deluge/gui/menu_item/fx/clipping.h
++++ b/src/deluge/gui/menu_item/fx/clipping.h
+@@ -30,7 +30,7 @@ class Clipping final : public IntegerWithOff {
+ public:
+ 	using IntegerWithOff::IntegerWithOff;
+ 
+-	void readCurrentValue() override { this->setValue(soundEditor.currentModControllable->clippingAmount); }
++	void readCurrentValue() override { this->setValue(soundEditor.currentModControllable->saturation.drive); }
+ 	bool usesAffectEntire() override { return true; }
+ 	void writeCurrentValue() override {
+ 		int32_t current_value = this->getValue();
+@@ -43,16 +43,16 @@ public:
+ 			for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
+ 				if (thisDrum->type == DrumType::SOUND) {
+ 					auto* soundDrum = static_cast<SoundDrum*>(thisDrum);
+-					soundDrum->clippingAmount = current_value;
++					soundDrum->saturation.drive = current_value;
+ 				}
+ 			}
+ 		}
+ 		// Or, the normal case of just one sound
+ 		else {
+-			soundEditor.currentModControllable->clippingAmount = current_value;
++			soundEditor.currentModControllable->saturation.drive = current_value;
+ 		}
+ 	}
+-	[[nodiscard]] int32_t getMaxValue() const override { return 15; }
++	[[nodiscard]] int32_t getMaxValue() const override { return dsp::SaturationSettings::kMaxDrive; }
+ 	[[nodiscard]] RenderingStyle getRenderingStyle() const override { return BAR; }
+ };
+ 
+diff --git a/src/deluge/gui/menu_item/fx/saturation.h b/src/deluge/gui/menu_item/fx/saturation.h
+new file mode 100644
+index 00000000..32a60912
+--- /dev/null
++++ b/src/deluge/gui/menu_item/fx/saturation.h
+@@ -0,0 +1,66 @@
++/*
++ * Copyright (c) 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++#include "dsp/saturator.h"
++#include "gui/menu_item/selection.h"
++#include "gui/ui/sound_editor.h"
++#include "model/instrument/kit.h"
++#include "model/mod_controllable/mod_controllable_audio.h"
++#include "model/song/song.h"
++#include "processing/sound/sound_drum.h"
++#include <cstdint>
++
++namespace deluge::gui::menu_item::fx {
++
++/// Writes to the sound being edited, or to every sound in the kit if affect-entire is held
++template <typename Apply>
++void applyToSaturation(Apply apply) {
++	if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
++		Kit* kit = getCurrentKit();
++		for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
++			if (thisDrum->type == DrumType::SOUND) {
++				apply(static_cast<SoundDrum*>(thisDrum)->saturation);
++			}
++		}
++	}
++	else {
++		apply(soundEditor.currentModControllable->saturation);
++	}
++}
++
++class SaturationType final : public Selection {
++public:
++	using Selection::Selection;
++
++	void readCurrentValue() override {
++		this->setValue<dsp::SaturationType>(soundEditor.currentModControllable->saturation.type);
++	}
++	bool usesAffectEntire() override { return true; }
++	void writeCurrentValue() override {
++		auto type = this->getValue<dsp::SaturationType>();
++		applyToSaturation([type](dsp::SaturationSettings& s) { s.type = type; });
++	}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_SAT_CLASSIC), l10n::getView(STRING_FOR_SAT_TAPE),
++		        l10n::getView(STRING_FOR_SAT_WARM),    l10n::getView(STRING_FOR_SAT_CLIP),
++		        l10n::getView(STRING_FOR_SAT_HARD),    l10n::getView(STRING_FOR_SAT_FOLD)};
++	}
++};
++
++} // namespace deluge::gui::menu_item::fx
 diff --git a/src/deluge/gui/menu_item/number.h b/src/deluge/gui/menu_item/number.h
 index 2409a2c3..e3bd0985 100644
 --- a/src/deluge/gui/menu_item/number.h
@@ -6058,7 +6553,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..c5171636 100644
+index 7bbd559f..6036fa02 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -6081,7 +6576,15 @@ index 7bbd559f..c5171636 100644
  #include "gui/menu_item/dx/browse.h"
  #include "gui/menu_item/dx/engine_select.h"
  #include "gui/menu_item/dx/global_params.h"
-@@ -216,6 +220,8 @@
+@@ -78,6 +82,7 @@
+ #include "gui/menu_item/firmware/version.h"
+ #include "gui/menu_item/flash/status.h"
+ #include "gui/menu_item/fx/clipping.h"
++#include "gui/menu_item/fx/saturation.h"
+ #include "gui/menu_item/gate/mode.h"
+ #include "gui/menu_item/gate/off_time.h"
+ #include "gui/menu_item/gate/selection.h"
+@@ -216,6 +221,8 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -6090,7 +6593,61 @@ index 7bbd559f..c5171636 100644
  #include "gui/menu_item/synth_mode.h"
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
-@@ -985,6 +991,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -631,6 +638,7 @@ PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routi
+ 
+ // FX ----------------------------------------------------------------------------------------
+ PLACE_SDRAM_BSS fx::Clipping clippingMenu{STRING_FOR_SATURATION};
++PLACE_SDRAM_BSS fx::SaturationType saturationTypeMenu{STRING_FOR_TYPE, STRING_FOR_SAT_TYPE};
+ PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
+                                        RenderingStyle::BAR};
+ PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
+@@ -641,6 +649,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
+     STRING_FOR_DISTORTION,
+     {
+         &clippingMenu,
++        &saturationTypeMenu,
+         &bitcrushMenu,
+         &srrMenu,
+         &foldMenu,
+@@ -855,6 +864,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+     },
+ };
+ 
++// Kits render saturation on the whole kit, the song doesn't, so kits get their own distortion menu
++PLACE_SDRAM_BSS HorizontalMenu kitDistortionMenu{
++    STRING_FOR_DISTORTION,
++    {
++        &clippingMenu,
++        &saturationTypeMenu,
++        &srrMenu,
++        &bitcrushMenu,
++    },
++};
++
++PLACE_SDRAM_BSS Submenu kitFXMenu{
++    STRING_FOR_FX,
++    {
++        &globalEQMenu,
++        &globalDelayMenu,
++        &globalReverbMenu,
++        &stutterMenu,
++        &globalModFXMenu,
++        &kitDistortionMenu,
++    },
++};
++
+ // Sidechain menu
+ PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
+                                                                   params::UNPATCHED_SIDECHAIN_VOLUME};
+@@ -910,6 +942,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+     STRING_FOR_DISTORTION,
+     {
+         &clippingMenu,
++        &saturationTypeMenu,
+         &bitcrushMenu,
+         &srrMenu,
+     },
+@@ -985,6 +1018,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -6102,7 +6659,7 @@ index 7bbd559f..c5171636 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1060,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1087,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -6110,7 +6667,7 @@ index 7bbd559f..c5171636 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1481,312 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,6 +1508,312 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -6423,7 +6980,7 @@ index 7bbd559f..c5171636 100644
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1518,6 +1836,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,6 +1863,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -6432,7 +6989,7 @@ index 7bbd559f..c5171636 100644
          &soundEditorRootActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1544,6 +1864,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +1891,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -6441,7 +6998,7 @@ index 7bbd559f..c5171636 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +1873,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +1900,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -6450,7 +7007,7 @@ index 7bbd559f..c5171636 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2027,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2054,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -6460,7 +7017,7 @@ index 7bbd559f..c5171636 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2160,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2187,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -6469,13 +7026,40 @@ index 7bbd559f..c5171636 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1909,6 +2238,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1887,7 +2243,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+         &kitArpMenu,
+         &audioCompMenu,
+         &globalFiltersMenu,
+-        &globalFXMenu,
++        &kitFXMenu,
+         &globalSidechainMenu,
+     },
+ };
+@@ -1909,6 +2265,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
 +        &cpuLoadMenu,
          &firmwareVersionMenu,
      },
+ };
+@@ -2000,7 +2357,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+     {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
+     {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
+     {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
+-    {&globalLevelMenu,        &globalPitchMenu,        nullptr,                        &globalPanMenu,                 nullptr,                     &srrMenu,               &bitcrushMenu,            nullptr                            },
++    {&globalLevelMenu,        &globalPitchMenu,        nullptr,                        &globalPanMenu,                 nullptr,                     &srrMenu,               &bitcrushMenu,            &clippingMenu                      },
+     {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
+     {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
+     {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
+@@ -2024,7 +2381,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
+ 	&kitClipMasterMenu,
+ 	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
+-	&globalReverbMenuGroup, &globalDelayMenu, &globalDistortionMenu,
++	&globalReverbMenuGroup, &globalDelayMenu, &kitDistortionMenu,
+ 	&globalSidechainMenu, &audioCompMenu, &stutterMenu,
+ 	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
 index 09efdfd6..33484316 100644
@@ -8088,6 +8672,62 @@ index b6e15e33..fb5ee2b1 100644
  	// These *only* store a valid preset number for the instrument-types that the Clip is not currently on
  	int8_t backedUpInstrumentSlot[4]{};
  	int8_t backedUpInstrumentSubSlot[4]{};
+diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
+index 22e8970a..fdc7fea0 100644
+--- a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
++++ b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
+@@ -118,11 +118,18 @@ GlobalEffectableForClip::GlobalEffectableForClip() {
+ 	    shouldLimitDelayFeedback, isClipActive, pitchAdjust, 134217728, 134217728);
+ 
+ 	// Render saturation
+-	if (clippingAmount != 0u) {
+-		int32_t shiftAmount = getShiftAmountForSaturation();
+-		for (StereoSample& sample : global_effectable_audio) {
+-			sample.l = saturate(sample.l, &lastSaturationTanHWorkingValue[0], shiftAmount);
+-			sample.r = saturate(sample.r, &lastSaturationTanHWorkingValue[1], shiftAmount);
++	if (saturation.drive != 0u) {
++		if (saturation.type == deluge::dsp::SaturationType::CLASSIC) {
++			int32_t shiftAmount = getShiftAmountForSaturation();
++			for (StereoSample& sample : global_effectable_audio) {
++				sample.l = saturate(sample.l, &lastSaturationTanHWorkingValue[0], shiftAmount);
++				sample.r = saturate(sample.r, &lastSaturationTanHWorkingValue[1], shiftAmount);
++			}
++		}
++		else {
++			getSaturator(deluge::dsp::Saturator::kClipUnit)
++			    .processStereo(reinterpret_cast<int32_t*>(global_effectable_audio.data()),
++			                   global_effectable_audio.size(), saturatorChannels[0], saturatorChannels[1]);
+ 		}
+ 	}
+ 
+diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.h b/src/deluge/model/global_effectable/global_effectable_for_clip.h
+index dd1533d4..3daa319b 100644
+--- a/src/deluge/model/global_effectable/global_effectable_for_clip.h
++++ b/src/deluge/model/global_effectable/global_effectable_for_clip.h
+@@ -43,16 +43,20 @@ public:
+ 	                            GlobalEffectableForClip** globalEffectableWithMostReverb,
+ 	                            int32_t* highestReverbAmountFound);
+ 
+-	int32_t getShiftAmountForSaturation() { return (clippingAmount >= 3) ? (clippingAmount - 3) : 0; }
++	int32_t getShiftAmountForSaturation() {
++		int32_t legacy = getLegacyClippingAmount();
++		return (legacy >= 3) ? (legacy - 3) : 0;
++	}
+ 
+-	/// clipping amount must be greater than 0! Check before calling
++	/// Classic saturation only. Drive must be greater than 0! Check before calling
+ 	/// Shift amount is givben by getShiftAmountForSaturation
+ 	[[gnu::always_inline]] q31_t saturate(q31_t data, uint32_t* workingValue, int32_t shiftAmount) {
+ 		// Clipping
+-		return getTanHAntialiased(data, workingValue, 3 + clippingAmount) << (shiftAmount);
++		return getTanHAntialiased(data, workingValue, 3 + getLegacyClippingAmount()) << (shiftAmount);
+ 	}
+ 
+ 	std::array<uint32_t, 2> lastSaturationTanHWorkingValue = {2147483648u, 2147483648u};
++	std::array<deluge::dsp::Saturator::Channel, 2> saturatorChannels{};
+ 
+ protected:
+ 	int32_t getParameterFromKnob(int32_t whichModEncoder) final;
 diff --git a/src/deluge/model/instrument/cv_instrument.cpp b/src/deluge/model/instrument/cv_instrument.cpp
 index 6b202b0f..5697db7e 100644
 --- a/src/deluge/model/instrument/cv_instrument.cpp
@@ -8150,11 +8790,82 @@ index a58e4ff9..98e162b8 100644
 +	int32_t monoOctave = 0;
 +	int32_t monoCustomMillivolts = -1;
  };
+diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
+index fd80ba04..e9bc6325 100644
+--- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
++++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
+@@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
+ 	// Sample rate reduction
+ 	sampleRateReductionOnLastTime = false;
+ 
+-	// Saturation
+-	clippingAmount = 0;
+-
+ 	SyncLevel syncLevel;
+ 	Song* song = preLoadedSong;
+ 	if (!song) {
+@@ -90,7 +87,7 @@ ModControllableAudio::~ModControllableAudio() {
+ void ModControllableAudio::cloneFrom(ModControllableAudio* other) {
+ 	lpfMode = other->lpfMode;
+ 	hpfMode = other->hpfMode;
+-	clippingAmount = other->clippingAmount;
++	saturation = other->saturation;
+ 	modFXType_ = other->modFXType_;
+ 	bassFreq = other->bassFreq; // Eventually, these shouldn't be variables like this
+ 	trebleFreq = other->trebleFreq;
+@@ -409,8 +406,13 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+ 	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
+ 	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
+ 	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
+-	if (clippingAmount) {
+-		writer.writeAttribute("clippingAmount", clippingAmount);
++	if (saturation.drive) {
++		// Older firmware only knows this one, and plays it with the classic curve
++		writer.writeAttribute("clippingAmount", getLegacyClippingAmount());
++	}
++	if (!(saturation == deluge::dsp::SaturationSettings{})) {
++		writer.writeAttribute("satType", deluge::dsp::saturationTypeToString(saturation.type));
++		writer.writeAttribute("satDrive", (int32_t)saturation.drive);
+ 	}
+ }
+ 
+@@ -734,9 +736,22 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+ 	}
+ 
+ 	else if (!strcmp(tagName, "clippingAmount")) {
+-		clippingAmount = reader.readTagOrAttributeValueInt();
++		// Files from older firmware: keep the classic curve so they sound the same. The sat* tags below,
++		// written after this one, override it for files saved by this firmware.
++		int32_t legacy = std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, 15);
++		saturation.drive = deluge::dsp::SaturationSettings::driveFromLegacy(legacy);
++		saturation.type = deluge::dsp::SaturationType::CLASSIC;
+ 		reader.exitTag("clippingAmount");
+ 	}
++	else if (!strcmp(tagName, "satType")) {
++		saturation.type = deluge::dsp::stringToSaturationType(reader.readTagOrAttributeValue());
++		reader.exitTag("satType");
++	}
++	else if (!strcmp(tagName, "satDrive")) {
++		saturation.drive =
++		    std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, deluge::dsp::SaturationSettings::kMaxDrive);
++		reader.exitTag("satDrive");
++	}
+ 
+ 	// Arpeggiator
+ 
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.h b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-index 64f25db1..e9ef1b6f 100644
+index 64f25db1..2b48f4b2 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.h
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-@@ -70,6 +70,9 @@ public:
+@@ -21,6 +21,7 @@
+ #include "deluge/dsp/granular/GranularProcessor.h"
+ #include "dsp/compressor/rms_feedback.h"
+ #include "dsp/delay/delay.h"
++#include "dsp/saturator.h"
+ #include "dsp/stereo_sample.h"
+ #include "hid/button.h"
+ #include "model/fx/stutterer.h"
+@@ -70,6 +71,9 @@ public:
  	void beginStutter(ParamManagerForTimeline* paramManager);
  	void endStutter(ParamManagerForTimeline* paramManager);
  	virtual ModFXType getModFXType() = 0;
@@ -8164,6 +8875,33 @@ index 64f25db1..e9ef1b6f 100644
  	virtual bool setModFXType(ModFXType newType);
  	bool offerReceivedCCToLearnedParamsForClip(MIDICable& cable, uint8_t channel, uint8_t ccNumber, uint8_t value,
  	                                           ModelStackWithTimelineCounter* modelStack, int32_t noteRowIndex = -1);
+@@ -104,7 +108,25 @@ public:
+ 	StutterConfig stutterConfig;
+ 
+ 	bool sampleRateReductionOnLastTime;
+-	uint8_t clippingAmount; // Song probably doesn't currently use this?
++	// Saturation. Song doesn't use this, only sounds, kits and audio clips.
++	deluge::dsp::SaturationSettings saturation;
++	/// The old 1..15 amount, for the CLASSIC type and for files read by older firmware
++	int32_t getLegacyClippingAmount() const {
++		return deluge::dsp::SaturationSettings::legacyFromDrive(saturation.drive);
++	}
++	/// Saturator set up for the current settings, only recalculated when they change.
++	/// unit is Saturator::kVoiceUnit for a synth voice, kClipUnit for a whole kit or audio clip.
++	const deluge::dsp::Saturator& getSaturator(float unit) {
++		if (!(saturation == saturatorConfiguredFor_) || unit != saturatorConfiguredUnit_) {
++			saturator_.configure(saturation, unit);
++			saturatorConfiguredFor_ = saturation;
++			saturatorConfiguredUnit_ = unit;
++		}
++		return saturator_;
++	}
++	deluge::dsp::Saturator saturator_;
++	deluge::dsp::SaturationSettings saturatorConfiguredFor_{.drive = 255}; // forces the first configure
++	float saturatorConfiguredUnit_ = 0.f;
+ 	FilterMode lpfMode;
+ 	FilterMode hpfMode;
+ 	FilterRoute filterRoute;
 diff --git a/src/deluge/model/note/note_row.cpp b/src/deluge/model/note/note_row.cpp
 index 58e8fb77..f791c1db 100644
 --- a/src/deluge/model/note/note_row.cpp
@@ -8738,7 +9476,7 @@ index 00000000..6c4f5585
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index ccc3f332..61809225 100644
+index ccc3f332..c1881f94 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -53,9 +53,13 @@
@@ -8755,7 +9493,15 @@ index ccc3f332..61809225 100644
  }
  
  using namespace deluge;
-@@ -733,6 +737,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -176,6 +180,7 @@ bool Voice::noteOn(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBefo
+ 
+ 		lastSaturationTanHWorkingValue[0] = 2147483648;
+ 		lastSaturationTanHWorkingValue[1] = 2147483648;
++		saturatorChannels.fill({});
+ 	}
+ 
+ 	// Porta
+@@ -733,6 +738,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  		noteOff(modelStack);
  	}
  
@@ -8766,7 +9512,7 @@ index ccc3f332..61809225 100644
  	// Do envelopes - if they're patched to something (always do the first one though)
  	for (int32_t e = 0; e < kNumEnvelopes; e++) {
  		if (e == 0
-@@ -743,10 +751,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -743,10 +752,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  			if (e == 0 && overrideAmplitudeEnvelopeReleaseRate) {
  				release = overrideAmplitudeEnvelopeReleaseRate;
  			}
@@ -8781,7 +9527,106 @@ index ccc3f332..61809225 100644
  			uint32_t anyChange = (old != sourceValues[util::to_underlying(PatchSource::ENVELOPE_0) + e]);
  			sourcesChanged |= anyChange << (util::to_underlying(PatchSource::ENVELOPE_0) + e);
  		}
-@@ -2444,6 +2452,34 @@ dontUseCache: {}
+@@ -1522,7 +1531,7 @@ skipUnisonPart: {}
+ 		filterSet.renderLongStereo(oscBuffer, oscBufferEnd);
+ 
+ 		// No clipping
+-		if (!sound.clippingAmount) {
++		if (!sound.saturation.drive) {
+ 
+ 			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
+ 			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
+@@ -1550,7 +1559,38 @@ skipUnisonPart: {}
+ 			} while (oscBufferPos != oscBufferEnd);
+ 		}
+ 
+-		// Yes clipping
++		// Saturation with the new curves: apply the amplitude in place, saturate the block, then mix out
++		else if (sound.saturation.type != dsp::SaturationType::CLASSIC) {
++			if (synthMode != SynthMode::FM) {
++				int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
++				for (int32_t* p = oscBuffer; p != oscBufferEnd; p += 2) {
++					overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
++					p[0] = multiply_32x32_rshift32_rounded(p[0], overallOscAmplitudeNow) << 1;
++					p[1] = multiply_32x32_rshift32_rounded(p[1], overallOscAmplitudeNow) << 1;
++				}
++			}
++			sound.getSaturator(dsp::Saturator::kVoiceUnit)
++			    .processStereo(oscBuffer, numSamples, saturatorChannels[0], saturatorChannels[1]);
++
++			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
++			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
++			do {
++				int32_t outputSampleL = *(oscBufferPos++);
++				int32_t outputSampleR = *(oscBufferPos++);
++
++				// Write to the output buffer, panning or not
++				if (doPanning) {
++					outputSample->addPannedStereo(outputSampleL, outputSampleR, amplitudeL, amplitudeR);
++				}
++				else {
++					outputSample->addStereo(outputSampleL, outputSampleR);
++				}
++
++				outputSample++;
++			} while (oscBufferPos != oscBufferEnd);
++		}
++
++		// Classic clipping
+ 		else {
+ 
+ 			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
+@@ -1606,7 +1646,7 @@ skipUnisonPart: {}
+ 		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples);
+ 
+ 		// No clipping
+-		if (!sound.clippingAmount) {
++		if (!sound.saturation.drive) {
+ 			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
+ 			int32_t* __restrict__ outputSample = soundBuffer;
+ 			int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
+@@ -1635,7 +1675,39 @@ skipUnisonPart: {}
+ 			} while (++oscBufferPos != oscBufferEnd);
+ 		}
+ 
+-		// Yes clipping
++		// Saturation with the new curves: apply the amplitude in place, saturate the block, then mix out
++		else if (sound.saturation.type != dsp::SaturationType::CLASSIC) {
++			if (synthMode != SynthMode::FM) {
++				int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
++				for (int32_t* p = oscBuffer; p != oscBufferEnd; p++) {
++					overallOscAmplitudeNow += overallOscillatorAmplitudeIncrement;
++					*p = multiply_32x32_rshift32_rounded(*p, overallOscAmplitudeNow) << 1;
++				}
++			}
++			sound.getSaturator(dsp::Saturator::kVoiceUnit).process(oscBuffer, numSamples, saturatorChannels[0]);
++
++			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
++			int32_t* __restrict__ outputSample = soundBuffer;
++			do {
++				int32_t output = *oscBufferPos;
++
++				if (soundRenderingInStereo) {
++					if (doPanning) {
++						((StereoSample*)outputSample)->addPannedMono(output, amplitudeL, amplitudeR);
++					}
++					else {
++						((StereoSample*)outputSample)->addMono(output);
++					}
++					outputSample += 2;
++				}
++				else {
++					*outputSample += output;
++					outputSample++;
++				}
++			} while (++oscBufferPos != oscBufferEnd);
++		}
++
++		// Classic clipping
+ 		else {
+ 			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
+ 			int32_t* __restrict__ outputSample = soundBuffer;
+@@ -2444,6 +2516,34 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -8817,17 +9662,27 @@ index ccc3f332..61809225 100644
  			// Or regular wave
  		}
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e2..1b6824f9 100644
+index 33be91e2..7b141664 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
-@@ -18,6 +18,7 @@
+@@ -18,7 +18,9 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
 +#include "dsp/drum_synth/drum_synth.h"
  #include "dsp/filter/filter_set.h"
++#include "dsp/saturator.h"
  #include "model/voice/voice_sample_playback_guide.h"
  #include "model/voice/voice_unison_part.h"
+ #include "modulation/envelope.h"
+@@ -74,6 +76,7 @@ public:
+ 	int32_t portaEnvelopeMaxAmplitude;
+ 
+ 	std::array<uint32_t, 2> lastSaturationTanHWorkingValue;
++	std::array<dsp::Saturator::Channel, 2> saturatorChannels;
+ 
+ 	int32_t overallOscAmplitudeLastTime;
+ 	std::array<int32_t, kNumSources> sourceAmplitudesLastTime;
 diff --git a/src/deluge/model/voice/voice_unison_part_source.cpp b/src/deluge/model/voice/voice_unison_part_source.cpp
 index ad8bb93d..ef4963f1 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.cpp
@@ -10358,7 +11213,7 @@ index 8dd1ce44..5185db6d 100644
  justCloseTag:
  			writer.closeTag();
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 9d2550b6..0ccd5dcb 100644
+index 9d2550b6..4fdc3d58 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
 @@ -173,6 +173,7 @@ public:
@@ -10380,6 +11235,27 @@ index 9d2550b6..0ccd5dcb 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
+@@ -291,14 +296,17 @@ public:
+ 	virtual ArpeggiatorBase* getArp() = 0;
+ 	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
+ 
+-	int32_t getShiftAmountForSaturation() const { return (clippingAmount >= 2) ? (clippingAmount - 2) : 0; }
++	int32_t getShiftAmountForSaturation() const {
++		int32_t legacy = getLegacyClippingAmount();
++		return (legacy >= 2) ? (legacy - 2) : 0;
++	}
+ 
+-	///	clipping amount must be greater than 0! Check before calling
++	///	Classic saturation only. Drive must be greater than 0! Check before calling
+ 	/// Shift amount is givben by getShiftAmountForSaturation
+ 	[[gnu::always_inline]] void saturate(int32_t* data, uint32_t* workingValue, int32_t shiftAmount) {
+ 		// Clipping
+ 		//*data = getTanHUnknown(*data, 5 + clippingAmount) << (shiftAmount);
+-		*data = getTanHAntialiased(*data, workingValue, 5 + clippingAmount) << (shiftAmount);
++		*data = getTanHAntialiased(*data, workingValue, 5 + getLegacyClippingAmount()) << (shiftAmount);
+ 	}
+ 	uint32_t getSyncedLFOPhaseIncrement(const LFOConfig& config);
+ 
 diff --git a/src/deluge/processing/source.h b/src/deluge/processing/source.h
 index 20b6b289..50f38cb2 100644
 --- a/src/deluge/processing/source.h

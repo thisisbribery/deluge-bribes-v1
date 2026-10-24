@@ -1,13 +1,14 @@
-# Deluge Bribes v1.4
+# Deluge Bribes v1.5
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds six things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds seven things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **Drum synth (new in v1.4):** synthesised drums on any kit row, from five engines: the LXR-02's kick / tom, snare and cymbal / hat voices, and two more called Drom1 and Drom2. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
+6. **Drum synth:** synthesised drums on any kit row, from five engines: the LXR-02's kick / tom, snare and cymbal / hat voices, and two more called Drom1 and Drom2. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
+7. **Saturation (new in v1.5):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -15,13 +16,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.4.bin`](firmware/deluge-bribes-v1.4.bin)
+[`firmware/deluge-bribes-v1.5.bin`](firmware/deluge-bribes-v1.5.bin)
 
-SHA-256: `d990199923238bda9ae8b9275df7f1e03302abd7fccd4bd847927c5ab8d347bc`
+SHA-256: `950edf7b8174d8ab8cefb186d00e2c24ba6e0d767791ece25f0e0e97c660a442`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.4.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.5.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -50,6 +51,7 @@ To go back, install an official firmware file the same way.
 | **Hold a row's audition pad + SYNTH MODE pad** | Put the row on a drum synth engine (Drom1, Drom2 or Drum synth), or back to **Sample** |
 | **Hold a row's audition pad + OSC1 TYPE pad** | Pick the engine's variant or LXR voice (drum synth rows) |
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | The engine's two key settings (drum synth rows). Hold a step and turn to parameter lock |
+| **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 
 7-segment display names are in brackets below.
 
@@ -304,6 +306,35 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 - Kits with drum synth rows won't play those rows on firmware without them.
 - The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
 
+## 7. Saturation
+
+The Deluge's own saturation squashes hard even at its lowest setting and gets quieter as you turn it up. This build replaces it with a one-knob drive that works like pushing an analog input stage: more drive is always denser and louder.
+
+### Using it
+
+**SHIFT + SATURATION pad**, or **FX > DISTORTION**, on any synth, kit row or audio clip. For a whole kit, turn **Affect Entire** on first: the kit's own **FX > DISTORTION** menu and the SATURATION pad now have it too.
+
+- **Saturation** (**SATURATION**): the drive, **OFF** or 1 to 50. 1 is close to clean. The knob is gentle at first and steep at the top, up to +36 dB of gain into the curve. The peak level stays put while everything under it comes up, so it gets louder and thicker as you turn it.
+- **Type** (**TYPE**): the curve.
+
+| Type | 7-seg | Sound |
+|---|---|---|
+| **Tape** | **TAPE** | The default. Smooth and rounded, with a little even-harmonic warmth. Turns into a hard clip over the top half of the knob. |
+| **Warm** | **WARM** | The softest knee and the most even harmonics. Hardens near the top. |
+| **Clip** | **CLIP** | A firmer knee, more like an overdrive. Hardens sooner. |
+| **Hard** | **HARD** | A hard clipper all the way. |
+| **Fold** | **FOLD** | A wavefolder: bright and metallic as the drive rises. Best on bass and pads. |
+| **Classic** | **CLAS** | The original Deluge saturation, unchanged. |
+
+Hold **Affect Entire** while turning either setting in a kit row's menu to set every row at once.
+
+### Good to know
+
+- Songs and presets made before v1.5 load with **Classic**, so they sound the same. A sound that had no saturation starts on **Tape** when you turn it up.
+- Saved files also store the old saturation amount, so other firmware still plays them, with the original curve.
+- Saturation sits after the filters and the amp envelope, as before, so the sound's volume and velocity change how hard it drives.
+- The curves are antialiased, so high notes alias less than with the original, except Fold, which aliases when pushed hard on bright sounds, as digital folders do.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -312,6 +343,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
+- **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
