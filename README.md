@@ -1,4 +1,4 @@
-# BRIBELUGE: Deluge Bribes FW v1.9
+# BRIBELUGE: Deluge Bribes FW v1.10
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more groove, more wonk, more destruction, more speed, moarrrrr:
 
@@ -11,21 +11,21 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
 8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX.
-10. **Delay feedback (new in v1.9):** the delay's amount and feedback on separate controls. Amount sets how loud the echoes are; hold SHIFT and turn the same knob to set how many come back.
+10. **Delay feedback and tone:** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
 
-With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting. Songs saved before keep their own swing and sound the same through the delay.
+With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting (the tone starts flat). Songs saved before keep their own swing and sound the same through the delay.
 
 **Status: experimental.** Tested on a 7-segment Deluge. The OLED screens are written but not yet tested on hardware. Back up your SD card before installing.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.9.bin`](firmware/deluge-bribes-v1.9.bin)
+[`firmware/deluge-bribes-v1.10.bin`](firmware/deluge-bribes-v1.10.bin)
 
-SHA-256: `56fabc9521dd25baceea2bdf2ae240acaa124b923ccfc46aef85da7f2415cbf6`
+SHA-256: `ca4ba86e37aca532e825d26ecd0a3ec420186483ef0ec1c2b9ebbf04d33d8a3e`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.9.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.10.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -61,7 +61,10 @@ To go back, install an official firmware file the same way.
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 | **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
 | **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Env mod / Decay (303 synth) |
-| **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback) |
+| **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
+| **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
+| **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
+| **SHIFT + delay RATE pad, press again** | Delay tone. The pad blinks yellow; press again to go back to Rate (Delay feedback and tone) |
 
 7-segment display names are in brackets below.
 
@@ -487,22 +490,25 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 - Transpose, Fine tune and the arpeggiator all work. It's mono, so it plays one note at a time.
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
 
-## 10. Delay feedback
+## 10. Delay feedback and tone
 
-On the stock Deluge, the delay's Amount sets both how loud the echoes are and how much of each echo is fed back, so turning it up always brings more repeats too. Here they're two controls.
+On the stock Deluge, the delay's Amount sets both how loud the echoes are and how much of each echo is fed back, so turning it up always brings more repeats too. Here they're two controls, plus a filter in the delay loop to change its voicing.
 
 ### Using it
 
 - **Amount:** the lower gold knob with the knobs on delay, or the delay amount pad, as before. It now sets only how loud the echoes are.
 - **Feedback:** hold **SHIFT** and turn the Amount knob. **0** gives a single echo, **25** repeats forever, and above 25 the repeats build up and saturate, as Amount did before. While SHIFT is held, the knob's LEDs show the feedback. On the 7-segment display the value has an F in front (**F13**).
-- Feedback (**FDBK**) is also in the delay menu, just after Amount, and in automation view, so it can be drawn step by step or automated.
-- It works everywhere the delay does: synths, kit rows, whole kits, audio clips and the song's master FX.
+- **Tone:** hold **SHIFT** and turn the Rate knob. Turn left for a lowpass that sweeps down from 20 kHz to 150 Hz, right for a highpass that sweeps up from 20 Hz to 5 kHz. The middle is flat, and the knob catches there. The filter sits in the loop, so every repeat goes through it again: each echo comes back darker (or thinner) than the last, like a tape echo. On the 7-segment display it shows **L12** (lowpass), **H12** (highpass) or **FLAT**.
+- **On the pads:** press the delay **AMOUNT** shortcut pad twice to get Feedback, and the delay **RATE** pad twice to get Tone. The pad blinks yellow while you're on the hidden setting, the same way the envelope pads reach envelopes 3 and 4. Press once more to go back.
+- Feedback (**FDBK**) and Tone (**TONE**) are also in the delay menu, just after Amount, and in automation view, so they can be drawn step by step or automated.
+- They work everywhere the delay does: synths, kit rows, whole kits, audio clips and the song's master FX.
 
 ### Good to know
 
 - New sounds start with feedback at 13 (half), so turning Amount up still gives a short tail of repeats.
 - Songs and presets saved before v1.9 that use the delay load with feedback set to their amount, so they sound the same. Automation recorded on the old amount now moves only the echo level.
-- Feedback saves with the song and the preset. Other firmware ignores it and uses the amount for both, as before.
+- The tone starts flat, so it changes nothing until you turn it. When flat, the filter is switched off entirely.
+- Feedback and tone save with the song and the preset. Other firmware ignores them: it uses the amount for both level and feedback, and no filter.
 
 ## Design and credit
 
@@ -515,7 +521,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
-- **Delay feedback** is a small change to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay.
+- **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles. The Cyc engines are original code, modelled on how the Model:Cycles and Syntakt machines respond, measured knob by knob; no Elektron code or data is used.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 

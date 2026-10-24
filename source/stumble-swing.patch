@@ -22,10 +22,18 @@ index 0c5a8e05..5b4f3f1c 100644
  constexpr int32_t SAMPLE_MAX_TRANSPOSE = 24;
  constexpr int32_t SAMPLE_MIN_TRANSPOSE = (-96);
 diff --git a/src/deluge/dsp/delay/delay.cpp b/src/deluge/dsp/delay/delay.cpp
-index a1a160dd..18e2a8bf 100644
+index a1a160dd..71ab5843 100644
 --- a/src/deluge/dsp/delay/delay.cpp
 +++ b/src/deluge/dsp/delay/delay.cpp
-@@ -95,7 +95,8 @@ void Delay::setupWorkingState(Delay::State& workingState, uint32_t timePerIntern
+@@ -23,6 +23,7 @@
+ #include "memory/general_memory_allocator.h"
+ #include "model/sync.h"
+ #include "processing/engines/audio_engine.h"
++#include <cmath>
+ #include <cstdlib>
+ #include <ranges>
+ 
+@@ -95,7 +96,8 @@ void Delay::setupWorkingState(Delay::State& workingState, uint32_t timePerIntern
  	// Set some stuff up that we need before we make some decisions
  	// BUG: we want to be able to reduce the 256 to 1, but for some reason, the
  	// patching engine spits out 112 even when this should be 0...
@@ -35,7 +43,38 @@ index a1a160dd..18e2a8bf 100644
  
  	if (mightDoDelay) {
  
-@@ -328,49 +329,68 @@ void Delay::process(std::span<StereoSample> buffer, const State& delayWorkingSta
+@@ -222,6 +224,30 @@ void Delay::initializeSecondaryBuffer(int32_t newNativeRate, bool makeNativeRate
+ 	sizeLeftUntilBufferSwap = secondaryBuffer.size() + 5;
+ }
+ 
++// DJ-style one-pole filter. From the centre out, the lowpass sweeps down from 20 kHz to 150 Hz and the highpass up
++// from 20 Hz to 5 kHz.
++void Delay::applyTone(std::span<StereoSample> samples, int32_t tone) {
++	float amount = std::abs(static_cast<float>(tone)) / 2147483648.f;
++	bool highpass = tone > 0;
++	float cutoff = highpass ? 20.f * std::pow(250.f, amount) : 20000.f * std::pow(0.0075f, amount);
++	float coefficient = 1.f - std::exp(-6.2831853f * cutoff / kSampleRate);
++	int32_t a = static_cast<int32_t>(coefficient * 2147483647.f);
++
++	for (StereoSample& sample : samples) {
++		// Halved before the difference so it can't overflow
++		toneL += multiply_32x32_rshift32((sample.l >> 1) - (toneL >> 1), a) << 2;
++		toneR += multiply_32x32_rshift32((sample.r >> 1) - (toneR >> 1), a) << 2;
++		if (highpass) {
++			sample.l -= toneL;
++			sample.r -= toneR;
++		}
++		else {
++			sample.l = toneL;
++			sample.r = toneR;
++		}
++	}
++}
++
+ void Delay::process(std::span<StereoSample> buffer, const State& delayWorkingState) {
+ 	if (!delayWorkingState.doDelay) {
+ 		return;
+@@ -328,49 +354,78 @@ void Delay::process(std::span<StereoSample> buffer, const State& delayWorkingSta
  	}
  
  	if (analog) {
@@ -57,13 +96,23 @@ index a1a160dd..18e2a8bf 100644
 -		}
  	}
  
--	else {
++	// Tone filters what's read back, before it's split into output and feedback, so each repeat goes through it
++	// again
++	if (delayWorkingState.tone != 0) {
++		applyTone(working_buffer, delayWorkingState.tone);
++	}
+ 	else {
 -		for (StereoSample& sample : working_buffer) {
 -			// Leave more headroom, because making it clip sounds bad with pure digital
 -			sample.l = signed_saturate<32 - 3>(multiply_32x32_rshift32(sample.l, delayWorkingState.delayFeedbackAmount))
 -			           << 2;
 -			sample.r = signed_saturate<32 - 3>(multiply_32x32_rshift32(sample.r, delayWorkingState.delayFeedbackAmount))
 -			           << 2;
+-		}
++		toneL = 0;
++		toneR = 0;
+ 	}
+ 
 +	auto applyLevel = [&](std::span<StereoSample> samples, int32_t level) {
 +		if (analog) {
 +			for (StereoSample& sample : samples) {
@@ -73,8 +122,7 @@ index a1a160dd..18e2a8bf 100644
 +				sample.r = getTanHUnknown(multiply_32x32_rshift32(sample.r, level), delayWorkingState.analog_saturation)
 +				           << 2;
 +			}
- 		}
--	}
++		}
 +		else {
 +			for (StereoSample& sample : samples) {
 +				// Leave more headroom, because making it clip sounds bad with pure digital
@@ -83,7 +131,7 @@ index a1a160dd..18e2a8bf 100644
 +			}
 +		}
 +	};
- 
++
  	// HPF on delay output, to stop it "farting out". Corner frequency is somewhere around 40Hz after many
  	// repetitions
 -	for (StereoSample& sample : working_buffer) {
@@ -133,7 +181,7 @@ index a1a160dd..18e2a8bf 100644
  		StereoSample current = input;
  
  		// Feedback calculation, and combination with input
-@@ -383,7 +403,7 @@ void Delay::process(std::span<StereoSample> buffer, const State& delayWorkingSta
+@@ -383,7 +438,7 @@ void Delay::process(std::span<StereoSample> buffer, const State& delayWorkingSta
  		}
  
  		// Output
@@ -143,10 +191,10 @@ index a1a160dd..18e2a8bf 100644
  
  	// And actually feedback being applied back into the actual delay primary buffer...
 diff --git a/src/deluge/dsp/delay/delay.h b/src/deluge/dsp/delay/delay.h
-index 66fd217b..a016f4e4 100644
+index 66fd217b..2bcac1cb 100644
 --- a/src/deluge/dsp/delay/delay.h
 +++ b/src/deluge/dsp/delay/delay.h
-@@ -30,7 +30,11 @@ public:
+@@ -30,7 +30,13 @@ public:
  	struct State {
  		bool doDelay;
  		int32_t userDelayRate;
@@ -155,19 +203,31 @@ index 66fd217b..a016f4e4 100644
 +		/// Wet level: how loud the repeats come out. Same scale as delayFeedbackAmount; when the two are equal the
 +		/// delay behaves exactly like the original single-knob delay.
 +		int32_t delayAmount;
++		/// Filter in the loop: 0 is flat, negative lowpass, positive highpass (the delay tone param, as is)
++		int32_t tone = 0;
  		int32_t analog_saturation = 8;
  	};
  
-@@ -75,6 +79,9 @@ public:
+@@ -75,6 +81,12 @@ public:
  
  	int32_t postLPFL;
  	int32_t postLPFR;
 +	// HPF state for the wet output, used when it's scaled separately from the feedback
 +	int32_t postLPFWetL = 0;
 +	int32_t postLPFWetR = 0;
++	// One-pole state for the tone filter
++	int32_t toneL = 0;
++	int32_t toneR = 0;
  
  	int32_t prevFeedback = 0;
  
+@@ -84,5 +96,6 @@ public:
+ 
+ private:
+ 	void prepareToBeginWriting();
++	void applyTone(std::span<StereoSample> samples, int32_t tone);
+ 	[[nodiscard]] constexpr int32_t getAmountToWriteBeforeReadingBegins() const { return secondaryBuffer.size(); }
+ };
 diff --git a/src/deluge/dsp/drum_synth/cyc.cpp b/src/deluge/dsp/drum_synth/cyc.cpp
 new file mode 100644
 index 00000000..4b217041
@@ -6607,7 +6667,7 @@ index 00000000..5f9425b4
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..70c24a45 100644
+index 38cab4d8..bc7fdf41 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -6619,15 +6679,18 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_PARAM_LOCAL_LPF_FREQ": "LPF frequency",
      "STRING_FOR_PARAM_LOCAL_LPF_RESONANCE": "LPF resonance",
      "STRING_FOR_PARAM_LOCAL_LPF_MORPH": "LPF morph",
-@@ -114,6 +116,7 @@
+@@ -114,6 +116,10 @@
      "STRING_FOR_REVERB_AMOUNT": "Reverb amount",
      "STRING_FOR_DELAY_RATE": "Delay rate",
      "STRING_FOR_DELAY_AMOUNT": "Delay amount",
 +    "STRING_FOR_DELAY_FEEDBACK": "Delay feedback",
++    "STRING_FOR_DELAY_TONE": "Delay tone",
++    "STRING_FOR_TONE": "Tone",
++    "STRING_FOR_TONE_SHORT": "TONE",
      "STRING_FOR_SIDECHAIN_LEVEL": "Sidechain level",
      "STRING_FOR_SIDECHAIN_SHAPE": "Sidechain shape",
      "STRING_FOR_DISTORTION": "Distortion",
-@@ -533,6 +536,8 @@
+@@ -533,6 +539,8 @@
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "Alternative Playback Start Behaviour",
      "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "Grid View Loop Layer Pads",
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "Alternative Tap Tempo Behaviour",
@@ -6636,7 +6699,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -543,6 +548,101 @@
+@@ -543,6 +551,101 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -6738,7 +6801,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -568,6 +668,8 @@
+@@ -568,6 +671,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -6747,7 +6810,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -624,6 +726,13 @@
+@@ -624,6 +729,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -6761,7 +6824,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -705,6 +814,11 @@
+@@ -705,6 +817,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -6773,7 +6836,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -847,6 +961,17 @@
+@@ -847,6 +964,17 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -6792,7 +6855,7 @@ index 38cab4d8..70c24a45 100644
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..e633034f 100644
+index 1f87aacf..a544701e 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -6804,15 +6867,18 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_PARAM_LOCAL_LPF_FREQ, "LPF frequency"},
          {STRING_FOR_PARAM_LOCAL_LPF_RESONANCE, "LPF resonance"},
          {STRING_FOR_PARAM_LOCAL_LPF_MORPH, "LPF morph"},
-@@ -127,6 +129,7 @@ PLACE_SDRAM_DATA Language english{
+@@ -127,6 +129,10 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_AMOUNT, "Reverb amount"},
          {STRING_FOR_DELAY_RATE, "Delay rate"},
          {STRING_FOR_DELAY_AMOUNT, "Delay amount"},
 +        {STRING_FOR_DELAY_FEEDBACK, "Delay feedback"},
++        {STRING_FOR_DELAY_TONE, "Delay tone"},
++        {STRING_FOR_TONE, "Tone"},
++        {STRING_FOR_TONE_SHORT, "TONE"},
          {STRING_FOR_SIDECHAIN_LEVEL, "Sidechain level"},
          {STRING_FOR_SIDECHAIN_SHAPE, "Sidechain shape"},
          {STRING_FOR_DISTORTION, "Distortion"},
-@@ -546,6 +549,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -546,6 +552,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "Alternative Playback Start Behaviour"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "Grid View Loop Layer Pads"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "Alternative Tap Tempo Behaviour"},
@@ -6821,7 +6887,7 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -556,6 +561,101 @@ PLACE_SDRAM_DATA Language english{
+@@ -556,6 +564,101 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -6923,7 +6989,7 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -581,6 +681,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -581,6 +684,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -6932,7 +6998,7 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -637,6 +739,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -637,6 +742,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -6946,7 +7012,7 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -718,6 +827,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +830,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -6958,7 +7024,7 @@ index 1f87aacf..e633034f 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -860,6 +974,17 @@ PLACE_SDRAM_DATA Language english{
+@@ -860,6 +977,17 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -7292,7 +7358,7 @@ index 8328945b..085484ef 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..f0d8dac6 100644
+index 49b15e92..a98675f0 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -7438,15 +7504,18 @@ index 49b15e92..f0d8dac6 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -715,6 +823,7 @@ enum class String : size_t {
+@@ -715,6 +823,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
 +	STRING_FOR_DELAY_FEEDBACK,
++	STRING_FOR_DELAY_TONE,
++	STRING_FOR_TONE,
++	STRING_FOR_TONE_SHORT,
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -772,6 +881,11 @@ enum class String : size_t {
+@@ -772,6 +884,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -7458,7 +7527,7 @@ index 49b15e92..f0d8dac6 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -923,6 +1037,17 @@ enum class String : size_t {
+@@ -923,6 +1040,17 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -7778,6 +7847,69 @@ index 00000000..6b5fdae1
 +	using Amount_Unpatched::Amount_Unpatched;
 +
 +	void getColumnLabel(StringBuf& label) override { label.append(l10n::get(l10n::String::STRING_FOR_FEEDBACK_SHORT)); }
++};
++} // namespace deluge::gui::menu_item::delay
+diff --git a/src/deluge/gui/menu_item/delay/tone.h b/src/deluge/gui/menu_item/delay/tone.h
+new file mode 100644
+index 00000000..466e7dab
+--- /dev/null
++++ b/src/deluge/gui/menu_item/delay/tone.h
+@@ -0,0 +1,57 @@
++/*
++ * Copyright (c) 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++
++#include "gui/menu_item/unpatched_param.h"
++#include "gui/menu_item/value_scaling.h"
++#include "gui/ui/sound_editor.h"
++#include "hid/display/display.h"
++#include "modulation/params/param_manager.h"
++#include "modulation/params/param_set.h"
++
++namespace deluge::gui::menu_item::delay {
++
++/// Delay tone, -25 to +25: lowpass to the left, flat at 0, highpass to the right
++class Tone final : public UnpatchedParam {
++public:
++	using UnpatchedParam::UnpatchedParam;
++
++	void drawValue() override {
++		DEF_STACK_STRING_BUF(text, 8);
++		int32_t value = getValue();
++		if (value == 0) {
++			text.append("FLAT");
++		}
++		else {
++			text.append(value < 0 ? "L" : "H");
++			text.appendInt(std::abs(value));
++		}
++		display->setText(text.c_str(), true);
++	}
++
++	void getColumnLabel(StringBuf& label) override { label.append(l10n::get(l10n::String::STRING_FOR_TONE_SHORT)); }
++
++protected:
++	[[nodiscard]] int32_t getMaxValue() const override { return kMaxMenuRelativeValue; }
++	[[nodiscard]] int32_t getMinValue() const override { return kMinMenuRelativeValue; }
++	[[nodiscard]] RenderingStyle getRenderingStyle() const override { return PAN; }
++	int32_t getFinalValue() override { return computeFinalValueForPan(getValue()); }
++	void readCurrentValue() override {
++		setValue(computeCurrentValueForPan(soundEditor.currentParamManager->getUnpatchedParamSet()->getValue(getP())));
++	}
 +};
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
@@ -9451,7 +9583,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..6b19f2c3 100644
+index 7bbd559f..458aad81 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -9465,19 +9597,20 @@ index 7bbd559f..6b19f2c3 100644
  #include "gui/menu_item/cv/selection.h"
  #include "gui/menu_item/cv/submenu.h"
  #include "gui/menu_item/cv/transpose.h"
-@@ -60,8 +62,11 @@
+@@ -60,8 +62,12 @@
  #include "gui/menu_item/delay/amount.h"
  #include "gui/menu_item/delay/amount_unpatched.h"
  #include "gui/menu_item/delay/analog.h"
 +#include "gui/menu_item/delay/feedback.h"
  #include "gui/menu_item/delay/ping_pong.h"
  #include "gui/menu_item/delay/sync.h"
++#include "gui/menu_item/delay/tone.h"
 +#include "gui/menu_item/drum_synth/editor.h"
 +#include "gui/menu_item/drum_synth/param.h"
  #include "gui/menu_item/dx/browse.h"
  #include "gui/menu_item/dx/engine_select.h"
  #include "gui/menu_item/dx/global_params.h"
-@@ -78,6 +83,7 @@
+@@ -78,6 +84,7 @@
  #include "gui/menu_item/firmware/version.h"
  #include "gui/menu_item/flash/status.h"
  #include "gui/menu_item/fx/clipping.h"
@@ -9485,7 +9618,7 @@ index 7bbd559f..6b19f2c3 100644
  #include "gui/menu_item/gate/mode.h"
  #include "gui/menu_item/gate/off_time.h"
  #include "gui/menu_item/gate/selection.h"
-@@ -189,6 +195,7 @@
+@@ -189,6 +196,7 @@
  #include "gui/menu_item/sample/repeat.h"
  #include "gui/menu_item/sample/reverse.h"
  #include "gui/menu_item/sample/start.h"
@@ -9493,7 +9626,7 @@ index 7bbd559f..6b19f2c3 100644
  #include "gui/menu_item/sample/time_stretch.h"
  #include "gui/menu_item/sample/transpose.h"
  #include "gui/menu_item/sequence/direction.h"
-@@ -216,7 +223,10 @@
+@@ -216,7 +224,10 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -9504,25 +9637,27 @@ index 7bbd559f..6b19f2c3 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -512,6 +522,9 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -512,6 +523,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
 +// The real feedback (delayFeedbackMenu above is the amount). Shared by sounds and global effectables.
 +PLACE_SDRAM_BSS delay::Feedback delayRegenMenu{STRING_FOR_FEEDBACK, STRING_FOR_DELAY_FEEDBACK,
 +                                               params::UNPATCHED_DELAY_FEEDBACK};
++PLACE_SDRAM_BSS delay::Tone delayToneMenu{STRING_FOR_TONE, STRING_FOR_DELAY_TONE, params::UNPATCHED_DELAY_TONE};
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +534,7 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +536,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
 +        &delayRegenMenu,
++        &delayToneMenu,
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -631,6 +645,7 @@ PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routi
+@@ -631,6 +648,7 @@ PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routi
  
  // FX ----------------------------------------------------------------------------------------
  PLACE_SDRAM_BSS fx::Clipping clippingMenu{STRING_FOR_SATURATION};
@@ -9530,7 +9665,7 @@ index 7bbd559f..6b19f2c3 100644
  PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
                                         RenderingStyle::BAR};
  PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
-@@ -641,6 +656,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
+@@ -641,6 +659,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -9538,15 +9673,16 @@ index 7bbd559f..6b19f2c3 100644
          &bitcrushMenu,
          &srrMenu,
          &foldMenu,
-@@ -772,6 +788,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +791,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
 +        &delayRegenMenu,
++        &delayToneMenu,
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -855,6 +872,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +876,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -9576,7 +9712,7 @@ index 7bbd559f..6b19f2c3 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,6 +950,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,6 +954,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -9584,7 +9720,7 @@ index 7bbd559f..6b19f2c3 100644
          &bitcrushMenu,
          &srrMenu,
      },
-@@ -985,6 +1026,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1030,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -9596,7 +9732,7 @@ index 7bbd559f..6b19f2c3 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1095,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1099,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -9604,7 +9740,7 @@ index 7bbd559f..6b19f2c3 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1516,347 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,6 +1520,347 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -9952,7 +10088,7 @@ index 7bbd559f..6b19f2c3 100644
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1477,6 +1865,55 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
+@@ -1477,6 +1869,55 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
  
  // Synth only
  PLACE_SDRAM_BSS SynthModeSelection synthModeMenu{STRING_FOR_SYNTH_MODE};
@@ -10008,7 +10144,7 @@ index 7bbd559f..6b19f2c3 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +1955,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +1959,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -10020,7 +10156,7 @@ index 7bbd559f..6b19f2c3 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +1984,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +1988,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -10029,7 +10165,7 @@ index 7bbd559f..6b19f2c3 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +1993,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +1997,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -10038,7 +10174,7 @@ index 7bbd559f..6b19f2c3 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2147,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2151,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -10048,7 +10184,7 @@ index 7bbd559f..6b19f2c3 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2280,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2284,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -10057,7 +10193,7 @@ index 7bbd559f..6b19f2c3 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2336,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2340,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -10066,7 +10202,7 @@ index 7bbd559f..6b19f2c3 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2358,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2362,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -10074,7 +10210,41 @@ index 7bbd559f..6b19f2c3 100644
          &firmwareVersionMenu,
      },
  };
-@@ -2000,7 +2450,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -1951,10 +2405,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+     {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
+     {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
+     {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
+-    {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,                    nullptr,	nullptr,	nullptr              },
++    {&delayToneMenu,	nullptr,	            nullptr,	        &delayRegenMenu,	nullptr,                    nullptr,	nullptr,	nullptr              },
+     {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,                    nullptr,	nullptr,	nullptr              },
+ };
+ 
++// Kits (affect entire), audio clips and song view have no second layer table. Their delay amount and rate pads get
++// delay feedback and tone one press deeper, as on sounds.
++MenuItem* globalDelaySecondLayer(MenuItem const* item) {
++	if (item == &globalDelayFeedbackMenu) {
++		return &delayRegenMenu;
++	}
++	if (item == &globalDelayRateMenu) {
++		return &delayToneMenu;
++	}
++	return nullptr;
++}
++
++MenuItem* globalDelayFirstLayer(MenuItem const* item) {
++	if (item == &delayRegenMenu) {
++		return &globalDelayFeedbackMenu;
++	}
++	if (item == &delayToneMenu) {
++		return &globalDelayRateMenu;
++	}
++	return nullptr;
++}
++
+ PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
+     {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
+     {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
+@@ -2000,7 +2476,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -10083,7 +10253,7 @@ index 7bbd559f..6b19f2c3 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2474,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2500,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -10093,7 +10263,7 @@ index 7bbd559f..6b19f2c3 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd6..ce7438fe 100644
+index 09efdfd6..6f761cbf 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
 @@ -25,6 +25,7 @@
@@ -10113,7 +10283,7 @@ index 09efdfd6..ce7438fe 100644
  extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
  extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
  extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
-@@ -113,7 +116,15 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
+@@ -113,7 +116,19 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
  extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
@@ -10122,6 +10292,10 @@ index 09efdfd6..ce7438fe 100644
 +/// The shortcut pad of a 303 mode menu item, if it has one
 +bool tb303ShortcutFor(MenuItem* item, int32_t* x, int32_t* y);
  extern MenuItem* paramShortcutsForSoundsSecondLayer[kDisplayWidth][kDisplayHeight];
++/// Delay feedback / tone for a kit, audio clip or song delay amount / rate pad pressed twice, or nullptr
++MenuItem* globalDelaySecondLayer(MenuItem const* item);
++/// The delay amount / rate pad item that delay feedback / tone sit under, or nullptr
++MenuItem* globalDelayFirstLayer(MenuItem const* item);
 +class Sound;
 +/// On drum synth sounds, some sound shortcut pads open the engine's settings instead (see menus.cpp). nullptr = the
 +/// normal shortcut.
@@ -10216,7 +10390,7 @@ index c7f05939..61dfc609 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3..7e625509 100644
+index d3eae8c3..5d9f01f5 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -3,6 +3,7 @@
@@ -10320,7 +10494,25 @@ index d3eae8c3..7e625509 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -1090,6 +1151,10 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1012,6 +1073,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
+ 
+ void SoundEditor::setupShortcutsBlinkFromTable(MenuItem const* const currentItem,
+                                                MenuItem const* const items[kDisplayWidth][kDisplayHeight]) {
++	// Delay feedback / tone sit one press deeper on the delay amount / rate pads: blink that pad yellow
++	if (MenuItem const* firstLayer = globalDelayFirstLayer(currentItem)) {
++		for (auto x = 0; x < kDisplayWidth; ++x) {
++			for (auto y = 0; y < kDisplayHeight; ++y) {
++				if (items[x][y] == firstLayer) {
++					setupShortcutBlink(x, y, 0, 0b00000011 /* yellow */);
++					return;
++				}
++			}
++		}
++	}
+ 	for (auto x = 0; x < kDisplayWidth; ++x) {
+ 		for (auto y = 0; y < kDisplayHeight; ++y) {
+ 			if (items[x][y] == currentItem) {
+@@ -1090,6 +1162,10 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  			}
  
  			// First, see if there's a shortcut for the actual MenuItem we're currently on
@@ -10331,7 +10523,7 @@ index d3eae8c3..7e625509 100644
  			for (int32_t x = 0; x < kDisplayWidth; x++) {
  				for (int32_t y = 0; y < kDisplayHeight; y++) {
  					if (paramShortcutsForSoundsSecondLayer[x][y] == currentItem) {
-@@ -1097,7 +1162,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1097,7 +1173,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  						goto stopThat;
  					}
  
@@ -10341,7 +10533,7 @@ index d3eae8c3..7e625509 100644
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1488,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1499,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -10350,7 +10542,7 @@ index d3eae8c3..7e625509 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1586,10 +1652,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1586,10 +1663,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -10369,7 +10561,27 @@ index d3eae8c3..7e625509 100644
  
  					// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  					secondLayerShortcutsToggled =
-@@ -1650,6 +1723,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1607,6 +1691,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+ 
+ 			}
+ 		}
++		// Kits, audio clips and song view: delay feedback / tone on the delay amount / rate pads pressed twice
++		else if (item) {
++			secondLayerShortcutsToggled =
++			    getCurrentMenuItem() != nullptr && x == currentParamShortcutX && y == currentParamShortcutY
++			        ? !secondLayerShortcutsToggled
++			        : false;
++
++			if (secondLayerShortcutsToggled) {
++				if (MenuItem* secondLayerItem = globalDelaySecondLayer(item)) {
++					item = secondLayerItem;
++				}
++			}
++		}
+ 
+ 		if (item) {
+ 			if (item == comingSoonMenu) {
+@@ -1650,6 +1747,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -10382,7 +10594,7 @@ index d3eae8c3..7e625509 100644
  			if (!setupSuccess) {
  				return ActionResult::DEALT_WITH;
  			}
-@@ -1704,6 +1783,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1704,6 +1807,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -10397,7 +10609,7 @@ index d3eae8c3..7e625509 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2234,7 @@ doMIDIOrCV:
+@@ -2147,6 +2258,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -10423,7 +10635,7 @@ index 85daba70..3631e364 100644
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index 0a42de35..31b0891b 100644
+index 0a42de35..e2c802c3 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
 @@ -110,6 +110,30 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
@@ -10463,24 +10675,25 @@ index 0a42de35..31b0891b 100644
  
 -constexpr int32_t kNumNonGlobalParamsForAutomation = 83;
 -constexpr int32_t kNumGlobalParamsForAutomation = 39;
-+constexpr int32_t kNumNonGlobalParamsForAutomation = 86;
-+constexpr int32_t kNumGlobalParamsForAutomation = 40;
++constexpr int32_t kNumNonGlobalParamsForAutomation = 87;
++constexpr int32_t kNumGlobalParamsForAutomation = 41;
  
  // synth and kit rows FX - sorted in the order that Parameters are scrolled through on the display
  const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutomation> nonGlobalParamsForAutomation{{
-@@ -148,9 +172,10 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -148,9 +172,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::PATCHED, params::GLOBAL_REVERB_AMOUNT},
 -    // Delay Rate, Amount
-+    // Delay Rate, Amount, Feedback
++    // Delay Rate, Amount, Feedback, Tone
      {params::Kind::PATCHED, params::GLOBAL_DELAY_RATE},
      {params::Kind::PATCHED, params::GLOBAL_DELAY_FEEDBACK},
 +    {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_DELAY_FEEDBACK},
++    {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_DELAY_TONE},
      // Sidechain Shape
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_SIDECHAIN_SHAPE},
      // Decimation, Bitcrush, Wavefolder
-@@ -242,6 +267,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -242,6 +268,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::EXPRESSION, Expression::Y_SLIDE_TIMBRE},
      // Mono Expression: Z - Channel Pressure
      {params::Kind::EXPRESSION, Expression::Z_PRESSURE},
@@ -10490,19 +10703,20 @@ index 0a42de35..31b0891b 100644
  }};
  
  // global FX - sorted in the order that Parameters are scrolled through on the display
-@@ -267,9 +295,10 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
+@@ -267,9 +296,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_REVERB_SEND_AMOUNT},
 -    // Delay Rate, Amount
-+    // Delay Rate, Amount, Feedback
++    // Delay Rate, Amount, Feedback, Tone
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_DELAY_RATE},
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_DELAY_AMOUNT},
 +    {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_DELAY_FEEDBACK},
++    {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_DELAY_TONE},
      // Sidechain Send, Shape
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_SIDECHAIN_VOLUME},
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_SIDECHAIN_SHAPE},
-@@ -784,9 +813,9 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -784,9 +815,9 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
  
  			if (!onArrangerView && (outputType == OutputType::SYNTH || singleSoundDrum)) {
  				if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
@@ -10515,7 +10729,7 @@ index 0a42de35..31b0891b 100644
  				}
  
  				else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
-@@ -1909,7 +1938,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1909,7 +1940,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  		// ParamID
  		if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::PATCHED;
@@ -10524,7 +10738,7 @@ index 0a42de35..31b0891b 100644
  		}
  		else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::UNPATCHED_SOUND;
-@@ -2934,7 +2963,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
+@@ -2934,7 +2965,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
  			}
  			else {
  				if ((clip->lastSelectedParamKind == params::Kind::PATCHED
@@ -11613,7 +11827,7 @@ index 00000000..4bbd4cbd
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 0690e2bb..81b3f7e1 100644
+index 0690e2bb..9f4ec372 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
 @@ -37,6 +37,7 @@
@@ -11689,16 +11903,41 @@ index 0690e2bb..81b3f7e1 100644
  	// If this Clip is the inputTickScaleClip, flash the LED
  	if (getCurrentUI()->toClipMinder() && getCurrentClip() == currentSong->getSyncScalingClip()) {
  		indicator_leds::blinkLed(IndicatorLED::SYNC_SCALING);
-@@ -1205,6 +1234,11 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1205,7 +1234,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  	}
  	else {
  		current_display_value = calculateKnobPosForDisplay(kind, paramID, newKnobPos + kKnobPosOffset);
-+		// 7SEG has no room for a name: mark SHIFT + delay amount (delay feedback) with an F
-+		if (!display->haveOLED() && (kind == params::Kind::UNPATCHED_SOUND || kind == params::Kind::UNPATCHED_GLOBAL)
-+		    && paramID == params::UNPATCHED_DELAY_FEEDBACK) {
+-		parameter_value.appendInt(current_display_value);
++		// 7SEG has no room for a name: mark delay feedback (SHIFT + delay amount) with an F, and show delay tone
++		// (SHIFT + delay rate) as L (lowpass) or H (highpass)
++		bool sevenSegUnpatched =
++		    !display->haveOLED() && (kind == params::Kind::UNPATCHED_SOUND || kind == params::Kind::UNPATCHED_GLOBAL);
++		if (sevenSegUnpatched && paramID == params::UNPATCHED_DELAY_FEEDBACK) {
 +			parameter_value.append("F");
++			parameter_value.appendInt(current_display_value);
 +		}
- 		parameter_value.appendInt(current_display_value);
++		else if (sevenSegUnpatched && paramID == params::UNPATCHED_DELAY_TONE) {
++			if (current_display_value == 0) {
++				parameter_value.append("FLAT");
++			}
++			else {
++				parameter_value.append(current_display_value < 0 ? "L" : "H");
++				parameter_value.appendInt(std::abs(current_display_value));
++			}
++		}
++		else {
++			parameter_value.appendInt(current_display_value);
++		}
+ 	}
+ 
+ 	// Check if we need to update the notification (avoid excessive updates)
+@@ -1332,7 +1380,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
+ 	valueForDisplayFloat = (knobPosFloat / maxKnobPosFloat) * maxMenuValueFloat;
+ 
+ 	// check if parameter is pan or pitch, in which case, further adjust range from 0 - 50 to -25 to +25
+-	if (isParamPan(kind, paramID) || isParamPitch(kind, paramID)) {
++	if (isParamPan(kind, paramID) || isParamPitch(kind, paramID) || isParamDelayTone(kind, paramID)) {
+ 		valueForDisplayFloat = valueForDisplayFloat - maxMenuRelativeValueFloat;
  	}
  
 diff --git a/src/deluge/hid/buttons.cpp b/src/deluge/hid/buttons.cpp
@@ -12117,32 +12356,39 @@ index b6e15e33..0d45f0e7 100644
  	int8_t backedUpInstrumentSlot[4]{};
  	int8_t backedUpInstrumentSubSlot[4]{};
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
-index a7bbbd46..64c59ca2 100644
+index a7bbbd46..02b2c7a5 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable.cpp
-@@ -710,6 +710,11 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
+@@ -710,6 +710,16 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
  
  	paramId = getParameterFromKnob(whichModEncoder);
  
-+	// SHIFT + the delay amount knob sets the delay feedback
-+	if (paramId == params::UNPATCHED_DELAY_AMOUNT && Buttons::isShiftButtonPressed()) {
-+		paramId = params::UNPATCHED_DELAY_FEEDBACK;
++	// SHIFT + the delay amount knob sets the delay feedback, SHIFT + the delay rate knob the delay tone
++	if (Buttons::isShiftButtonPressed()) {
++		if (paramId == params::UNPATCHED_DELAY_AMOUNT) {
++			paramId = params::UNPATCHED_DELAY_FEEDBACK;
++		}
++		else if (paramId == params::UNPATCHED_DELAY_RATE) {
++			paramId = params::UNPATCHED_DELAY_TONE;
++		}
 +	}
 +
  	ModelStackWithParamId* newModelStack1 = modelStack->addParamCollectionAndId(paramCollection, summary, paramId);
  
  	if (paramId == 255) {
-@@ -862,6 +867,9 @@ void GlobalEffectable::writeParamTagsToFile(Serializer& writer, ParamManager* pa
+@@ -862,6 +872,11 @@ void GlobalEffectable::writeParamTagsToFile(Serializer& writer, ParamManager* pa
  	                                       valuesForOverride);
  	unpatchedParams->writeParamAsAttribute(writer, "feedback", params::UNPATCHED_DELAY_AMOUNT, writeAutomation, false,
  	                                       valuesForOverride);
 +	// Must come after "feedback" (the amount), which sets it when loading older files
 +	unpatchedParams->writeParamAsAttribute(writer, "regen", params::UNPATCHED_DELAY_FEEDBACK, writeAutomation, false,
 +	                                       valuesForOverride);
++	unpatchedParams->writeParamAsAttribute(writer, "tone", params::UNPATCHED_DELAY_TONE, writeAutomation, false,
++	                                       valuesForOverride);
  	writer.closeTag();
  
  	writer.writeOpeningTagBeginning("lpf");
-@@ -908,10 +916,17 @@ bool GlobalEffectable::readParamTagFromFile(Deserializer& reader, char const* ta
+@@ -908,10 +923,22 @@ bool GlobalEffectable::readParamTagFromFile(Deserializer& reader, char const* ta
  				reader.exitTag("rate");
  			}
  			else if (!strcmp(tagName, "feedback")) {
@@ -12157,10 +12403,15 @@ index a7bbbd46..64c59ca2 100644
 +				                           readAutomationUpToPos);
 +				reader.exitTag("regen");
 +			}
++			else if (!strcmp(tagName, "tone")) {
++				unpatchedParams->readParam(reader, unpatchedParamsSummary, params::UNPATCHED_DELAY_TONE,
++				                           readAutomationUpToPos);
++				reader.exitTag("tone");
++			}
  		}
  		reader.exitTag("delay", true);
  	}
-@@ -1126,10 +1141,14 @@ Delay::State GlobalEffectable::createDelayWorkingState(ParamManager& paramManage
+@@ -1126,10 +1153,15 @@ Delay::State GlobalEffectable::createDelayWorkingState(ParamManager& paramManage
  	Delay::State delayWorkingState;
  	UnpatchedParamSet* unpatchedParams = paramManager.getUnpatchedParamSet();
  
@@ -12171,6 +12422,7 @@ index a7bbbd46..64c59ca2 100644
 +	delayWorkingState.delayFeedbackAmount = getFinalParameterValueLinear(
 +	    paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
 +	    cableToLinearParamShortcut(unpatchedParams->getValue(params::UNPATCHED_DELAY_FEEDBACK)));
++	delayWorkingState.tone = unpatchedParams->getValue(params::UNPATCHED_DELAY_TONE);
  	if (shouldLimitDelayFeedback) {
 +		delayWorkingState.delayAmount = std::min(delayWorkingState.delayAmount, (int32_t)(1 << 30) - (1 << 26));
  		delayWorkingState.delayFeedbackAmount =
@@ -12295,7 +12547,7 @@ index a58e4ff9..98e162b8 100644
 +	int32_t monoCustomMillivolts = -1;
  };
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04..88263a9c 100644
+index fd80ba04..d3f78c95 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -12317,13 +12569,14 @@ index fd80ba04..88263a9c 100644
  	modFXType_ = other->modFXType_;
  	bassFreq = other->bassFreq; // Eventually, these shouldn't be variables like this
  	trebleFreq = other->trebleFreq;
-@@ -137,6 +134,16 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
+@@ -137,6 +134,17 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
  
  	unpatchedParams->params[params::UNPATCHED_SIDECHAIN_SHAPE].setCurrentValueBasicForSetup(-601295438);
  	unpatchedParams->params[params::UNPATCHED_COMPRESSOR_THRESHOLD].setCurrentValueBasicForSetup(0);
 +
 +	// Half gain (13 of 50): a few repeats. 25 is unity, endless repeats.
 +	unpatchedParams->params[params::UNPATCHED_DELAY_FEEDBACK].setCurrentValueBasicForSetup(-1073741824);
++	unpatchedParams->params[params::UNPATCHED_DELAY_TONE].setCurrentValueBasicForSetup(0); // Flat
 +}
 +
 +void ModControllableAudio::setDelayFeedbackFromOldAmount(ParamManager* paramManager, int32_t amount) {
@@ -12334,7 +12587,7 @@ index fd80ba04..88263a9c 100644
  }
  
  bool ModControllableAudio::hasBassAdjusted(ParamManager* paramManager) {
-@@ -409,8 +416,13 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+@@ -409,8 +417,13 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
  	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
@@ -12350,7 +12603,7 @@ index fd80ba04..88263a9c 100644
  	}
  }
  
-@@ -734,9 +746,22 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -734,9 +747,22 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  	}
  
  	else if (!strcmp(tagName, "clippingAmount")) {
@@ -12374,7 +12627,7 @@ index fd80ba04..88263a9c 100644
  
  	// Arpeggiator
  
-@@ -806,6 +831,7 @@ doReadPatchedParam:
+@@ -806,6 +832,7 @@ doReadPatchedParam:
  					PatchedParamSet* patchedParams = (PatchedParamSet*)patchedParamsSummary->paramCollection;
  					patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_DELAY_FEEDBACK,
  					                         readAutomationUpToPos);
@@ -14092,10 +14345,10 @@ index 260849c6..8ef83665 100644
  	                          uint32_t newFastReleaseIncrement = SOFT_CULL_INCREMENT);
  	void unconditionalOff();
 diff --git a/src/deluge/modulation/params/param.cpp b/src/deluge/modulation/params/param.cpp
-index 6d45cbe3..1a6a960f 100644
+index 6d45cbe3..b8696984 100644
 --- a/src/deluge/modulation/params/param.cpp
 +++ b/src/deluge/modulation/params/param.cpp
-@@ -28,6 +28,9 @@
+@@ -28,8 +28,15 @@
  namespace deluge::modulation::params {
  
  bool isParamBipolar(Kind kind, int32_t paramID) {
@@ -14103,9 +14356,16 @@ index 6d45cbe3..1a6a960f 100644
 +		return true;
 +	}
  	return (kind == Kind::PATCH_CABLE) || isParamPan(kind, paramID) || isParamPitch(kind, paramID)
- 	       || isParamPitchBend(kind, paramID);
+-	       || isParamPitchBend(kind, paramID);
++	       || isParamPitchBend(kind, paramID) || isParamDelayTone(kind, paramID);
++}
++
++bool isParamDelayTone(Kind kind, int32_t paramID) {
++	return (kind == Kind::UNPATCHED_SOUND || kind == Kind::UNPATCHED_GLOBAL) && paramID == UNPATCHED_DELAY_TONE;
  }
-@@ -137,6 +140,8 @@ char const* getPatchedParamShortName(ParamType type) {
+ 
+ bool isParamPan(Kind kind, int32_t paramID) {
+@@ -137,6 +144,8 @@ char const* getPatchedParamShortName(ParamType type) {
  	    [LOCAL_OSC_A_WAVE_INDEX]         = "Osc1 wave",
  	    [LOCAL_OSC_B_WAVE_INDEX]         = "Osc2 wave",
  	    [LOCAL_PAN]                      = "Pan",
@@ -14114,7 +14374,7 @@ index 6d45cbe3..1a6a960f 100644
  	    [LOCAL_LPF_FREQ]                 = "LPf freq",
  	    [LOCAL_PITCH_ADJUST]             = "Pitch",
  	    [LOCAL_OSC_A_PITCH_ADJUST]       = "Osc1 pitch",
-@@ -226,6 +231,8 @@ char const* getPatchedParamDisplayName(int32_t p) {
+@@ -226,6 +235,8 @@ char const* getPatchedParamDisplayName(int32_t p) {
  	    [LOCAL_OSC_A_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_A_WAVE_INDEX,
  	    [LOCAL_OSC_B_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_B_WAVE_INDEX,
  	    [LOCAL_PAN] = STRING_FOR_PARAM_LOCAL_PAN,
@@ -14123,15 +14383,16 @@ index 6d45cbe3..1a6a960f 100644
  	    [LOCAL_LPF_FREQ] = STRING_FOR_PARAM_LOCAL_LPF_FREQ,
  	    [LOCAL_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_PITCH_ADJUST,
  	    [LOCAL_OSC_A_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_OSC_A_PITCH_ADJUST,
-@@ -287,6 +294,7 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
+@@ -287,6 +298,8 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
  		    [UNPATCHED_MOD_FX_FEEDBACK] = STRING_FOR_MODFX_FEEDBACK,
  		    [UNPATCHED_SIDECHAIN_SHAPE] = STRING_FOR_SIDECHAIN_SHAPE,
  		    [UNPATCHED_COMPRESSOR_THRESHOLD] = STRING_FOR_THRESHOLD,
 +		    [UNPATCHED_DELAY_FEEDBACK] = STRING_FOR_DELAY_FEEDBACK,
++		    [UNPATCHED_DELAY_TONE] = STRING_FOR_DELAY_TONE,
  		    [UNPATCHED_ARP_GATE] = STRING_FOR_ARP_GATE_MENU_TITLE,
  		    [UNPATCHED_ARP_RHYTHM] = STRING_FOR_ARP_RHYTHM_MENU_TITLE,
  		    [UNPATCHED_ARP_SEQUENCE_LENGTH] = STRING_FOR_ARP_SEQUENCE_LENGTH_MENU_TITLE,
-@@ -356,7 +364,35 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
+@@ -356,7 +369,35 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
  char const* getParamDisplayName(Kind kind, int32_t p, ModControllableAudio* modControllable) {
  	using enum l10n::String;
  
@@ -14167,17 +14428,20 @@ index 6d45cbe3..1a6a960f 100644
  		bool isLPFMorph = (kind == Kind::PATCHED && p == LOCAL_LPF_MORPH)
  		                  || (kind == Kind::UNPATCHED_GLOBAL && p == UnpatchedGlobal::UNPATCHED_LPF_MORPH);
  		bool isHPFMorph = (kind == Kind::PATCHED && p == LOCAL_HPF_MORPH)
-@@ -522,6 +558,9 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+@@ -522,6 +563,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
  		case UNPATCHED_COMPRESSOR_THRESHOLD:
  			return "compressorThreshold";
  
 +		case UNPATCHED_DELAY_FEEDBACK:
 +			return "delayRegen";
 +
++		case UNPATCHED_DELAY_TONE:
++			return "delayTone";
++
  		case UNPATCHED_ARP_GATE:
  			return "arpGate";
  
-@@ -647,6 +686,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+@@ -647,6 +694,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
  		case LOCAL_PAN:
  			return "pan";
  
@@ -14191,7 +14455,7 @@ index 6d45cbe3..1a6a960f 100644
  			return "modulator1Volume";
  
 diff --git a/src/deluge/modulation/params/param.h b/src/deluge/modulation/params/param.h
-index 6af0f7db..3a8b972b 100644
+index 6af0f7db..90a6a55c 100644
 --- a/src/deluge/modulation/params/param.h
 +++ b/src/deluge/modulation/params/param.h
 @@ -97,6 +97,8 @@ enum Local : ParamType {
@@ -14203,15 +14467,26 @@ index 6af0f7db..3a8b972b 100644
  
  	// Local exp params begin
  	FIRST_LOCAL_EXP,
-@@ -186,6 +188,8 @@ enum UnpatchedShared : ParamType {
+@@ -186,6 +188,11 @@ enum UnpatchedShared : ParamType {
  	UNPATCHED_MOD_FX_FEEDBACK,
  	UNPATCHED_SIDECHAIN_SHAPE,
  	UNPATCHED_COMPRESSOR_THRESHOLD,
 +	/// Delay feedback, separate from the delay amount (wet level). SHIFT + the delay amount knob.
 +	UNPATCHED_DELAY_FEEDBACK,
++	/// Filter in the delay's loop: centre flat, lowpass to the left, highpass to the right. SHIFT + the delay rate
++	/// knob.
++	UNPATCHED_DELAY_TONE,
  	// Arp
  	UNPATCHED_FIRST_ARP_PARAM,
  	UNPATCHED_ARP_GATE = UNPATCHED_FIRST_ARP_PARAM,
+@@ -263,6 +270,7 @@ static_assert(kMaxNumUnpatchedParams < STATIC_START, "Error: Too many UNPATCHED
+ 
+ bool isParamBipolar(Kind kind, int32_t paramID);
+ bool isParamPan(Kind kind, int32_t paramID);
++bool isParamDelayTone(Kind kind, int32_t paramID);
+ bool isParamPitch(Kind kind, int32_t paramID);
+ bool isParamPitchBend(Kind kind, int32_t paramID);
+ bool isParamArpRhythm(Kind kind, int32_t paramID);
 diff --git a/src/deluge/modulation/params/param_set.cpp b/src/deluge/modulation/params/param_set.cpp
 index 1fbf667e..c7278686 100644
 --- a/src/deluge/modulation/params/param_set.cpp
@@ -15426,7 +15701,7 @@ index 00000000..dad16774
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..e3470010 100644
+index 8dd1ce44..5a2f984d 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -15838,7 +16113,7 @@ index 8dd1ce44..e3470010 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2496,18 +2803,26 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2803,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -15848,6 +16123,7 @@ index 8dd1ce44..e3470010 100644
 +	delayWorkingState.delayFeedbackAmount = getFinalParameterValueLinear(
 +	    paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
 +	    cableToLinearParamShortcut(paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_FEEDBACK)));
++	delayWorkingState.tone = paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_TONE);
  	if (shouldLimitDelayFeedback) {
 +		delayWorkingState.delayAmount = std::min(delayWorkingState.delayAmount, (q31_t)(1 << 30) - (1 << 26));
  		delayWorkingState.delayFeedbackAmount =
@@ -15868,7 +16144,7 @@ index 8dd1ce44..e3470010 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2832,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2833,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -15888,7 +16164,7 @@ index 8dd1ce44..e3470010 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2860,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2861,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -15900,7 +16176,7 @@ index 8dd1ce44..e3470010 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +2928,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +2929,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -15909,7 +16185,7 @@ index 8dd1ce44..e3470010 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3214,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3215,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -15945,7 +16221,7 @@ index 8dd1ce44..e3470010 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3320,11 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3321,11 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -15957,7 +16233,7 @@ index 8dd1ce44..e3470010 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3393,35 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3394,35 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -15993,7 +16269,7 @@ index 8dd1ce44..e3470010 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3466,85 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3467,85 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -16079,7 +16355,7 @@ index 8dd1ce44..e3470010 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3658,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3659,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -16088,7 +16364,7 @@ index 8dd1ce44..e3470010 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3851,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3852,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -16110,7 +16386,7 @@ index 8dd1ce44..e3470010 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3885,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3886,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -16121,7 +16397,7 @@ index 8dd1ce44..e3470010 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4099,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4100,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -16131,7 +16407,7 @@ index 8dd1ce44..e3470010 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4226,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4227,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -16143,7 +16419,7 @@ index 8dd1ce44..e3470010 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4320,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4321,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -16158,7 +16434,7 @@ index 8dd1ce44..e3470010 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4510,16 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4511,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -16172,20 +16448,26 @@ index 8dd1ce44..e3470010 100644
 +		                           readAutomationUpToPos);
 +		reader.exitTag("delayRegen");
 +	}
++	else if (!strcmp(tagName, "delayTone")) {
++		unpatchedParams->readParam(reader, unpatchedParamsSummary, params::UNPATCHED_DELAY_TONE, readAutomationUpToPos);
++		reader.exitTag("delayTone");
++	}
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4599,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4604,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
 +	// Must come after delayFeedback (the amount), which sets it when loading older files
 +	paramManager->getUnpatchedParamSet()->writeParamAsAttribute(writer, "delayRegen", params::UNPATCHED_DELAY_FEEDBACK,
 +	                                                            writeAutomation);
++	paramManager->getUnpatchedParamSet()->writeParamAsAttribute(writer, "delayTone", params::UNPATCHED_DELAY_TONE,
++	                                                            writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4616,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4623,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -16195,7 +16477,7 @@ index 8dd1ce44..e3470010 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4667,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4674,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -16205,25 +16487,30 @@ index 8dd1ce44..e3470010 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +4929,17 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +4936,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
 +
-+	// SHIFT + the delay amount knob sets the delay feedback
-+	if (Buttons::isShiftButtonPressed()
-+	    && modKnobs[*getModKnobMode()][whichModEncoder].paramDescriptor.isSetToParamWithNoSource(
-+	        params::GLOBAL_DELAY_FEEDBACK)) {
-+		ParamCollectionSummary* summary = modelStack->paramManager->getUnpatchedParamSetSummary();
-+		ModelStackWithParamId* newModelStack =
-+		    modelStack->addParamCollectionAndId(summary->paramCollection, summary, params::UNPATCHED_DELAY_FEEDBACK);
-+		return newModelStack->paramCollection->getAutoParamFromId(newModelStack, allowCreation);
++	// SHIFT + the delay amount knob sets the delay feedback, SHIFT + the delay rate knob the delay tone
++	if (Buttons::isShiftButtonPressed()) {
++		ParamDescriptor& knobParam = modKnobs[*getModKnobMode()][whichModEncoder].paramDescriptor;
++		int32_t shiftParam =
++		    knobParam.isSetToParamWithNoSource(params::GLOBAL_DELAY_FEEDBACK) ? params::UNPATCHED_DELAY_FEEDBACK
++		    : knobParam.isSetToParamWithNoSource(params::GLOBAL_DELAY_RATE)   ? params::UNPATCHED_DELAY_TONE
++		                                                                      : -1;
++		if (shiftParam >= 0) {
++			ParamCollectionSummary* summary = modelStack->paramManager->getUnpatchedParamSetSummary();
++			ModelStackWithParamId* newModelStack =
++			    modelStack->addParamCollectionAndId(summary->paramCollection, summary, shiftParam);
++			return newModelStack->paramCollection->getAutoParamFromId(newModelStack, allowCreation);
++		}
 +	}
 +
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5447,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5459,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
