@@ -1,0 +1,840 @@
+diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
+index 38cab4d8..95da4207 100644
+--- a/src/deluge/gui/l10n/english.json
++++ b/src/deluge/gui/l10n/english.json
+@@ -705,6 +705,8 @@
+     "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
+     "STRING_FOR_SWING_AMOUNT": "Swing Amount",
+     "STRING_FOR_SWING_INTERVAL": "Swing Interval",
++    "STRING_FOR_STUMBLE": "Stumble",
++    "STRING_FOR_STUMBLE_STYLE": "Stumble Style",
+     "STRING_FOR_DEFAULT_SWING": "Default swing",
+     "STRING_FOR_KEY": "Key",
+     "STRING_FOR_DEFAULT_KEY": "Default key",
+diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
+index 1f87aacf..554ba8f4 100644
+--- a/src/deluge/gui/l10n/g_english.cpp
++++ b/src/deluge/gui/l10n/g_english.cpp
+@@ -718,6 +718,8 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
+         {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
+         {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
++        {STRING_FOR_STUMBLE, "Stumble"},
++        {STRING_FOR_STUMBLE_STYLE, "Stumble Style"},
+         {STRING_FOR_DEFAULT_SWING, "Default swing"},
+         {STRING_FOR_KEY, "Key"},
+         {STRING_FOR_DEFAULT_KEY, "Default key"},
+diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
+index 1af382d5..90078203 100644
+--- a/src/deluge/gui/l10n/g_seven_segment.cpp
++++ b/src/deluge/gui/l10n/g_seven_segment.cpp
+@@ -323,6 +323,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+         {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
+         {STRING_FOR_SWING_AMOUNT, "SWIA"},
+         {STRING_FOR_SWING_INTERVAL, "SWII"},
++        {STRING_FOR_STUMBLE, "STUM"},
++        {STRING_FOR_STUMBLE_STYLE, "STYL"},
+         {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
+         {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
+         {STRING_FOR_LOOP_MARGINS, "MARGINS"},
+diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
+index 8328945b..56ec0ad3 100644
+--- a/src/deluge/gui/l10n/seven_segment.json
++++ b/src/deluge/gui/l10n/seven_segment.json
+@@ -334,6 +334,8 @@
+         "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
+         "STRING_FOR_SWING_AMOUNT": "SWIA",
+         "STRING_FOR_SWING_INTERVAL": "SWII",
++        "STRING_FOR_STUMBLE": "STUM",
++        "STRING_FOR_STUMBLE_STYLE": "STYL",
+         "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
+         "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
+         "STRING_FOR_LOOP_MARGINS": "MARGINS",
+diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
+index 49b15e92..ad82476c 100644
+--- a/src/deluge/gui/l10n/strings.h
++++ b/src/deluge/gui/l10n/strings.h
+@@ -772,6 +772,8 @@ enum class String : size_t {
+ 	STRING_FOR_DEFAULT_TEMPO,
+ 	STRING_FOR_SWING_AMOUNT,
+ 	STRING_FOR_SWING_INTERVAL,
++	STRING_FOR_STUMBLE,
++	STRING_FOR_STUMBLE_STYLE,
+ 	STRING_FOR_DEFAULT_SWING,
+ 	STRING_FOR_KEY,
+ 	STRING_FOR_DEFAULT_KEY,
+diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
+new file mode 100644
+index 00000000..662c41d0
+--- /dev/null
++++ b/src/deluge/gui/menu_item/swing/stumble.h
+@@ -0,0 +1,32 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++#include "gui/menu_item/toggle.h"
++#include "model/song/song.h"
++
++namespace deluge::gui::menu_item::swing {
++
++/// Switches the song between classic swing (off) and Stumble swing (on)
++class Stumble final : public Toggle {
++public:
++	using Toggle::Toggle;
++
++	void readCurrentValue() override { this->setValue(currentSong->stumble); }
++	void writeCurrentValue() override { currentSong->setStumble(this->getValue()); }
++};
++
++} // namespace deluge::gui::menu_item::swing
+diff --git a/src/deluge/gui/menu_item/swing/style.h b/src/deluge/gui/menu_item/swing/style.h
+new file mode 100644
+index 00000000..bb20e681
+--- /dev/null
++++ b/src/deluge/gui/menu_item/swing/style.h
+@@ -0,0 +1,46 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++#include "gui/menu_item/selection.h"
++#include "model/song/song.h"
++#include "model/swing/swing_style.h"
++
++namespace deluge::gui::menu_item::swing {
++
++/// Picks the Stumble style. Only shown while Stumble is on.
++class Style final : public Selection {
++public:
++	using Selection::Selection;
++
++	// Option 0 is the first style after Classic
++	void readCurrentValue() override { this->setValue(util::to_underlying(currentSong->stumbleStyle) - 1); }
++	void writeCurrentValue() override {
++		currentSong->changeStumbleStyle(static_cast<deluge::swing_style::Style>(this->getValue() + 1));
++	}
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		deluge::vector<std::string_view> options;
++		for (int32_t i = 1; i < deluge::swing_style::kNumStyles; i++) {
++			options.push_back(deluge::swing_style::getName(static_cast<deluge::swing_style::Style>(i)));
++		}
++		return options;
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return currentSong->stumble;
++	}
++};
++
++} // namespace deluge::gui::menu_item::swing
+diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
+index 7bbd559f..153095f1 100644
+--- a/src/deluge/gui/ui/menus.cpp
++++ b/src/deluge/gui/ui/menus.cpp
+@@ -216,6 +216,8 @@
+ #include "gui/menu_item/submenu/mod_fx.h"
+ #include "gui/menu_item/submenu/modulator.h"
+ #include "gui/menu_item/swing/interval.h"
++#include "gui/menu_item/swing/stumble.h"
++#include "gui/menu_item/swing/style.h"
+ #include "gui/menu_item/synth_mode.h"
+ #include "gui/menu_item/trigger/in/ppqn.h"
+ #include "gui/menu_item/trigger/out/ppqn.h"
+@@ -985,6 +987,8 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+ PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
+ 
+ PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
++PLACE_SDRAM_BSS swing::Stumble stumbleMenu{STRING_FOR_STUMBLE};
++PLACE_SDRAM_BSS swing::Style stumbleStyleMenu{STRING_FOR_STUMBLE_STYLE};
+ 
+ // Pads menu
+ PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
+@@ -1833,6 +1837,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+         &globalFiltersMenu,
+         &globalFXMenu,
+         &swingIntervalMenu,
++        &stumbleMenu,
++        &stumbleStyleMenu,
+         &activeScaleMenu,
+         &songThresholdRecordingSubmenu,
+         &configureSongMacrosMenu,
+diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
+index 4d3fe415..86e320e9 100644
+--- a/src/deluge/model/song/song.cpp
++++ b/src/deluge/model/song/song.cpp
+@@ -160,6 +160,9 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
+ 	swingAmount = 0;
+ 
+ 	swingInterval = FlashStorage::defaultSwingInterval;
++	stumble = false;
++	stumbleStyle = deluge::swing_style::Style::HOPP;
++	stumbleLevel = 0;
+ 
+ 	songViewYScroll = 1 - kDisplayHeight;
+ 	arrangementYScroll = -kDisplayHeight;
+@@ -1203,6 +1206,13 @@ weAreInArrangementEditorOrInClipInstance:
+ 	writer.writeAttribute("inputTickMagnitude", getInputTickMagnitude());
+ 	writer.writeAttribute("swingAmount", swingAmount);
+ 	writer.writeAbsoluteSyncLevelToFile(this, "swingInterval", (SyncLevel)swingInterval, true);
++	if (stumble) {
++		writer.writeAttribute("stumble", 1);
++	}
++	if (stumble || stumbleLevel != 0 || stumbleStyle != deluge::swing_style::Style::HOPP) {
++		writer.writeAttribute("stumbleStyle", deluge::swing_style::getName(stumbleStyle).data());
++		writer.writeAttribute("stumbleLevel", stumbleLevel);
++	}
+ 
+ 	if (tripletsOn) {
+ 		writer.writeAttribute("tripletsLevel", tripletsLevel);
+@@ -1701,6 +1711,25 @@ unknownTag:
+ 				reader.exitTag("swingInterval");
+ 			}
+ 
++			else if (!strcmp(tagName, "stumble")) {
++				stumble = reader.readTagOrAttributeValueInt() != 0;
++				reader.exitTag("stumble");
++			}
++
++			else if (!strcmp(tagName, "stumbleStyle")) {
++				stumbleStyle = deluge::swing_style::fromName(reader.readTagOrAttributeValue());
++				if (stumbleStyle == deluge::swing_style::Style::CLASSIC) {
++					stumbleStyle = deluge::swing_style::Style::HOPP;
++				}
++				reader.exitTag("stumbleStyle");
++			}
++
++			else if (!strcmp(tagName, "stumbleLevel")) {
++				stumbleLevel =
++				    std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, deluge::swing_style::kMaxLevel);
++				reader.exitTag("stumbleLevel");
++			}
++
+ 			else if (!strcmp(tagName, "tripletsLevel")) {
+ 				tripletsLevel = reader.readTagOrAttributeValueInt();
+ 				reader.exitTag("tripletsLevel");
+@@ -2611,7 +2640,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
+ }
+ 
+ bool Song::hasAnySwing() {
+-	return (swingAmount != 0);
++	return stumble ? (stumbleLevel > 0) : (swingAmount != 0);
+ }
+ 
+ void Song::resyncLFOs() {
+@@ -5716,29 +5745,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
+ 	return newClip;
+ }
+ 
++uint32_t Song::getSwingIntervalTicks() {
++	int32_t leftShift = 9 - swingInterval;
++	leftShift = std::max(leftShift, 0_i32);
++	return 3 << leftShift;
++}
++
++uint32_t Song::getSwingBlockLength() {
++	if (stumble) {
++		return deluge::swing_style::getNumSteps(stumbleStyle) * getSwingIntervalTicks();
++	}
++	int32_t leftShift = 10 - swingInterval;
++	leftShift = std::max(leftShift, 0_i32);
++	return 3 << leftShift; // That's doubleSwingInterval
++}
++
++uint64_t Song::swungToUnswung(uint32_t swungTicksIntoBlock) {
++	return deluge::swing_style::swungToUnswung(stumbleStyle, stumbleLevel, getSwingIntervalTicks(),
++	                                           swungTicksIntoBlock);
++}
++
++uint32_t Song::unswungToSwung(uint64_t unswungIntoBlock) {
++	return deluge::swing_style::unswungToSwung(stumbleStyle, stumbleLevel, getSwingIntervalTicks(), unswungIntoBlock);
++}
++
++void Song::setStumble(bool on) {
++	stumble = on;
++	// The block length may have changed, so the timer ticks need to line up with it again
++	changeSwingInterval(swingInterval);
++}
++
++void Song::changeStumbleStyle(deluge::swing_style::Style newStyle) {
++	stumbleStyle = newStyle;
++	changeSwingInterval(swingInterval);
++}
++
+ void Song::changeSwingInterval(int32_t newValue) {
+ 
+ 	swingInterval = newValue;
+ 
+ 	if (playbackHandler.isInternalClockActive()) {
+ 
+-		int32_t leftShift = 10 - swingInterval;
+-		leftShift = std::max(leftShift, 0_i32);
+-		uint32_t doubleSwingInterval = 3 << (leftShift);
++		uint32_t swingBlockLength = getSwingBlockLength();
+ 
+ 		// Rejig the timer tick stuff
+ 		uint64_t currentInternalTick = playbackHandler.getCurrentInternalTickCount();
+ 
+-		uint64_t startOfSwingWindow = currentInternalTick / doubleSwingInterval * doubleSwingInterval;
++		uint64_t startOfSwingBlock = currentInternalTick / swingBlockLength * swingBlockLength;
+ 
+-		if (startOfSwingWindow != playbackHandler.lastTimerTickActioned) {
+-			playbackHandler.timeLastTimerTickBig = (uint64_t)playbackHandler.getInternalTickTime(startOfSwingWindow)
++		if (startOfSwingBlock != playbackHandler.lastTimerTickActioned) {
++			playbackHandler.timeLastTimerTickBig = (uint64_t)playbackHandler.getInternalTickTime(startOfSwingBlock)
+ 			                                       << 32;
+ 
+-			playbackHandler.lastTimerTickActioned = startOfSwingWindow;
++			playbackHandler.lastTimerTickActioned = startOfSwingBlock;
+ 		}
+ 
+-		playbackHandler.scheduleNextTimerTick(doubleSwingInterval);
++		playbackHandler.scheduleNextTimerTick(swingBlockLength);
+ 
+ 		// Reschedule all the other stuff
+ 		playbackHandler.swungTickScheduled = false;
+diff --git a/src/deluge/model/song/song.h b/src/deluge/model/song/song.h
+index 78ad67ce..ee1208ff 100644
+--- a/src/deluge/model/song/song.h
++++ b/src/deluge/model/song/song.h
+@@ -30,6 +30,7 @@
+ #include "model/scale/preset_scales.h"
+ #include "model/scale/scale_change.h"
+ #include "model/scale/scale_mapper.h"
++#include "model/swing/swing_style.h"
+ #include "model/sync.h"
+ #include "model/timeline_counter.h"
+ #include "modulation/params/param.h"
+@@ -220,6 +221,12 @@ public:
+ 	int8_t swingAmount;
+ 	uint8_t swingInterval;
+ 
++	// Stumble swing. When on, a Stumble style and its level replace the classic swing amount, which is kept for when
++	// it's switched off again.
++	bool stumble;
++	deluge::swing_style::Style stumbleStyle; // Never Classic
++	int8_t stumbleLevel;                     // 0 (straight) to swing_style::kMaxLevel
++
+ 	Section sections[kMaxNumSections];
+ 
+ 	MusicalKey key;
+@@ -283,6 +290,14 @@ public:
+ 	Clip* syncScalingClip;
+ 	void setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction = false);
+ 	bool hasAnySwing();
++	bool hasSwingStyle() { return stumble && stumbleLevel > 0; }
++	uint32_t getSwingIntervalTicks();
++	/// Internal ticks between timer ticks: two swing intervals for Classic, one style block otherwise
++	uint32_t getSwingBlockLength();
++	uint64_t swungToUnswung(uint32_t swungTicksIntoBlock);
++	uint32_t unswungToSwung(uint64_t unswungIntoBlock);
++	void setStumble(bool on);
++	void changeStumbleStyle(deluge::swing_style::Style newStyle);
+ 	void resyncLFOs();
+ 	void ensureInaccessibleParamPresetValuesWithoutKnobsAreZero(Sound* sound);
+ 	bool areAllClipsInSectionPlaying(int32_t section);
+diff --git a/src/deluge/model/swing/swing_style.cpp b/src/deluge/model/swing/swing_style.cpp
+new file mode 100644
+index 00000000..8dee9caa
+--- /dev/null
++++ b/src/deluge/model/swing/swing_style.cpp
+@@ -0,0 +1,138 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "model/swing/swing_style.h"
++#include "util/misc.h"
++#include <algorithm>
++#include <array>
++
++namespace deluge::swing_style {
++
++namespace {
++
++// Generated from the Stolperbeats visualiser's Deluge formulas, at a 16th swing interval. Each row is one level: the
++// time each step of the block plays at, in 1/kStepOne of a swing interval, then the end of the block.
++// clang-format off
++constexpr uint32_t kHopp[kMaxLevel][3] = {
++    {0, 70997, 131072},
++    {0, 73728, 131072},
++    {0, 76459, 131072},
++    {0, 81920, 131072},
++    {0, 87381, 131072},
++    {0, 92843, 131072},
++};
++
++constexpr uint32_t kDeep[kMaxLevel][5] = {
++    {0, 70884, 136315, 201746, 262144},
++    {0, 76415, 144179, 206701, 262144},
++    {0, 82104, 152044, 211498, 262144},
++    {0, 89548, 159908, 217160, 262144},
++    {0, 97308, 167772, 222508, 262144},
++    {0, 104910, 174850, 227226, 262144},
++};
++
++constexpr uint32_t kSqez[kMaxLevel][5] = {
++    {0, 87381, 145636, 203890, 262144},
++    {0, 104858, 157286, 209715, 262144},
++    {0, 94663, 174763, 203890, 262144},
++    {0, 147456, 172032, 229376, 262144},
++    {0, 84261, 215333, 243419, 262144},
++    {0, 152917, 225735, 247580, 262144},
++};
++
++constexpr uint32_t kFold[kMaxLevel][5] = {
++    {0, 72090, 131072, 190054, 262144},
++    {0, 78643, 131072, 183501, 262144},
++    {0, 85197, 131072, 176947, 262144},
++    {0, 91750, 131072, 170394, 262144},
++    {0, 98304, 131072, 163840, 262144},
++    {0, 104858, 131072, 157286, 262144},
++};
++
++// clang-format on
++
++struct StyleInfo {
++	std::string_view name;
++	int32_t numSteps;
++	const uint32_t* table; // kMaxLevel rows of numSteps + 1 entries
++};
++
++// In Style order
++constexpr std::array<StyleInfo, kNumStyles> kStyles = {{
++    {"CLASSIC", 2, nullptr},
++    {"HOPP", 2, &kHopp[0][0]},
++    {"DEEP", 4, &kDeep[0][0]},
++    {"SQEZ", 4, &kSqez[0][0]},
++    {"FOLD", 4, &kFold[0][0]},
++}};
++
++const uint32_t* getRow(Style style, int32_t level) {
++	const StyleInfo& info = kStyles[util::to_underlying(style)];
++	level = std::clamp<int32_t>(level, 1, kMaxLevel);
++	return info.table + (level - 1) * (info.numSteps + 1);
++}
++
++} // namespace
++
++std::string_view getName(Style style) {
++	return kStyles[util::to_underlying(style)].name;
++}
++
++Style fromName(std::string_view name) {
++	for (int32_t i = 0; i < kNumStyles; i++) {
++		if (kStyles[i].name == name) {
++			return static_cast<Style>(i);
++		}
++	}
++	return Style::CLASSIC;
++}
++
++int32_t getNumSteps(Style style) {
++	return kStyles[util::to_underlying(style)].numSteps;
++}
++
++uint64_t swungToUnswung(Style style, int32_t level, uint32_t swingIntervalTicks, uint32_t swungTicksIntoBlock) {
++	int32_t numSteps = getNumSteps(style);
++	uint32_t step = swungTicksIntoBlock / swingIntervalTicks;
++	if (style == Style::CLASSIC || step >= numSteps) {
++		return (uint64_t)swungTicksIntoBlock << 16;
++	}
++	const uint32_t* row = getRow(style, level);
++	uint32_t ticksIntoStep = swungTicksIntoBlock - step * swingIntervalTicks;
++
++	// row[] is in fractions of a swing interval, so multiplying by the interval gives 1/65536ths of a tick
++	uint64_t stepStart = (uint64_t)row[step] * swingIntervalTicks;
++	uint64_t stepLength = row[step + 1] - row[step];
++	return stepStart + stepLength * ticksIntoStep;
++}
++
++uint32_t unswungToSwung(Style style, int32_t level, uint32_t swingIntervalTicks, uint64_t unswungIntoBlock) {
++	int32_t numSteps = getNumSteps(style);
++	if (style != Style::CLASSIC) {
++		const uint32_t* row = getRow(style, level);
++		for (int32_t step = 0; step < numSteps; step++) {
++			uint64_t stepEnd = (uint64_t)row[step + 1] * swingIntervalTicks;
++			if (unswungIntoBlock < stepEnd) {
++				uint64_t intoStep = unswungIntoBlock - (uint64_t)row[step] * swingIntervalTicks;
++				return step * swingIntervalTicks + (uint32_t)(intoStep / (row[step + 1] - row[step]));
++			}
++		}
++	}
++	return (uint32_t)(unswungIntoBlock >> 16);
++}
++
++} // namespace deluge::swing_style
+diff --git a/src/deluge/model/swing/swing_style.h b/src/deluge/model/swing/swing_style.h
+new file mode 100644
+index 00000000..6c4f5585
+--- /dev/null
++++ b/src/deluge/model/swing/swing_style.h
+@@ -0,0 +1,59 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include <cstdint>
++#include <string_view>
++
++// Swing styles, after the Stolperbeats shuffle visualiser. Classic is the Deluge's own swing. Every other style is a
++// time warp over a block of swing intervals: step k of the block plays at a fixed point in time, and positions between
++// steps are warped linearly. The first step of each block never moves, so blocks start on the beat.
++namespace deluge::swing_style {
++
++enum class Style : uint8_t {
++	CLASSIC,
++	HOPP, // MPC / Linn 16th swing in whole ticks
++	DEEP, // the 8ths swing, then the 16ths inside them
++	SQEZ, // the & and a squeezed up against the next downbeat
++	FOLD, // the e and a fold in toward the &
++	NUM_STYLES,
++};
++
++constexpr int32_t kNumStyles = static_cast<int32_t>(Style::NUM_STYLES);
++
++/// Styles other than Classic have levels 1 to kMaxLevel (0 is straight). They use the song's swingAmount as the level.
++constexpr int32_t kMaxLevel = 6;
++
++/// Step times are in 1/kStepOne of a swing interval.
++constexpr uint32_t kStepOne = 65536;
++
++std::string_view getName(Style style);
++/// Returns Style::CLASSIC for unknown names.
++Style fromName(std::string_view name);
++
++/// Number of swing intervals in one block of a style (not used for Classic).
++int32_t getNumSteps(Style style);
++
++/// Unswung position, in 1/65536ths of an internal tick, of a swung position within a block. Level 1 to kMaxLevel.
++uint64_t swungToUnswung(Style style, int32_t level, uint32_t swingIntervalTicks, uint32_t swungTicksIntoBlock);
++
++/// The inverse: the swung tick (rounded down) that an unswung position within a block falls in. The position is in
++/// 1/65536ths of an internal tick.
++uint32_t unswungToSwung(Style style, int32_t level, uint32_t swingIntervalTicks, uint64_t unswungIntoBlock);
++
++} // namespace deluge::swing_style
+diff --git a/src/deluge/playback/playback_handler.cpp b/src/deluge/playback/playback_handler.cpp
+index f039781a..f11cd21a 100644
+--- a/src/deluge/playback/playback_handler.cpp
++++ b/src/deluge/playback/playback_handler.cpp
+@@ -716,10 +716,8 @@ void PlaybackHandler::actionTimerTick() {
+ // same time as a timer tick
+ void PlaybackHandler::actionTimerTickPart2() {
+ 
+-	// Schedule next timer tick. Normal case is two swing intervals away.
+-	int32_t leftShift = 10 - currentSong->swingInterval;
+-	leftShift = std::max(leftShift, 0_i32);
+-	uint32_t timeTilNextTimerTick = 3 << (leftShift); // That's doubleSwingInterval
++	// Schedule next timer tick. Normal case is one swing block (two swing intervals for classic swing) away.
++	uint32_t timeTilNextTimerTick = currentSong->getSwingBlockLength();
+ 
+ 	// But if count-in happening, limit it to one bar's length (or perhaps this should be one beat, to avoid slight
+ 	// screwiness with very long swing intervals?)
+@@ -1102,7 +1100,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
+ 		swungTickScheduled = true;
+ 		uint32_t swungTicksIntoTimerBit = nextSwungTick - lastTimerTickActioned;
+ 
+-		if (currentSong->hasAnySwing()) {
++		if (currentSong->hasSwingStyle()) {
++			uint64_t unswungTicksIn = currentSong->swungToUnswung(swungTicksIntoTimerBit); // 1/65536ths of a tick
++			uint64_t timeInBig = currentSong->timePerTimerTickBig * (unswungTicksIn >> 16)
++			                     + (currentSong->timePerTimerTickBig >> 16) * (unswungTicksIn & 65535);
++			scheduledSwungTickTime = (uint64_t)(timeLastTimerTickBig + timeInBig) >> 32;
++		}
++
++		else if (currentSong->hasAnySwing()) {
+ 			int32_t leftShift = 9 - currentSong->swingInterval;
+ 			leftShift = std::max(leftShift, 0_i32);
+ 			uint32_t swingInterval = 3 << (leftShift);
+@@ -1145,7 +1150,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
+ 
+ 	uint32_t timePassed = AudioEngine::audioSampleTimer - (uint32_t)(timeLastTimerTickBig >> 32);
+ 
+-	if (currentSong->hasAnySwing()) {
++	if (currentSong->hasSwingStyle()) {
++		if (timeRemainder) {
++			*timeRemainder = 0;
++		}
++		uint64_t unswungTicksIn = ((uint64_t)timePassed << 32) / (currentSong->timePerTimerTickBig >> 16);
++		uint32_t swungTicksIn = currentSong->unswungToSwung(unswungTicksIn);
++		return std::min(swungTicksIn, currentSong->getSwingBlockLength() - 1);
++	}
++
++	else if (currentSong->hasAnySwing()) {
+ 
+ 		if (timeRemainder) {
+ 			*timeRemainder = 0; // To be improved
+@@ -1225,6 +1239,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
+ 			actualSwungTick = currentInternalTick;
+ 		}
+ 
++		// Swing style
++		else if (currentSong->hasSwingStyle()) {
++			uint32_t swingBlockLength = currentSong->getSwingBlockLength();
++			uint64_t startOfSwingBlock = (uint64_t)currentInternalTick / swingBlockLength * swingBlockLength;
++			float posWithinSwingBlock = currentInternalTick - startOfSwingBlock;
++			actualSwungTick = startOfSwingBlock + currentSong->unswungToSwung((uint64_t)(posWithinSwingBlock * 65536));
++		}
++
+ 		// Yes swing
+ 		else {
+ 
+@@ -1763,6 +1785,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
+ 	if (!currentSong->hasAnySwing()) {
+ 		internalTickPositionForNextSwungTickTimes50 = nextSwungTick * 50;
+ 	}
++	else if (currentSong->hasSwingStyle()) {
++		uint32_t swingBlockLength = currentSong->getSwingBlockLength();
++		uint32_t swungTickWithinBlock = nextSwungTick % swingBlockLength;
++		uint64_t startOfSwingBlock = nextSwungTick - swungTickWithinBlock;
++		uint64_t unswungTicksIn = currentSong->swungToUnswung(swungTickWithinBlock);
++		internalTickPositionForNextSwungTickTimes50 = startOfSwingBlock * 50 + ((unswungTicksIn * 50) >> 16);
++	}
+ 	else {
+ 
+ 		int32_t leftShift = 10 - currentSong->swingInterval;
+@@ -2090,17 +2119,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
+ 	lastMIDIClockOutTickDone = (uint64_t)getCurrentInternalTickCount() * midiClockOutTicksPer / internalTicksPer;
+ }
+ 
++/// Appends "Swing: " and the swing amount, or "Stumble: " with the Stumble style and its level. On 7seg there's no
++/// label and the style is cut to 3 letters to fit the level.
++static void appendSwingAmount(StringBuf& text, bool sevenSeg) {
++	if (currentSong->stumble) {
++		std::string_view name = deluge::swing_style::getName(currentSong->stumbleStyle);
++		if (sevenSeg) {
++			if (currentSong->stumbleLevel == 0) {
++				text.append("OFF");
++				return;
++			}
++			for (char c : name.substr(0, 3)) {
++				text.append(c);
++			}
++		}
++		else {
++			text.append("Stumble: ");
++			text.append(name.data());
++			text.append(" ");
++			if (currentSong->stumbleLevel == 0) {
++				text.append("off");
++				return;
++			}
++		}
++		text.appendInt(currentSong->stumbleLevel);
++		return;
++	}
++	if (!sevenSeg) {
++		text.append("Swing: ");
++	}
++	if (currentSong->swingAmount == 0) {
++		text.append(sevenSeg ? "OFF" : "off");
++	}
++	else {
++		text.appendInt(currentSong->swingAmount + 50);
++	}
++}
++
+ /** On OLED displayes both Swing amount and interval, on 7seg only the interval. */
+ void PlaybackHandler::commandDisplaySwingInterval() {
+ 	DEF_STACK_STRING_BUF(text, 30);
+ 	if (display->haveOLED()) {
+-		text.append("Swing: ");
+-		if (currentSong->swingAmount == 0) {
+-			text.append("off");
+-		}
+-		else {
+-			text.appendInt(currentSong->swingAmount + 50);
+-		}
++		appendSwingAmount(text, false);
+ 		text.append("\n");
+ 	}
+ 	syncValueToString(currentSong->swingInterval, text, currentSong->getInputTickMagnitude());
+@@ -2115,23 +2175,12 @@ void PlaybackHandler::commandClearTempoAutomation() {
+ void PlaybackHandler::commandDisplaySwingAmount() {
+ 	DEF_STACK_STRING_BUF(text, 30);
+ 	if (display->haveOLED()) {
+-		text.append("Swing: ");
+-		if (currentSong->swingAmount == 0) {
+-			text.append("off");
+-		}
+-		else {
+-			text.appendInt(currentSong->swingAmount + 50);
+-		}
++		appendSwingAmount(text, false);
+ 		text.append("\n");
+ 		syncValueToString(currentSong->swingInterval, text, currentSong->getInputTickMagnitude());
+ 	}
+ 	else {
+-		if (currentSong->swingAmount == 0) {
+-			text.append("OFF");
+-		}
+-		else {
+-			text.appendInt(currentSong->swingAmount + 50);
+-		}
++		appendSwingAmount(text, true);
+ 	}
+ 	display->popupTextTemporary(text.c_str(), PopupType::SWING);
+ }
+@@ -2142,6 +2191,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
+ }
+ 
+ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
++	if (currentSong->stumble) {
++		currentSong->stumbleLevel =
++		    std::clamp<int32_t>(currentSong->stumbleLevel + offset, 0, deluge::swing_style::kMaxLevel);
++		commandDisplaySwingAmount();
++		return;
++	}
+ 	int32_t newSwingAmount = std::clamp(currentSong->swingAmount + offset, -49, 49);
+ 	if (newSwingAmount != currentSong->swingAmount) {
+ 		actionLogger.recordSwingChange(currentSong->swingAmount, newSwingAmount);
+diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
+index 048faee9..cc3edf9f 100644
+--- a/tests/unit/CMakeLists.txt
++++ b/tests/unit/CMakeLists.txt
+@@ -57,6 +57,8 @@ file(GLOB_RECURSE deluge_SOURCES
+         ../../src/deluge/model/song/clip_iterators.cpp
+         # For sync tests
+         ../../src/deluge/model/sync.cpp
++        # For swing style tests
++        ../../src/deluge/model/swing/swing_style.cpp
+         # For chord tests
+         ../../src/deluge/gui/ui/keyboard/chords.cpp
+         # For clock output scheduler tests
+@@ -85,6 +87,7 @@ add_executable(UnitTests
+         volume_param_gain_tests.cpp
+         db_shift_tests.cpp
+         sync_tests.cpp
++        swing_style_tests.cpp
+         chord_tests.cpp
+         time_tests.cpp
+         clock_output_scheduler_tests.cpp
+diff --git a/tests/unit/swing_style_tests.cpp b/tests/unit/swing_style_tests.cpp
+new file mode 100644
+index 00000000..1c5c20bf
+--- /dev/null
++++ b/tests/unit/swing_style_tests.cpp
+@@ -0,0 +1,69 @@
++#include "CppUTest/TestHarness.h"
++#include "model/swing/swing_style.h"
++
++using namespace deluge::swing_style;
++
++namespace {
++constexpr uint32_t kSixteenth = 24; // Swing interval in internal ticks at the default 96 ticks per quarter note
++
++double unswungTick(Style style, int32_t level, uint32_t swungTick) {
++	return swungToUnswung(style, level, kSixteenth, swungTick) / 65536.0;
++}
++} // namespace
++
++TEST_GROUP(SwingStyleTests){};
++
++TEST(SwingStyleTests, namesRoundTrip) {
++	for (int32_t i = 0; i < kNumStyles; i++) {
++		auto style = static_cast<Style>(i);
++		CHECK(fromName(getName(style)) == style);
++	}
++	CHECK(fromName("NOT A STYLE") == Style::CLASSIC);
++}
++
++TEST(SwingStyleTests, stepsLandWhereTheVisualiserPutsThem) {
++	// HOPP level 1: the even 16th lands on tick 26 of the pair
++	DOUBLES_EQUAL(26.0, unswungTick(Style::HOPP, 1, 24), 0.001);
++	// DEEP level 6: the 8ths split 66.7%, so the "&" drags to tick 64.032 of the beat
++	DOUBLES_EQUAL(64.032, unswungTick(Style::DEEP, 6, 48), 0.001);
++	// FOLD level 6: the e and a fold 14.4 ticks in toward the &, which stays put
++	DOUBLES_EQUAL(38.4, unswungTick(Style::FOLD, 6, 24), 0.001);
++	DOUBLES_EQUAL(48.0, unswungTick(Style::FOLD, 6, 48), 0.001);
++	DOUBLES_EQUAL(57.6, unswungTick(Style::FOLD, 6, 72), 0.001);
++	// SQEZ level 6: 36 ticks per beat on the module, the a on tick 34, so 34 * 96 / 36 at the Deluge's 96
++	DOUBLES_EQUAL(90.667, unswungTick(Style::SQEZ, 6, 72), 0.001);
++}
++
++TEST(SwingStyleTests, blocksStartAndEndOnTheGrid) {
++	for (int32_t i = 1; i < kNumStyles; i++) {
++		auto style = static_cast<Style>(i);
++		uint32_t block = getNumSteps(style) * kSixteenth;
++		for (int32_t level = 1; level <= kMaxLevel; level++) {
++			DOUBLES_EQUAL(0.0, unswungTick(style, level, 0), 0.0);
++			DOUBLES_EQUAL((double)block, unswungTick(style, level, block), 0.0);
++		}
++	}
++}
++
++TEST(SwingStyleTests, unswungToSwungInvertsSwungToUnswung) {
++	for (int32_t i = 1; i < kNumStyles; i++) {
++		auto style = static_cast<Style>(i);
++		for (uint32_t interval : {kSixteenth, 2 * kSixteenth}) {
++			uint32_t block = getNumSteps(style) * interval;
++			for (int32_t level = 1; level <= kMaxLevel; level++) {
++				uint64_t previous = 0;
++				for (uint32_t tick = 0; tick < block; tick++) {
++					uint64_t unswung = swungToUnswung(style, level, interval, tick);
++					if (tick > 0) {
++						CHECK(unswung > previous);
++					}
++					previous = unswung;
++					CHECK_EQUAL(tick, unswungToSwung(style, level, interval, unswung));
++					// Just before the next tick is still this tick
++					uint64_t nextUnswung = swungToUnswung(style, level, interval, tick + 1);
++					CHECK_EQUAL(tick, unswungToSwung(style, level, interval, nextUnswung - 1));
++				}
++			}
++		}
++	}
++}
