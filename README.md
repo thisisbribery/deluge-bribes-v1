@@ -1,6 +1,6 @@
-# Deluge Bribes v1.8
+# BRIBELUGE: Deluge Bribes FW v1.8
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds nine things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more groove, more wonk, more destruction, more speed, moarrrrr:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob. New songs start on Stumble, SQEZ style (new in v1.8).
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
