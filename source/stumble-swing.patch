@@ -1,16 +1,17 @@
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..82535b3e 100644
+index 38cab4d8..32b10715 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
-@@ -533,6 +533,7 @@
+@@ -533,6 +533,8 @@
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "Alternative Playback Start Behaviour",
      "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "Grid View Loop Layer Pads",
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "Alternative Tap Tempo Behaviour",
 +    "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "Tap Tempo Action",
++    "STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD": "Endless Record",
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -705,6 +706,11 @@
+@@ -705,6 +707,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -23,18 +24,19 @@ index 38cab4d8..82535b3e 100644
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..c8168125 100644
+index 1f87aacf..78c12966 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
-@@ -546,6 +546,7 @@ PLACE_SDRAM_DATA Language english{
+@@ -546,6 +546,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "Alternative Playback Start Behaviour"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "Grid View Loop Layer Pads"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "Alternative Tap Tempo Behaviour"},
 +        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "Tap Tempo Action"},
++        {STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD, "Endless Record"},
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -718,6 +719,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +720,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -47,7 +49,7 @@ index 1f87aacf..c8168125 100644
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..bd2a82d6 100644
+index 1af382d5..424c5b7c 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,11 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -62,16 +64,17 @@ index 1af382d5..bd2a82d6 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +447,7 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +447,8 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
 +        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "TAPA"},
++        {STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD, "ENDL"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..d82aa8e3 100644
+index 8328945b..de97200c 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,11 @@
@@ -86,27 +89,29 @@ index 8328945b..d82aa8e3 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +462,7 @@
+@@ -457,6 +462,8 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
 +        "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "TAPA",
++        "STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD": "ENDL",
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..5f11d255 100644
+index 49b15e92..fdb61e98 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
-@@ -576,6 +576,7 @@ enum class String : size_t {
+@@ -576,6 +576,8 @@ enum class String : size_t {
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR,
  	STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS,
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR,
 +	STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION,
++	STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD,
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -772,6 +773,11 @@ enum class String : size_t {
+@@ -772,6 +774,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -205,22 +210,24 @@ index 00000000..07899a72
 +
 +} // namespace deluge::gui::menu_item::cv
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-index ab3a3d37..261ddbaf 100644
+index ab3a3d37..231c3fec 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 +++ b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-@@ -56,6 +56,7 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
+@@ -56,6 +56,8 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
  SettingToggle menuDeleteUnusedKitRows(RuntimeFeatureSettingType::DeleteUnusedKitRows);
  SettingToggle menuAltGoldenKnobDelayParams(RuntimeFeatureSettingType::AltGoldenKnobDelayParams);
  Setting menuSyncScalingAction(RuntimeFeatureSettingType::SyncScalingAction);
 +Setting menuTapTempoAction(RuntimeFeatureSettingType::TapTempoAction);
++Setting menuEndlessRecord(RuntimeFeatureSettingType::EndlessRecord);
  DevSysexSetting menuDevSysexAllowed(RuntimeFeatureSettingType::DevSysexAllowed);
  SettingToggle menuHighlightIncomingNotes(RuntimeFeatureSettingType::HighlightIncomingNotes);
  SettingToggle menuDisplayNornsLayout(RuntimeFeatureSettingType::DisplayNornsLayout);
-@@ -96,6 +97,7 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
+@@ -96,6 +98,8 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
      &menuAlternativePlaybackStartBehaviour,
      &menuEnableGridViewLoopPads,
      &menuAlternativeTapTempoBehaviour,
 +    &menuTapTempoAction,
++    &menuEndlessRecord,
      &menuHorizontalMenus,
      &menuRoundedCorners,
      &menuTrimFromStartOfAudioClip,
@@ -1472,6 +1479,22 @@ index 21f193b9..2076fed5 100644
  			}
  			else {
  				UI* currentUI = getCurrentUI();
+diff --git a/src/deluge/model/clip/clip.cpp b/src/deluge/model/clip/clip.cpp
+index e1bc1eff..c040ee97 100644
+--- a/src/deluge/model/clip/clip.cpp
++++ b/src/deluge/model/clip/clip.cpp
+@@ -809,6 +809,11 @@ void Clip::posReachedEnd(ModelStackWithTimelineCounter* modelStack) {
+ 	// If linear recording (which means it must be a loop / session playback if we reached the end)
+ 	if (getCurrentlyRecordingLinearly()) {
+ 
++		// Endless record: a stop is waiting for the loop end, so recording switches off here
++		if (playbackHandler.endlessRecordStopPending && type == ClipType::INSTRUMENT) {
++			playbackHandler.stopAnyRecording();
++		}
++
+ 		// If they exited recording mode (as in the illuminated RECORD button), don't auto extend
+ 		if (playbackHandler.recording == RecordingMode::OFF) {
+ 			finishLinearRecording(modelStack);
 diff --git a/src/deluge/model/clip/instrument_clip.cpp b/src/deluge/model/clip/instrument_clip.cpp
 index babfd854..52824cf4 100644
 --- a/src/deluge/model/clip/instrument_clip.cpp
@@ -1886,7 +1909,7 @@ index ca04ec3f..883e1806 100644
  	int32_t loopLengthIfIndependent; // 0 means obeying parent
  	int32_t lastProcessedPosIfIndependent;
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
-index c127568b..5afce648 100644
+index c127568b..67ab7250 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
 +++ b/src/deluge/model/settings/runtime_feature_settings.cpp
 @@ -75,6 +75,28 @@ static void SetupSyncScalingActionSetting(RuntimeFeatureSetting& setting, deluge
@@ -1918,7 +1941,7 @@ index c127568b..5afce648 100644
  	};
  }
  
-@@ -181,6 +203,11 @@ void RuntimeFeatureSettings::init() {
+@@ -181,6 +203,15 @@ void RuntimeFeatureSettings::init() {
  	                  STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "enableGridViewLoopPads",
  	                  RuntimeFeatureStateToggle::Off);
  
@@ -1927,11 +1950,15 @@ index c127568b..5afce648 100644
 +	                           STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "tapTempoAction",
 +	                           RuntimeFeatureStateTapTempoAction::TapTempo);
 +
++	// EndlessRecord
++	SetupOnOffSetting(settings[RuntimeFeatureSettingType::EndlessRecord], STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD,
++	                  "endlessRecord", RuntimeFeatureStateToggle::Off);
++
  	// AlternativeTapTempoBehaviour
  	SetupOnOffSetting(settings[RuntimeFeatureSettingType::AlternativeTapTempoBehaviour],
  	                  STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "alternativeTapTempoBehaviour",
 diff --git a/src/deluge/model/settings/runtime_feature_settings.h b/src/deluge/model/settings/runtime_feature_settings.h
-index 55e809ef..3fe36c8e 100644
+index 55e809ef..356d6ffe 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.h
 +++ b/src/deluge/model/settings/runtime_feature_settings.h
 @@ -37,7 +37,10 @@ class DevSysexSetting;
@@ -1946,11 +1973,12 @@ index 55e809ef..3fe36c8e 100644
  
  enum RuntimeFeatureStateEmulatedDisplay : uint32_t { Hardware = 0, Toggle = 1, OnBoot = 2 };
  
-@@ -68,6 +71,7 @@ enum RuntimeFeatureSettingType : uint32_t {
+@@ -68,6 +71,8 @@ enum RuntimeFeatureSettingType : uint32_t {
  	ShowBatteryLevel,
  	RoundedCorners,
  	ShortcutOverlay,
 +	TapTempoAction,
++	EndlessRecord,
  	MaxElement // Keep as boundary
  };
  
@@ -2853,8 +2881,44 @@ index 00000000..4a1f0653
 +extern Autofill autofill;
 +
 +} // namespace deluge::autofill
+diff --git a/src/deluge/playback/mode/session.cpp b/src/deluge/playback/mode/session.cpp
+index d8387806..ea06e587 100644
+--- a/src/deluge/playback/mode/session.cpp
++++ b/src/deluge/playback/mode/session.cpp
+@@ -194,6 +194,18 @@ void Session::armNextSection(int32_t oldSection, int32_t numRepetitions) {
+ 	lastSectionArmed = SECTION_OUT_OF_RANGE;
+ }
+ 
++// Endless record: RECORD pressed while playing makes each playing, empty InstrumentClip record linearly from where it
++// is now, extending by its length at each loop end, the same as when recording is armed before pressing PLAY
++void Session::beginEndlessRecording() {
++	for (int32_t c = currentSong->sessionClips.getNumElements() - 1; c >= 0; c--) {
++		Clip* clip = currentSong->sessionClips.getClipAtIndex(c);
++		if (clip->type == ClipType::INSTRUMENT && !clip->isPendingOverdub && currentSong->isClipActive(clip)
++		    && !clip->getCurrentlyRecordingLinearly()) {
++			giveClipOpportunityToBeginLinearRecording(clip, c, 0);
++		}
++	}
++}
++
+ // Returns whether it began
+ bool Session::giveClipOpportunityToBeginLinearRecording(Clip* clip, int32_t clipIndex, int32_t buttonPressLatency) {
+ 
+diff --git a/src/deluge/playback/mode/session.h b/src/deluge/playback/mode/session.h
+index 4d769f65..3101a8df 100644
+--- a/src/deluge/playback/mode/session.h
++++ b/src/deluge/playback/mode/session.h
+@@ -104,6 +104,8 @@ public:
+ 	int32_t currentArmedLaunchLengthForOneRepeat;
+ 	bool switchToArrangementAtLaunchEvent;
+ 
++	void beginEndlessRecording();
++
+ private:
+ 	bool giveClipOpportunityToBeginLinearRecording(Clip* clip, int32_t clipIndex, int32_t buttonPressLatency);
+ 	void armClipToStopAction(Clip* clip);
 diff --git a/src/deluge/playback/playback_handler.cpp b/src/deluge/playback/playback_handler.cpp
-index f039781a..39aaa1c4 100644
+index f039781a..b60dba91 100644
 --- a/src/deluge/playback/playback_handler.cpp
 +++ b/src/deluge/playback/playback_handler.cpp
 @@ -59,6 +59,7 @@
@@ -2865,7 +2929,35 @@ index f039781a..39aaa1c4 100644
  #include "playback/clock_output_scheduler.h"
  #include "playback/mode/arrangement.h"
  #include "playback/mode/session.h"
-@@ -580,6 +581,7 @@ void PlaybackHandler::setupPlayback(int32_t newPlaybackState, int32_t playFromPo
+@@ -289,10 +290,27 @@ void PlaybackHandler::recordButtonPressed() {
+ 			return;
+ 		}
+ 
++		// Endless record: pressing again while the stop is pending cancels it, and pressing to stop while clips are
++		// recording linearly waits for the next loop end, with RECORD blinking until then
++		if (endlessRecordStopPending) {
++			endlessRecordStopPending = false;
++			setLedStates();
++			return;
++		}
++		if (recording == RecordingMode::NORMAL && anyClipRecordingEndlessly()) {
++			endlessRecordStopPending = true;
++			indicator_leds::blinkLed(IndicatorLED::RECORD, 255, 1);
++			return;
++		}
++
+ 		bool wasRecordingArrangement = (recording == RecordingMode::ARRANGEMENT);
+ 
+ 		if (recording == RecordingMode::OFF) {
+ 			recording = RecordingMode::NORMAL;
++
++			if (endlessRecordEnabled() && playbackState && currentPlaybackMode == &session && !ticksLeftInCountIn) {
++				session.beginEndlessRecording();
++			}
+ 		}
+ 		else {
+ 			recording = RecordingMode::OFF;
+@@ -580,6 +598,7 @@ void PlaybackHandler::setupPlayback(int32_t newPlaybackState, int32_t playFromPo
  }
  
  void PlaybackHandler::endPlayback() {
@@ -2873,7 +2965,20 @@ index f039781a..39aaa1c4 100644
  	if (isInternalClockActive() && currentlySendingMIDIOutputClocks()) {
  		midiEngine.sendStop(this);
  	}
-@@ -716,10 +718,8 @@ void PlaybackHandler::actionTimerTick() {
+@@ -591,6 +610,12 @@ void PlaybackHandler::endPlayback() {
+ 
+ 	bool wasRecordingArrangement = (recording == RecordingMode::ARRANGEMENT);
+ 
++	// A stop that was waiting for the next loop end happens now instead
++	if (endlessRecordStopPending) {
++		endlessRecordStopPending = false;
++		recording = RecordingMode::OFF;
++	}
++
+ 	// Rohan: Must happen after currentSong->endInstancesOfActiveClips() is called (ok I can't
+ 	// remember why I wrote that, and now it needs to happen before so that
+ 	// Clip::beingRecordedFrom is still set when playback ends, so notes stop)
+@@ -716,10 +741,8 @@ void PlaybackHandler::actionTimerTick() {
  // same time as a timer tick
  void PlaybackHandler::actionTimerTickPart2() {
  
@@ -2886,7 +2991,7 @@ index f039781a..39aaa1c4 100644
  
  	// But if count-in happening, limit it to one bar's length (or perhaps this should be one beat, to avoid slight
  	// screwiness with very long swing intervals?)
-@@ -1039,7 +1039,14 @@ void PlaybackHandler::actionSwungTick() {
+@@ -1039,7 +1062,14 @@ void PlaybackHandler::actionSwungTick() {
  	swungTicksTilNextEvent = 2147483647;
  
  	if (isEitherClockActive()) { // Occasionally, considerLaunchEvent() will stop playback
@@ -2902,7 +3007,7 @@ index f039781a..39aaa1c4 100644
  
  		if (isEitherClockActive()) { // Occasionally, doTickForward() will stop playback
  
-@@ -1102,7 +1109,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
+@@ -1102,7 +1132,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
  		swungTickScheduled = true;
  		uint32_t swungTicksIntoTimerBit = nextSwungTick - lastTimerTickActioned;
  
@@ -2918,7 +3023,7 @@ index f039781a..39aaa1c4 100644
  			int32_t leftShift = 9 - currentSong->swingInterval;
  			leftShift = std::max(leftShift, 0_i32);
  			uint32_t swingInterval = 3 << (leftShift);
-@@ -1145,7 +1159,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
+@@ -1145,7 +1182,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
  
  	uint32_t timePassed = AudioEngine::audioSampleTimer - (uint32_t)(timeLastTimerTickBig >> 32);
  
@@ -2936,7 +3041,7 @@ index f039781a..39aaa1c4 100644
  
  		if (timeRemainder) {
  			*timeRemainder = 0; // To be improved
-@@ -1225,6 +1248,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
+@@ -1225,6 +1271,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
  			actualSwungTick = currentInternalTick;
  		}
  
@@ -2951,7 +3056,7 @@ index f039781a..39aaa1c4 100644
  		// Yes swing
  		else {
  
-@@ -1763,6 +1794,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
+@@ -1763,6 +1817,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
  	if (!currentSong->hasAnySwing()) {
  		internalTickPositionForNextSwungTickTimes50 = nextSwungTick * 50;
  	}
@@ -2965,7 +3070,7 @@ index f039781a..39aaa1c4 100644
  	else {
  
  		int32_t leftShift = 10 - currentSong->swingInterval;
-@@ -2090,17 +2128,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
+@@ -2090,17 +2151,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
  	lastMIDIClockOutTickDone = (uint64_t)getCurrentInternalTickCount() * midiClockOutTicksPer / internalTicksPer;
  }
  
@@ -3021,7 +3126,7 @@ index f039781a..39aaa1c4 100644
  		text.append("\n");
  	}
  	syncValueToString(currentSong->swingInterval, text, currentSong->getInputTickMagnitude());
-@@ -2115,25 +2184,14 @@ void PlaybackHandler::commandClearTempoAutomation() {
+@@ -2115,25 +2207,14 @@ void PlaybackHandler::commandClearTempoAutomation() {
  void PlaybackHandler::commandDisplaySwingAmount() {
  	DEF_STACK_STRING_BUF(text, 30);
  	if (display->haveOLED()) {
@@ -3050,7 +3155,7 @@ index f039781a..39aaa1c4 100644
  }
  
  void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
-@@ -2142,6 +2200,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
+@@ -2142,6 +2223,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
  }
  
  void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
@@ -3063,7 +3168,7 @@ index f039781a..39aaa1c4 100644
  	int32_t newSwingAmount = std::clamp(currentSong->swingAmount + offset, -49, 49);
  	if (newSwingAmount != currentSong->swingAmount) {
  		actionLogger.recordSwingChange(currentSong->swingAmount, newSwingAmount);
-@@ -2150,6 +2214,49 @@ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
+@@ -2150,6 +2237,49 @@ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
  	commandDisplaySwingAmount();
  }
  
@@ -3113,7 +3218,7 @@ index f039781a..39aaa1c4 100644
  void PlaybackHandler::commandNudgeClock(int8_t offset) {
  	if (!isEitherClockActive()) {
  		// Nothing to nudge
-@@ -2271,6 +2378,10 @@ void PlaybackHandler::commandEditTempoFine(int8_t offset) {
+@@ -2271,6 +2401,10 @@ void PlaybackHandler::commandEditTempoFine(int8_t offset) {
  void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPressed, bool shiftButtonPressed) {
  
  	if (Buttons::isButtonPressed(deluge::hid::button::TAP_TEMPO)) {
@@ -3124,7 +3229,7 @@ index f039781a..39aaa1c4 100644
  		if (display->hasPopupOfType(PopupType::SWING)) {
  			// If not yet displaying, don't change the value
  			return commandEditSwingInterval(offset);
-@@ -2287,6 +2398,17 @@ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPresse
+@@ -2287,6 +2421,17 @@ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPresse
  		return commandNudgeClock(offset);
  	}
  
@@ -3142,11 +3247,38 @@ index f039781a..39aaa1c4 100644
  	// Adjust swing
  	else if (shiftButtonPressed) {
  		if (display->hasPopupOfType(PopupType::SWING)) {
+@@ -2831,7 +2976,26 @@ int32_t PlaybackHandler::getTimeLeftInCountIn() {
+ 	return timeLeft;
+ }
+ 
++bool PlaybackHandler::endlessRecordEnabled() {
++	return runtimeFeatureSettings.get(RuntimeFeatureSettingType::EndlessRecord) == RuntimeFeatureStateToggle::On;
++}
++
++bool PlaybackHandler::anyClipRecordingEndlessly() {
++	if (!endlessRecordEnabled() || !playbackState || currentPlaybackMode != &session) {
++		return false;
++	}
++	for (int32_t c = currentSong->sessionClips.getNumElements() - 1; c >= 0; c--) {
++		Clip* clip = currentSong->sessionClips.getClipAtIndex(c);
++		if (clip->type == ClipType::INSTRUMENT && currentSong->isClipActive(clip)
++		    && clip->getCurrentlyRecordingLinearly()) {
++			return true;
++		}
++	}
++	return false;
++}
++
+ void PlaybackHandler::stopAnyRecording() {
++	endlessRecordStopPending = false;
+ 	if (playbackState && recording != RecordingMode::OFF) {
+ 		bool wasRecordingArrangement = (recording == RecordingMode::ARRANGEMENT);
+ 		recording = RecordingMode::OFF;
 diff --git a/src/deluge/playback/playback_handler.h b/src/deluge/playback/playback_handler.h
-index 98ff45dd..67f653f9 100644
+index 98ff45dd..1943aaff 100644
 --- a/src/deluge/playback/playback_handler.h
 +++ b/src/deluge/playback/playback_handler.h
-@@ -158,6 +158,11 @@ public:
+@@ -158,6 +158,15 @@ public:
  
  	bool songSwapShouldPreserveTempo;
  
@@ -3155,10 +3287,23 @@ index 98ff45dd..67f653f9 100644
 +	bool tempoPressedWithShift = false;
 +	bool tempoTurnedWhilePressedWithShift = false;
 +
++	// Endless record: RECORD was pressed to stop while clips were recording linearly, so recording keeps going until
++	// the next loop end (the bar line) and switches off there
++	bool endlessRecordStopPending = false;
++
  	// User options
  	bool metronomeOn;
  	bool midiOutClockEnabled;
-@@ -229,6 +234,9 @@ public:
+@@ -178,6 +187,8 @@ public:
+ 	void resyncInternalTicksToInputTicks(Song* song);
+ 	bool shouldRecordNotesNow();
+ 	void stopAnyRecording();
++	bool endlessRecordEnabled();
++	bool anyClipRecordingEndlessly();
+ 	uint32_t getTimePerInternalTick();
+ 	uint64_t getTimePerInternalTickBig();
+ 	float getTimePerInternalTickFloat();
+@@ -229,6 +240,9 @@ public:
  	// TEMPO encoder commands
  	void commandDisplaySwingAmount();
  	void commandEditSwingAmount(int8_t offset);

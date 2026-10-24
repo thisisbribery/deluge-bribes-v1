@@ -1,11 +1,12 @@
-# Deluge Bribes v1.2
+# Deluge Bribes v1.3
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds four things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds five things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
-4. **Mono sequencer (new in v1.2):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
+4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
+5. **Endless Record (new in v1.3):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -13,13 +14,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.2.bin`](firmware/deluge-bribes-v1.2.bin)
+[`firmware/deluge-bribes-v1.3.bin`](firmware/deluge-bribes-v1.3.bin)
 
-SHA-256: `f24cad22d43a88a5c8cecdb813ef35b1daacaf2eaa8adf6fe1409504aaed8463`
+SHA-256: `d1ed31ef285dede58ce23357ab2d9b0c36811a6a3584bd436032acfce560e02b`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -42,6 +43,8 @@ To go back, install an official firmware file the same way.
 | **Hold a note + turn the up/down knob** | Shift the note's octave, up to 4 either way (Mono sequencer) |
 | **Hold a note + press and turn the up/down knob** | Ratchet the note (note repeat), as normal (Mono sequencer) |
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
+| **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
+| **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
 
 7-segment display names are in brackets below.
 
@@ -202,6 +205,29 @@ Set **Mono Scale** (**MSCL**) to **CUSTOM** and each of the 8 rows sends its own
 - **CV:** the octave, or the CUSTOM voltage, goes straight into the pitch voltage.
 - **Limits:** recording live into a mono clip resets recorded notes to their own octave. One note per column is enforced when you place notes by hand, so pasting or nudging can still stack two in a column. On CV, the arpeggiator and pitch-bend changes can override the octave and CUSTOM voltages.
 
+## 5. Endless Record
+
+On the stock Deluge, hitting RECORD while a new clip is already playing records in a loop, so you're stuck inside the clip's length. To record for as long as you like, you have to stop, arm RECORD and press PLAY. Endless Record gives you that second way of recording without stopping playback.
+
+### Turning it on
+
+1. **SHIFT + press SELECT** to open Settings, then go to **Community Features** (**FEAT**).
+2. Turn **Endless Record** (**ENDL**) on. It's off by default.
+
+### Using it
+
+- **Hit RECORD while playing.** Every empty clip that's playing starts recording straight away. Each time it reaches its end it grows by its own length, so a 1-bar clip grows a bar at a time. The clip stays lined up with the bars, so if you start halfway through a bar, the first half stays empty.
+- **Hit RECORD again to stop.** RECORD blinks, and your notes keep recording until the next bar line. Then recording switches off and the clip's length is set there.
+- **Hit RECORD while it's blinking** to cancel the stop and keep recording.
+- **Press STOP while it's blinking** and recording switches off with playback.
+
+### Good to know
+
+- It works on synth, kit, MIDI and CV clips that are playing and have no notes yet. Clips that already have notes overdub in a loop, as normal. Audio clips work as normal.
+- Song view only, not the arranger.
+- With it on, the blink-and-stop-at-the-bar also applies when you record the stock way (stop, arm RECORD, press PLAY).
+- If you stop just after a bar line, the clip has already grown, so you'll get one extra empty bar.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -209,6 +235,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The swing styles** came out of a swing visualiser built to study and sketch shuffle timings ([stolperbeats_v2](https://thisisbribery.github.io/stolperbeats_v2/)). DEEP, SQEZ and FOLD are original designs. HOPP follows the well-known MPC and Linn swing ladder (around 54, 58, 62, 66 and 71%), placed on whole ticks the way a 96 PPQN drum machine would.
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
+- **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
