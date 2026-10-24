@@ -4212,6 +4212,49 @@ index 00000000..c2bbd9b7
 +};
 +
 +} // namespace deluge::dsp
+diff --git a/src/deluge/dsp/timestretch/time_stretcher.cpp b/src/deluge/dsp/timestretch/time_stretcher.cpp
+index adbcbc90..25b0e108 100644
+--- a/src/deluge/dsp/timestretch/time_stretcher.cpp
++++ b/src/deluge/dsp/timestretch/time_stretcher.cpp
+@@ -305,7 +305,16 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
+ 		                       / (uint8_t)(sample->numChannels * sample->byteDepth);
+ 
+ 		samplePos = startSample + numSamplesIn * playDirection;
+-		// There should be no risk of that passing the end of the sample zone I think...
++
++		// When the start offset has byte-shifted the playback window, samplePos can exceed the physical sample length
++		// (shifted start + wrapped duration). Wrap within the full physical sample so the read head stays in bounds.
++		if (guide->wrapSyncPosition) {
++			int64_t totalPhysSamples =
++			    sample->audioDataLengthBytes / (uint8_t)(sample->numChannels * sample->byteDepth);
++			if (totalPhysSamples > 0) {
++				samplePos = ((samplePos % totalPhysSamples) + totalPhysSamples) % totalPhysSamples;
++			}
++		}
+ 
+ 		samplePosBig = (uint64_t)samplePos << 24;
+ 	}
+@@ -596,8 +605,18 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
+ 
+ 		// Make sure we haven't shot past end of waveform. If so, we don't want this new play-head sounding
+ 		if ((int32_t)(beamBackEdge - waveformEndSample) * playDirection >= 0) {
+-			playHeadStillActive[PLAY_HEAD_NEWER] = false;
+-			return true; // But don't cut the VoiceSample entirely
++			// For looping stretch with a start offset, the beam can overshoot when samplePos wraps near the sample
++			// boundary. Wrap the position back into the sample instead of killing the play head.
++			if (guide->wrapSyncPosition) {
++				int64_t totalSamples = sample->lengthInSamples;
++				if (totalSamples > 0) {
++					beamBackEdge = ((beamBackEdge % totalSamples) + totalSamples) % totalSamples;
++				}
++			}
++			else {
++				playHeadStillActive[PLAY_HEAD_NEWER] = false;
++				return true; // But don't cut the VoiceSample entirely
++			}
+ 		}
+ 
+ 		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
 index 00000000..1a53e9a8
@@ -4316,10 +4359,19 @@ index 00000000..5f9425b4
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..807b859d 100644
+index 38cab4d8..e8422626 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
-@@ -533,6 +533,8 @@
+@@ -47,6 +47,8 @@
+     "STRING_FOR_PARAM_GLOBAL_VOLUME_POST_FX": "Master Level",
+     "STRING_FOR_PARAM_LOCAL_PITCH_ADJUST": "Master Pitch",
+     "STRING_FOR_PARAM_LOCAL_PAN": "Master Pan",
++    "STRING_FOR_PARAM_LOCAL_OSC_A_START_OFFSET": "Osc1 start offset",
++    "STRING_FOR_PARAM_LOCAL_OSC_B_START_OFFSET": "Osc2 start offset",
+     "STRING_FOR_PARAM_LOCAL_LPF_FREQ": "LPF frequency",
+     "STRING_FOR_PARAM_LOCAL_LPF_RESONANCE": "LPF resonance",
+     "STRING_FOR_PARAM_LOCAL_LPF_MORPH": "LPF morph",
+@@ -533,6 +535,8 @@
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "Alternative Playback Start Behaviour",
      "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "Grid View Loop Layer Pads",
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "Alternative Tap Tempo Behaviour",
@@ -4328,7 +4380,7 @@ index 38cab4d8..807b859d 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -543,6 +545,80 @@
+@@ -543,6 +547,80 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -4409,7 +4461,16 @@ index 38cab4d8..807b859d 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -624,6 +700,13 @@
+@@ -568,6 +646,8 @@
+     "STRING_FOR_START_POINT": "Start-point",
+     "STRING_FOR_START_POINT_SHORT": "STRT",
+     "STRING_FOR_END_POINT": "End-point",
++    "STRING_FOR_START_OFFSET": "Start offset",
++    "STRING_FOR_OFFSET_WRAP": "Offset wrap",
+     "STRING_FOR_SPEED": "Speed",
+     "STRING_FOR_SPEED_SHORT": "SPD",
+     "STRING_FOR_INTERPOLATION": "Interpolation",
+@@ -624,6 +704,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -4423,7 +4484,7 @@ index 38cab4d8..807b859d 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -705,6 +788,11 @@
+@@ -705,6 +792,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -4436,10 +4497,19 @@ index 38cab4d8..807b859d 100644
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..9ad1a23b 100644
+index 1f87aacf..c9927dae 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
-@@ -546,6 +546,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_PARAM_GLOBAL_VOLUME_POST_FX, "Master Level"},
+         {STRING_FOR_PARAM_LOCAL_PITCH_ADJUST, "Master Pitch"},
+         {STRING_FOR_PARAM_LOCAL_PAN, "Master Pan"},
++        {STRING_FOR_PARAM_LOCAL_OSC_A_START_OFFSET, "Osc1 start offset"},
++        {STRING_FOR_PARAM_LOCAL_OSC_B_START_OFFSET, "Osc2 start offset"},
+         {STRING_FOR_PARAM_LOCAL_LPF_FREQ, "LPF frequency"},
+         {STRING_FOR_PARAM_LOCAL_LPF_RESONANCE, "LPF resonance"},
+         {STRING_FOR_PARAM_LOCAL_LPF_MORPH, "LPF morph"},
+@@ -546,6 +548,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "Alternative Playback Start Behaviour"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "Grid View Loop Layer Pads"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "Alternative Tap Tempo Behaviour"},
@@ -4448,7 +4518,7 @@ index 1f87aacf..9ad1a23b 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -556,6 +558,80 @@ PLACE_SDRAM_DATA Language english{
+@@ -556,6 +560,80 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -4529,7 +4599,16 @@ index 1f87aacf..9ad1a23b 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -637,6 +713,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -581,6 +659,8 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_START_POINT, "Start-point"},
+         {STRING_FOR_START_POINT_SHORT, "STRT"},
+         {STRING_FOR_END_POINT, "End-point"},
++        {STRING_FOR_START_OFFSET, "Start offset"},
++        {STRING_FOR_OFFSET_WRAP, "Offset wrap"},
+         {STRING_FOR_SPEED, "Speed"},
+         {STRING_FOR_SPEED_SHORT, "SPD"},
+         {STRING_FOR_INTERPOLATION, "Interpolation"},
+@@ -637,6 +717,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -4543,7 +4622,7 @@ index 1f87aacf..9ad1a23b 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -718,6 +801,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +805,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -4556,14 +4635,16 @@ index 1f87aacf..9ad1a23b 100644
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..4ae68eac 100644
+index 1af382d5..af854f12 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
-@@ -323,6 +323,11 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -323,6 +323,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
          {STRING_FOR_SWING_AMOUNT, "SWIA"},
          {STRING_FOR_SWING_INTERVAL, "SWII"},
 +        {STRING_FOR_STUMBLE, "STUM"},
++        {STRING_FOR_START_OFFSET, "OFST"},
++        {STRING_FOR_OFFSET_WRAP, "WRAP"},
 +        {STRING_FOR_STUMBLE_STYLE, "STYL"},
 +        {STRING_FOR_MONO_SEQUENCER, "MSEQ"},
 +        {STRING_FOR_MONO_SCALE, "MSCL"},
@@ -4571,7 +4652,7 @@ index 1af382d5..4ae68eac 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +447,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +449,8 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
@@ -4580,7 +4661,7 @@ index 1af382d5..4ae68eac 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -450,6 +457,80 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -450,6 +459,80 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -4661,7 +4742,7 @@ index 1af382d5..4ae68eac 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -459,6 +540,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -459,6 +542,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -4676,14 +4757,16 @@ index 1af382d5..4ae68eac 100644
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..70a921a1 100644
+index 8328945b..eaeb973f 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
-@@ -334,6 +334,11 @@
+@@ -334,6 +334,13 @@
          "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
          "STRING_FOR_SWING_AMOUNT": "SWIA",
          "STRING_FOR_SWING_INTERVAL": "SWII",
 +        "STRING_FOR_STUMBLE": "STUM",
++        "STRING_FOR_START_OFFSET": "OFST",
++        "STRING_FOR_OFFSET_WRAP": "WRAP",
 +        "STRING_FOR_STUMBLE_STYLE": "STYL",
 +        "STRING_FOR_MONO_SEQUENCER": "MSEQ",
 +        "STRING_FOR_MONO_SCALE": "MSCL",
@@ -4691,7 +4774,7 @@ index 8328945b..70a921a1 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +462,8 @@
+@@ -457,6 +464,8 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
@@ -4700,7 +4783,7 @@ index 8328945b..70a921a1 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -466,6 +473,80 @@
+@@ -466,6 +475,80 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -4781,7 +4864,7 @@ index 8328945b..70a921a1 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -479,6 +560,20 @@
+@@ -479,6 +562,20 @@
  
          "STRING_FOR_WAVEFOLD": "FOLD",
  
@@ -4803,10 +4886,19 @@ index 8328945b..70a921a1 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..6611fad5 100644
+index 49b15e92..dc358160 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
-@@ -576,6 +576,8 @@ enum class String : size_t {
+@@ -64,6 +64,8 @@ enum class String : size_t {
+ 	STRING_FOR_PARAM_LOCAL_LPF_RESONANCE,
+ 	STRING_FOR_PARAM_LOCAL_HPF_RESONANCE,
+ 	STRING_FOR_PARAM_LOCAL_PAN,
++	STRING_FOR_PARAM_LOCAL_OSC_A_START_OFFSET,
++	STRING_FOR_PARAM_LOCAL_OSC_B_START_OFFSET,
+ 	STRING_FOR_PARAM_LOCAL_MODULATOR_0_VOLUME,
+ 	STRING_FOR_PARAM_LOCAL_MODULATOR_1_VOLUME,
+ 	STRING_FOR_PARAM_LOCAL_LPF_FREQ,
+@@ -576,6 +578,8 @@ enum class String : size_t {
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR,
  	STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS,
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR,
@@ -4815,7 +4907,7 @@ index 49b15e92..6611fad5 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -586,6 +588,80 @@ enum class String : size_t {
+@@ -586,6 +590,80 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -4896,7 +4988,16 @@ index 49b15e92..6611fad5 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -683,6 +759,13 @@ enum class String : size_t {
+@@ -615,6 +693,8 @@ enum class String : size_t {
+ 	STRING_FOR_START_POINT,
+ 	STRING_FOR_START_POINT_SHORT,
+ 	STRING_FOR_END_POINT,
++	STRING_FOR_START_OFFSET,
++	STRING_FOR_OFFSET_WRAP,
+ 	STRING_FOR_SPEED,
+ 	STRING_FOR_SPEED_SHORT,
+ 	STRING_FOR_INTERPOLATION,
+@@ -683,6 +763,13 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -4910,7 +5011,7 @@ index 49b15e92..6611fad5 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -772,6 +855,11 @@ enum class String : size_t {
+@@ -772,6 +859,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -6115,6 +6216,77 @@ index 00000000..32a60912
 +};
 +
 +} // namespace deluge::gui::menu_item::fx
+diff --git a/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py b/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
+index 36d668b3..8785cb5b 100644
+--- a/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
++++ b/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
+@@ -143,6 +143,22 @@ for i in range(2):
+             name="STRING_FOR_END_POINT",
+             available_when=_available_txt,
+         ),
++        Menu(
++            "sample::StartOffset",
++            f"sample{i}StartOffsetMenu",
++            ["{name}", f"{i}"],
++            "oscillator/sample/start_offset.md",
++            name="STRING_FOR_START_OFFSET",
++            available_when=_available_txt,
++        ),
++        Menu(
++            "sample::OffsetWrap",
++            f"sample{i}OffsetWrapMenu",
++            ["{name}", f"{i}"],
++            "oscillator/sample/offset_wrap.md",
++            name="STRING_FOR_OFFSET_WRAP",
++            available_when=_available_txt,
++        ),
+     ]
+ 
+     volumes.append(
+diff --git a/src/deluge/gui/menu_item/generate/g_menus.inc b/src/deluge/gui/menu_item/generate/g_menus.inc
+index 54cac567..454dc0fc 100644
+--- a/src/deluge/gui/menu_item/generate/g_menus.inc
++++ b/src/deluge/gui/menu_item/generate/g_menus.inc
+@@ -73,7 +73,9 @@ sample::PitchSpeed sample0PitchSpeedMenu{STRING_FOR_PITCH_SPEED, 0};
+ sample::Interpolation sample0InterpolationMenu{STRING_FOR_INTERPOLATION, STRING_FOR_SAMP_INTERP_MENU_TITLE, 0};
+ sample::Start sample0StartMenu{STRING_FOR_START_POINT, 0};
+ sample::End sample0EndMenu{STRING_FOR_END_POINT, 0};
+-std::array<MenuItem*, 14> child6 = {
++sample::StartOffset sample0StartOffsetMenu{STRING_FOR_START_OFFSET, 0};
++sample::OffsetWrap sample0OffsetWrapMenu{STRING_FOR_OFFSET_WRAP, 0};
++std::array<MenuItem*, 16> child6 = {
+     &osc0TypeMenu,
+     &deluge::gui::menu_item::file0SelectorMenu,
+     &source0TransposeMenu,
+@@ -88,6 +90,8 @@ std::array<MenuItem*, 14> child6 = {
+     &sample0InterpolationMenu,
+     &sample0StartMenu,
+     &sample0EndMenu,
++    &sample0StartOffsetMenu,
++    &sample0OffsetWrapMenu,
+ };
+ submenu::ActualSource source0Menu{STRING_FOR_OSCILLATOR_1, child6, 0};
+ osc::Type osc1TypeMenu{STRING_FOR_TYPE, STRING_FOR_OSC_TYPE_MENU_TITLE, 1};
+@@ -104,7 +108,9 @@ sample::PitchSpeed sample1PitchSpeedMenu{STRING_FOR_PITCH_SPEED, 1};
+ sample::Interpolation sample1InterpolationMenu{STRING_FOR_INTERPOLATION, STRING_FOR_SAMP_INTERP_MENU_TITLE, 1};
+ sample::Start sample1StartMenu{STRING_FOR_START_POINT, 1};
+ sample::End sample1EndMenu{STRING_FOR_END_POINT, 1};
+-std::array<MenuItem*, 14> child7 = {
++sample::StartOffset sample1StartOffsetMenu{STRING_FOR_START_OFFSET, 1};
++sample::OffsetWrap sample1OffsetWrapMenu{STRING_FOR_OFFSET_WRAP, 1};
++std::array<MenuItem*, 16> child7 = {
+     &osc1TypeMenu,
+     &deluge::gui::menu_item::file1SelectorMenu,
+     &source1TransposeMenu,
+@@ -119,6 +125,8 @@ std::array<MenuItem*, 14> child7 = {
+     &sample1InterpolationMenu,
+     &sample1StartMenu,
+     &sample1EndMenu,
++    &sample1StartOffsetMenu,
++    &sample1OffsetWrapMenu,
+ };
+ submenu::ActualSource source1Menu{STRING_FOR_OSCILLATOR_2, child7, 1};
+ modulator::Transpose modulator0TransposeMenu{STRING_FOR_TRANSPOSE, STRING_FOR_FM_MOD_TRAN_MENU_TITLE, params::LOCAL_MODULATOR_0_PITCH_ADJUST, 0};
 diff --git a/src/deluge/gui/menu_item/number.h b/src/deluge/gui/menu_item/number.h
 index 2409a2c3..e3bd0985 100644
 --- a/src/deluge/gui/menu_item/number.h
@@ -6304,6 +6476,119 @@ index ab3a3d37..231c3fec 100644
      &menuHorizontalMenus,
      &menuRoundedCorners,
      &menuTrimFromStartOfAudioClip,
+diff --git a/src/deluge/gui/menu_item/sample/start_offset.h b/src/deluge/gui/menu_item/sample/start_offset.h
+new file mode 100644
+index 00000000..ca041832
+--- /dev/null
++++ b/src/deluge/gui/menu_item/sample/start_offset.h
+@@ -0,0 +1,107 @@
++/*
++ * Copyright (c) 2014-2023 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++// Sample start offset ported from the Owlet Deluge firmware (github.com/owlet-labs/DelugeFirmware, GPLv3)
++#pragma once
++#include "gui/menu_item/sample/utils.h"
++#include "gui/menu_item/source/patched_param.h"
++#include "gui/menu_item/toggle.h"
++#include "gui/ui/sound_editor.h"
++#include "modulation/params/param.h"
++#include "modulation/params/param_set.h"
++#include "processing/engines/audio_engine.h"
++#include "processing/sound/sound.h"
++
++namespace deluge::gui::menu_item::sample {
++
++/// Bipolar, p-lockable start offset. Full scale (+/-512) moves the start by one whole sample length.
++class StartOffset final : public source::PatchedParam {
++public:
++	static constexpr int32_t kResolution = 512; // Fits the 7-segment display ("-512")
++	static constexpr int32_t kShift = 22;       // 31 - log2(512)
++
++	StartOffset(l10n::String name, uint8_t source_id)
++	    : source::PatchedParam(name, modulation::params::LOCAL_OSC_A_START_OFFSET, source_id) {}
++
++	bool isRelevant(ModControllableAudio* modControllable, int32_t) const override {
++		return isSampleModeSample(modControllable, source_id_);
++	}
++
++	[[nodiscard]] int32_t getMaxValue() const override { return kResolution; }
++	[[nodiscard]] int32_t getMinValue() const override { return -kResolution; }
++
++	void readCurrentValue() override {
++		int32_t q31 = soundEditor.currentParamManager->getPatchedParamSet()->getValue(getP());
++		this->setValue(q31 >> kShift);
++	}
++
++	int32_t getFinalValue() override {
++		int32_t v = this->getValue();
++		if (v >= kResolution) {
++			return 2147483647;
++		}
++		if (v <= -kResolution) {
++			return -2147483648;
++		}
++		return v << kShift;
++	}
++
++	// Faster encoder turns take bigger steps, slow turns keep single-step control
++	void selectEncoderAction(int32_t offset) override {
++		uint32_t now = AudioEngine::audioSampleTimer;
++		uint32_t elapsed = now - lastTime_;
++		lastTime_ = now;
++
++		// Reset on direction change or a pause of more than ~180ms
++		if (((offset > 0) != (lastDirection_ > 0)) || elapsed > 8000) {
++			velocity_ = 1;
++		}
++		lastDirection_ = offset;
++
++		int32_t mult = (elapsed < 1500) ? 12 : (elapsed < 3500) ? 6 : (elapsed < 6500) ? 3 : 1;
++		velocity_ = (velocity_ + mult + 1) >> 1;
++
++		source::PatchedParam::selectEncoderAction(offset * velocity_);
++	}
++
++	[[nodiscard]] RenderingStyle getRenderingStyle() const override { return KNOB; }
++
++private:
++	uint32_t lastTime_{0};
++	int32_t lastDirection_{0};
++	int32_t velocity_{1};
++};
++
++/// Whether the start offset wraps the playhead around the whole sample (on) or clamps at the sample edge (off)
++class OffsetWrap final : public Toggle {
++public:
++	OffsetWrap(l10n::String name, uint8_t source_id) : Toggle(name), source_id_{source_id} {}
++
++	bool isRelevant(ModControllableAudio* modControllable, int32_t) const override {
++		return isSampleModeSample(modControllable, source_id_);
++	}
++
++	void readCurrentValue() override { setValue(soundEditor.currentSound->sources[source_id_].offsetWraps); }
++
++	void writeCurrentValue() override {
++		soundEditor.currentSound->killAllVoices();
++		soundEditor.currentSound->sources[source_id_].offsetWraps = getValue();
++	}
++
++private:
++	uint8_t source_id_;
++};
++} // namespace deluge::gui::menu_item::sample
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
 index 00000000..662c41d0
@@ -6553,7 +6838,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..6036fa02 100644
+index 7bbd559f..1ca8bb90 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -6584,7 +6869,15 @@ index 7bbd559f..6036fa02 100644
  #include "gui/menu_item/gate/mode.h"
  #include "gui/menu_item/gate/off_time.h"
  #include "gui/menu_item/gate/selection.h"
-@@ -216,6 +221,8 @@
+@@ -189,6 +194,7 @@
+ #include "gui/menu_item/sample/repeat.h"
+ #include "gui/menu_item/sample/reverse.h"
+ #include "gui/menu_item/sample/start.h"
++#include "gui/menu_item/sample/start_offset.h"
+ #include "gui/menu_item/sample/time_stretch.h"
+ #include "gui/menu_item/sample/transpose.h"
+ #include "gui/menu_item/sequence/direction.h"
+@@ -216,6 +222,8 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -6593,7 +6886,7 @@ index 7bbd559f..6036fa02 100644
  #include "gui/menu_item/synth_mode.h"
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
-@@ -631,6 +638,7 @@ PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routi
+@@ -631,6 +639,7 @@ PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routi
  
  // FX ----------------------------------------------------------------------------------------
  PLACE_SDRAM_BSS fx::Clipping clippingMenu{STRING_FOR_SATURATION};
@@ -6601,7 +6894,7 @@ index 7bbd559f..6036fa02 100644
  PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
                                         RenderingStyle::BAR};
  PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
-@@ -641,6 +649,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
+@@ -641,6 +650,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -6609,7 +6902,7 @@ index 7bbd559f..6036fa02 100644
          &bitcrushMenu,
          &srrMenu,
          &foldMenu,
-@@ -855,6 +864,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +865,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -6639,7 +6932,7 @@ index 7bbd559f..6036fa02 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,6 +942,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,6 +943,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -6647,7 +6940,7 @@ index 7bbd559f..6036fa02 100644
          &bitcrushMenu,
          &srrMenu,
      },
-@@ -985,6 +1018,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1019,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -6659,7 +6952,7 @@ index 7bbd559f..6036fa02 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1087,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1088,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -6667,7 +6960,7 @@ index 7bbd559f..6036fa02 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1508,312 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,6 +1509,312 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -6980,7 +7273,7 @@ index 7bbd559f..6036fa02 100644
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1518,6 +1863,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,6 +1864,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -6989,7 +7282,7 @@ index 7bbd559f..6036fa02 100644
          &soundEditorRootActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1544,6 +1891,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +1892,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -6998,7 +7291,7 @@ index 7bbd559f..6036fa02 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +1900,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +1901,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -7007,7 +7300,7 @@ index 7bbd559f..6036fa02 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2054,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2055,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -7017,7 +7310,7 @@ index 7bbd559f..6036fa02 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2187,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2188,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -7026,7 +7319,7 @@ index 7bbd559f..6036fa02 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2243,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2244,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -7035,7 +7328,7 @@ index 7bbd559f..6036fa02 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2265,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2266,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -7043,7 +7336,7 @@ index 7bbd559f..6036fa02 100644
          &firmwareVersionMenu,
      },
  };
-@@ -2000,7 +2357,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2358,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -7052,7 +7345,7 @@ index 7bbd559f..6036fa02 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2381,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2382,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -7062,10 +7355,27 @@ index 7bbd559f..6036fa02 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd6..33484316 100644
+index 09efdfd6..47aba201 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
-@@ -114,6 +114,10 @@ extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
+@@ -25,6 +25,7 @@
+ #include "gui/menu_item/randomizer/randomizer_lock.h"
+ #include "gui/menu_item/sample/end.h"
+ #include "gui/menu_item/sample/start.h"
++#include "gui/menu_item/sample/start_offset.h"
+ #include "gui/menu_item/sequence/direction.h"
+ #include "gui/menu_item/source/patched_param/modulator_level.h"
+ #include "gui/menu_item/stem_export/start.h"
+@@ -46,6 +47,8 @@ extern gui::menu_item::sample::Start sample0StartMenu;
+ extern gui::menu_item::sample::Start sample1StartMenu;
+ extern gui::menu_item::sample::End sample0EndMenu;
+ extern gui::menu_item::sample::End sample1EndMenu;
++extern gui::menu_item::sample::StartOffset sample0StartOffsetMenu;
++extern gui::menu_item::sample::StartOffset sample1StartOffsetMenu;
+ extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
+ extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
+ extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
+@@ -114,6 +117,10 @@ extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
  extern MenuItem* paramShortcutsForSoundsSecondLayer[kDisplayWidth][kDisplayHeight];
@@ -7163,7 +7473,7 @@ index c7f05939..61dfc609 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3..91ba65f9 100644
+index d3eae8c3..e62229f3 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -3,6 +3,7 @@
@@ -7174,7 +7484,39 @@ index d3eae8c3..91ba65f9 100644
  #include "gui/menu_item/dx/param.h"
  #include "gui/menu_item/file_selector.h"
  #include "gui/menu_item/horizontal_menu.h"
-@@ -215,7 +216,15 @@ bool SoundEditor::in_sound_editor() {
+@@ -158,6 +159,21 @@ PLACE_SDRAM_RODATA constexpr RGB mono_mod_shortcut_colours [][kDisplayHeight] =
+ 
+ //clang-format on
+ 
++// On a sample oscillator, the pulse width shortcut (unused for samples) opens the sample start offset instead.
++// The pulse width pads are the OSC1 / OSC2 columns, row 3.
++static MenuItem* sampleOffsetForPulseWidthShortcut(const MenuItem* item) {
++	if (item == nullptr) {
++		return nullptr;
++	}
++	if (item == paramShortcutsForSounds[2][3]) {
++		return &sample0StartOffsetMenu;
++	}
++	if (item == paramShortcutsForSounds[3][3]) {
++		return &sample1StartOffsetMenu;
++	}
++	return nullptr;
++}
++
+ bool isRelevant(ModControllableAudio* forThing, MenuItem* menuitem, int32_t thing)
+ {
+ 	// we have a menuitem, and we either have nothing to check or we checked and it's relevant
+@@ -176,7 +192,8 @@ void SoundEditor::renderMainShortcutsOnly(ModControllableAudio* forThing, RGB im
+ 		for (int32_t xDisplay = 0; xDisplay < kDisplayWidth; xDisplay++)
+ 		{
+ 			auto [menuitem, _] = get_basic_shortcut_action(xDisplay, yDisplay, doKitAffectEntire);
+-			if (isRelevant(forThing, menuitem, xDisplay % 2))
++			if (isRelevant(forThing, menuitem, xDisplay % 2)
++			    || isRelevant(forThing, sampleOffsetForPulseWidthShortcut(menuitem), xDisplay % 2))
+ 			{
+ 				image[yDisplay][xDisplay] = shortcut_colours[xDisplay][yDisplay];
+ 			}
+@@ -215,7 +232,15 @@ bool SoundEditor::in_sound_editor() {
  bool SoundEditor::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                   uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth], bool drawUndefinedArea)
  {
@@ -7191,7 +7533,7 @@ index d3eae8c3..91ba65f9 100644
  	if (!image)
  	{
  		D_PRINTLN("no image");
-@@ -420,7 +429,43 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
+@@ -420,7 +445,43 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
  	}
  }
  
@@ -7235,16 +7577,17 @@ index d3eae8c3..91ba65f9 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -1097,7 +1142,7 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1097,7 +1158,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  						goto stopThat;
  					}
  
 -					if (paramShortcutsForSounds[x][y] == currentItem) {
-+					if (soundShortcut(x, y) == currentItem) {
++					if (soundShortcut(x, y) == currentItem
++					    || sampleOffsetForPulseWidthShortcut(soundShortcut(x, y)) == currentItem) {
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1467,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1484,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -7253,7 +7596,7 @@ index d3eae8c3..91ba65f9 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1586,7 +1631,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1586,7 +1648,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -7262,7 +7605,20 @@ index d3eae8c3..91ba65f9 100644
  					if (getCurrentOutputType() == OutputType::KIT && item == &editNameMenu) {
  						item = &drumNameEditMenu;
  					}
-@@ -1704,6 +1749,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1650,6 +1712,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+ 				setupSuccess = setup(currentClip, item, thingIndex);
+ 			}
+ 
++			// The offset menu is only relevant to sample oscillators, so setup fails for anything else
++			if (!setupSuccess && sampleOffsetForPulseWidthShortcut(item)) {
++				item = sampleOffsetForPulseWidthShortcut(item);
++				setupSuccess = setup(currentClip, item, thingIndex);
++			}
++
+ 			if (!setupSuccess) {
+ 				return ActionResult::DEALT_WITH;
+ 			}
+@@ -1704,6 +1772,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -7277,7 +7633,7 @@ index d3eae8c3..91ba65f9 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2200,7 @@ doMIDIOrCV:
+@@ -2147,6 +2223,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -7302,6 +7658,91 @@ index 85daba70..3631e364 100644
  	Sound* currentSound;
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
+diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
+index 0a42de35..4d96cab2 100644
+--- a/src/deluge/gui/views/automation_view.cpp
++++ b/src/deluge/gui/views/automation_view.cpp
+@@ -110,6 +110,30 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
+ 
+ using namespace deluge::gui;
+ 
++// The patched param on a shortcut pad. On a sample oscillator, the pulse width pad (unused for samples) gives the
++// sample start offset instead.
++static uint32_t patchedParamForShortcut(Output* output, int32_t x, int32_t y) {
++	uint32_t paramId = patchedParamShortcuts[x][y];
++	if (paramId != params::LOCAL_OSC_A_PHASE_WIDTH && paramId != params::LOCAL_OSC_B_PHASE_WIDTH) {
++		return paramId;
++	}
++	Sound* sound = nullptr;
++	if (output->type == OutputType::SYNTH) {
++		sound = static_cast<SoundInstrument*>(output);
++	}
++	else if (output->type == OutputType::KIT) {
++		Drum* drum = static_cast<Kit*>(output)->selectedDrum;
++		if (drum && drum->type == DrumType::SOUND) {
++			sound = static_cast<SoundDrum*>(drum);
++		}
++	}
++	int32_t s = paramId - params::LOCAL_OSC_A_PHASE_WIDTH;
++	if (sound && sound->getSynthMode() != SynthMode::FM && sound->sources[s].oscType == OscType::SAMPLE) {
++		return params::LOCAL_OSC_A_START_OFFSET + s;
++	}
++	return paramId;
++}
++
+ const uint32_t auditionPadActionUIModes[] = {UI_MODE_NOTES_PRESSED,
+                                              UI_MODE_AUDITIONING,
+                                              UI_MODE_HORIZONTAL_SCROLL,
+@@ -123,7 +147,7 @@ const uint32_t mutePadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITION
+ 
+ const uint32_t verticalScrollUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITIONING, UI_MODE_RECORD_COUNT_IN, 0};
+ 
+-constexpr int32_t kNumNonGlobalParamsForAutomation = 83;
++constexpr int32_t kNumNonGlobalParamsForAutomation = 85;
+ constexpr int32_t kNumGlobalParamsForAutomation = 39;
+ 
+ // synth and kit rows FX - sorted in the order that Parameters are scrolled through on the display
+@@ -242,6 +266,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+     {params::Kind::EXPRESSION, Expression::Y_SLIDE_TIMBRE},
+     // Mono Expression: Z - Channel Pressure
+     {params::Kind::EXPRESSION, Expression::Z_PRESSURE},
++    // OSC 1 / OSC 2 Sample Start Offset (at the end so saved list positions stay valid)
++    {params::Kind::PATCHED, params::LOCAL_OSC_A_START_OFFSET},
++    {params::Kind::PATCHED, params::LOCAL_OSC_B_START_OFFSET},
+ }};
+ 
+ // global FX - sorted in the order that Parameters are scrolled through on the display
+@@ -784,9 +811,9 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+ 
+ 			if (!onArrangerView && (outputType == OutputType::SYNTH || singleSoundDrum)) {
+ 				if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+-					modelStackWithParam =
+-					    getModelStackWithParamForClip(modelStackWithTimelineCounter, clip,
+-					                                  patchedParamShortcuts[xDisplay][yDisplay], params::Kind::PATCHED);
++					modelStackWithParam = getModelStackWithParamForClip(
++					    modelStackWithTimelineCounter, clip, patchedParamForShortcut(clip->output, xDisplay, yDisplay),
++					    params::Kind::PATCHED);
+ 				}
+ 
+ 				else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+@@ -1909,7 +1936,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+ 		// ParamID
+ 		if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+ 			clip->lastSelectedParamKind = params::Kind::PATCHED;
+-			clip->lastSelectedParamID = patchedParamShortcuts[xDisplay][yDisplay];
++			clip->lastSelectedParamID = patchedParamForShortcut(output, xDisplay, yDisplay);
+ 		}
+ 		else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+ 			clip->lastSelectedParamKind = params::Kind::UNPATCHED_SOUND;
+@@ -2934,7 +2961,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
+ 			}
+ 			else {
+ 				if ((clip->lastSelectedParamKind == params::Kind::PATCHED
+-				     && patchedParamShortcuts[x][y] == clip->lastSelectedParamID)
++				     && patchedParamForShortcut(clip->output, x, y) == clip->lastSelectedParamID)
+ 				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_SOUND
+ 				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
+ 				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
 index 4f8f5ec2..a4d772c7 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
@@ -9018,6 +9459,93 @@ index ca04ec3f..883e1806 100644
  
  	int32_t loopLengthIfIndependent; // 0 means obeying parent
  	int32_t lastProcessedPosIfIndependent;
+diff --git a/src/deluge/model/sample/sample_low_level_reader.cpp b/src/deluge/model/sample/sample_low_level_reader.cpp
+index 14e7c0cc..609185c3 100644
+--- a/src/deluge/model/sample/sample_low_level_reader.cpp
++++ b/src/deluge/model/sample/sample_low_level_reader.cpp
+@@ -147,8 +147,15 @@ void SampleLowLevelReader::setupReassessmentLocation(SamplePlaybackGuide* guide,
+ 	int32_t endPlaybackAtByte;
+ 	int32_t finalClusterIndex = guide->getFinalClusterIndex(sample, shouldObeyMarkers(), &endPlaybackAtByte);
+ 
++	// Are we already past the final Cluster? This can happen when the start offset puts the play position past the
++	// loop end in a different cluster. Force immediate STOP_OR_LOOP so changeClusterIfNecessary triggers loop-back.
++	if (guide->hasStartOffset && (currentClusterIndex - finalClusterIndex) * guide->playDirection > 0) {
++		reassessmentLocation = currentPlayPos;
++		reassessmentAction = REASSESSMENT_ACTION_STOP_OR_LOOP;
++	}
++
+ 	// Is this the final Cluster?
+-	if (currentClusterIndex == finalClusterIndex) {
++	else if (currentClusterIndex == finalClusterIndex) {
+ 		int32_t bytePosWithinClusterToStopAt = endPlaybackAtByte & (Cluster::size - 1);
+ 		if (guide->playDirection == 1) {
+ 			if (bytePosWithinClusterToStopAt == 0) {
+@@ -300,9 +307,13 @@ bool SampleLowLevelReader::assignClusters(SamplePlaybackGuide* guide, Sample* sa
+ 
+ 	for (int32_t l = 0; l < kNumClustersLoadedAhead; l++) {
+ 
++		// With a start offset, the first cluster may lie outside the pre-loaded region. Load it on demand rather
++		// than having it enqueued-then-destroyed in a loop.
++		int32_t loadMode = (l == 0 && guide->hasStartOffset) ? CLUSTER_LOAD_IMMEDIATELY_OR_ENQUEUE : CLUSTER_ENQUEUE;
++
+ 		// Grab it.
+-		clusters[l] = sample->clusters.getElement(clusterIndex)
+-		                  ->getCluster(sample, clusterIndex, CLUSTER_ENQUEUE, priorityRating);
++		clusters[l] =
++		    sample->clusters.getElement(clusterIndex)->getCluster(sample, clusterIndex, loadMode, priorityRating);
+ 
+ 		// The first one is required to not only have returned an object to us (which it might not have if insufficient
+ 		// RAM or maybe other reasons), but also to be fully loaded.
+@@ -1165,8 +1176,10 @@ bool SampleLowLevelReader::readSamplesForTimeStretching(
+ 		if (!timeStretcher->playHeadStillActive[whichPlayHead]) {
+ 
+ 			// If we got false, that can just mean end of waveform. But if clusters[0] has been set to NULL too, that
+-			// means (SD card) error
+-			if (clusters[0]) {
++			// means (SD card) error.
++			// With a start offset, play heads regularly cross the physical sample boundary, so just deactivate the
++			// head and let the time stretcher's both-heads-dead restart handle it.
++			if (clusters[0] && !guide->hasStartOffset) {
+ 				return false;
+ 			}
+ 
+diff --git a/src/deluge/model/sample/sample_playback_guide.cpp b/src/deluge/model/sample/sample_playback_guide.cpp
+index 13edf255..0a5efb27 100644
+--- a/src/deluge/model/sample/sample_playback_guide.cpp
++++ b/src/deluge/model/sample/sample_playback_guide.cpp
+@@ -101,10 +101,17 @@ uint64_t SamplePlaybackGuide::getSyncedNumSamplesIn() {
+ 	}
+ 	// If following external clock, that could happen
+ 	// TODO: is that still necessary?
+-	return (uint64_t)(((double)(lengthInSamples * currentTickWithinSample)
+-	                   + (double)timeSinceLastInternalTick * (double)lengthInSamples / (double)timePerInternalTick
+-	                   + (double)(sequenceSyncLengthTicks >> 1)) // Rounding
+-	                  / (double)sequenceSyncLengthTicks);
++	uint64_t result =
++	    (uint64_t)(((double)(lengthInSamples * currentTickWithinSample)
++	                + (double)timeSinceLastInternalTick * (double)lengthInSamples / (double)timePerInternalTick
++	                + (double)(sequenceSyncLengthTicks >> 1)) // Rounding
++	               / (double)sequenceSyncLengthTicks);
++
++	if (wrapSyncPosition && lengthInSamples > 0) {
++		result = result % lengthInSamples;
++	}
++
++	return result;
+ }
+ 
+ int32_t SamplePlaybackGuide::getNumSamplesLaggingBehindSync(VoiceSample* voiceSample) {
+diff --git a/src/deluge/model/sample/sample_playback_guide.h b/src/deluge/model/sample/sample_playback_guide.h
+index 2791a5ca..7c8e181c 100644
+--- a/src/deluge/model/sample/sample_playback_guide.h
++++ b/src/deluge/model/sample/sample_playback_guide.h
+@@ -54,4 +54,6 @@ public:
+ 
+ 	int32_t sequenceSyncStartedAtTick;
+ 	uint32_t sequenceSyncLengthTicks; // When 0, means no syncing happening
++	bool wrapSyncPosition{false};     // When true, modular-wrap position in getSyncedNumSamplesIn (start offset)
++	bool hasStartOffset{false};       // Start offset shifted the playback window (Voices only)
+ };
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
 index c127568b..67ab7250 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
@@ -9476,10 +10004,14 @@ index 00000000..6c4f5585
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index ccc3f332..c1881f94 100644
+index ccc3f332..2468d272 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
-@@ -53,9 +53,13 @@
+@@ -50,12 +50,17 @@
+ #include "dsp/oscillators/basic_waves.h"
+ #include "dsp/oscillators/oscillator.h"
+ #include "util/misc.h"
++#include <algorithm>
  #include <cstring>
  #include <new>
  
@@ -9493,7 +10025,152 @@ index ccc3f332..c1881f94 100644
  }
  
  using namespace deluge;
-@@ -176,6 +180,7 @@ bool Voice::noteOn(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBefo
+@@ -104,6 +109,144 @@ void Voice::unassignStuff(bool deletingSong) {
+ 	}
+ }
+ 
++// Shift the guide's playback window by the start offset param (bipolar, full scale = one sample length). With
++// offsetWraps the window rotates around the whole sample: if the loop then crosses the sample boundary it becomes a
++// "split loop" - play loop start to sample end, then sample start to loop end, and repeat. Without offsetWraps the
++// start just moves, clamped to the sample, with any overshoot before the start becoming pre-roll silence.
++void Voice::applyStartOffsetToGuide(VoiceSamplePlaybackGuide& guide, const Source& source, int32_t startOffsetParam) {
++	guide.preRollSamples = 0;
++	guide.wrapSyncPosition = false;
++	guide.wrapAroundPending = false;
++	guide.loopSplit = false;
++	guide.loopWrapPhase = 0;
++	guide.oneShotWrap = false;
++	guide.oneShotComplete = false;
++	guide.phaseAdvancedByBoundaryCheck = false;
++	guide.hasStartOffset = (startOffsetParam != 0);
++	if (!guide.hasStartOffset) {
++		return;
++	}
++
++	bool synced = source.repeatMode == SampleRepeatMode::STRETCH && guide.sequenceSyncLengthTicks > 0;
++	if (synced) {
++		guide.wrapSyncPosition = true;
++	}
++
++	Sample* offsetSample = static_cast<Sample*>(guide.audioFileHolder->audioFile);
++	int32_t bytesPerFrame = offsetSample->numChannels * offsetSample->byteDepth;
++	int32_t startByte = static_cast<int32_t>(guide.startPlaybackAtByte);
++	int32_t endByte = static_cast<int32_t>(guide.endPlaybackAtByte);
++	int32_t regionBytes = endByte - startByte;
++	int32_t absRegion = std::abs(regionBytes);
++	bool forward = (regionBytes > 0);
++
++	if (absRegion <= 0 || bytesPerFrame <= 0) {
++		return;
++	}
++
++	int32_t audioStart = static_cast<int32_t>(offsetSample->audioDataStartPosBytes);
++	int32_t audioEnd = audioStart + static_cast<int32_t>(offsetSample->audioDataLengthBytes);
++	int32_t physLen = audioEnd - audioStart;
++	int32_t farEnd = forward ? audioEnd : (audioStart - bytesPerFrame);
++	int32_t splitRestart = forward ? audioStart : (audioEnd - bytesPerFrame);
++
++	int64_t offsetBytes = ((int64_t)startOffsetParam * physLen) >> 30;
++	int32_t byteShift = static_cast<int32_t>(offsetBytes);
++	byteShift = (byteShift / bytesPerFrame) * bytesPerFrame;
++
++	if (physLen <= bytesPerFrame || byteShift == 0) {
++		return;
++	}
++
++	if (!source.offsetWraps) {
++		int32_t newStart = forward ? (startByte + byteShift) : (startByte - byteShift);
++		// If the shift pushes before the sample start (negative offset), convert the overshoot to pre-roll silence
++		if (forward && newStart < audioStart) {
++			guide.preRollSamples = (audioStart - newStart) / bytesPerFrame;
++			newStart = audioStart;
++		}
++		else if (!forward && newStart > audioEnd - bytesPerFrame) {
++			guide.preRollSamples = (newStart - (audioEnd - bytesPerFrame)) / bytesPerFrame;
++			newStart = audioEnd - bytesPerFrame;
++		}
++		newStart = std::clamp(newStart, audioStart, audioEnd - bytesPerFrame);
++		newStart = audioStart + ((newStart - audioStart) / bytesPerFrame) * bytesPerFrame;
++		guide.startPlaybackAtByte = static_cast<uint32_t>(newStart);
++		return;
++	}
++
++	int32_t mod = ((byteShift % physLen) + physLen) % physLen;
++	mod = (mod / bytesPerFrame) * bytesPerFrame;
++	if (mod == 0) {
++		return;
++	}
++
++	auto wrapInSample = [&](int32_t pos) -> int32_t {
++		int32_t rel = ((pos - audioStart + mod) % physLen + physLen) % physLen;
++		return audioStart + (rel / bytesPerFrame) * bytesPerFrame;
++	};
++
++	int32_t newStart = wrapInSample(startByte);
++	guide.startPlaybackAtByte = static_cast<uint32_t>(newStart);
++
++	bool hasExplicitLoop = (guide.loopEndPlaybackAtByte != 0);
++	int32_t origLoopStart = static_cast<int32_t>(guide.loopStartPlaybackAtByte);
++	int32_t origLoopEnd = static_cast<int32_t>(guide.loopEndPlaybackAtByte);
++
++	int32_t newEnd = wrapInSample(endByte);
++	if (forward && newEnd == audioStart) {
++		newEnd = audioEnd;
++	}
++
++	bool windowWraps = forward ? (newEnd <= newStart) : (newStart <= newEnd);
++	guide.endPlaybackAtByte = static_cast<uint32_t>(windowWraps ? farEnd : newEnd);
++
++	if (hasExplicitLoop) {
++		int32_t newLoopStart = wrapInSample(origLoopStart);
++		int32_t newLoopEnd = wrapInSample(origLoopEnd);
++		if (forward && newLoopEnd == audioStart) {
++			newLoopEnd = audioEnd;
++		}
++		bool loopWraps = forward ? (newLoopEnd <= newLoopStart) : (newLoopStart <= newLoopEnd);
++
++		guide.loopStartPlaybackAtByte = static_cast<uint32_t>(newLoopStart);
++		guide.loopEndPlaybackAtByte = static_cast<uint32_t>(newLoopEnd);
++
++		if (loopWraps) {
++			guide.loopSplit = true;
++			guide.loopWrapPhase = 1;
++			guide.wrapAroundRestartByte = static_cast<uint32_t>(splitRestart);
++			guide.endPlaybackAtByte = static_cast<uint32_t>(farEnd);
++		}
++
++		// Start already at or past the loop end: play to the sample end first, then wrap
++		int32_t sp = static_cast<int32_t>(guide.startPlaybackAtByte);
++		int32_t le = static_cast<int32_t>(guide.loopEndPlaybackAtByte);
++		if ((sp - le) * guide.playDirection >= 0) {
++			guide.wrapAroundPending = true;
++			guide.wrapAroundRestartByte = static_cast<uint32_t>(splitRestart);
++		}
++	}
++	// For synced STRETCH, the time stretcher manages position wrapping via wrapSyncPosition, so don't set up
++	// loopSplit (its one-shot mechanism would kill the voice after one cycle, as STRETCH isn't a looping mode)
++	else if (windowWraps && !synced) {
++		guide.loopSplit = true;
++		guide.loopEndPlaybackAtByte = static_cast<uint32_t>(newEnd);
++		guide.loopStartPlaybackAtByte = static_cast<uint32_t>(newStart);
++		guide.loopWrapPhase = 1;
++		guide.wrapAroundRestartByte = static_cast<uint32_t>(splitRestart);
++	}
++	// For synced STRETCH with a wrapped window, the time stretcher positions heads anywhere in the sample via
++	// hopEnd(), so loop back to the physical start to give the reader the full sample
++	else {
++		guide.loopStartPlaybackAtByte = static_cast<uint32_t>((synced && windowWraps) ? audioStart : newStart);
++	}
++
++	if (guide.loopSplit && source.repeatMode != SampleRepeatMode::LOOP) {
++		guide.oneShotWrap = true;
++	}
++}
++
+ uint32_t lastSoundOrder = 0;
+ 
+ // Returns false if fail and we need to unassign again
+@@ -176,6 +319,7 @@ bool Voice::noteOn(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBefo
  
  		lastSaturationTanHWorkingValue[0] = 2147483648;
  		lastSaturationTanHWorkingValue[1] = 2147483648;
@@ -9501,7 +10178,38 @@ index ccc3f332..c1881f94 100644
  	}
  
  	// Porta
-@@ -733,6 +738,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -217,6 +361,8 @@ bool Voice::noteOn(ModelStackWithSoundFlags* modelStack, int32_t newNoteCodeBefo
+ 		// Various stuff in this block is only relevant for OscType::SAMPLE, but no real harm in it just happening in
+ 		// other cases.
+ 		guides[s].audioFileHolder = nullptr;
++		guides[s].preRollSamples = 0;
++		guides[s].hasStartOffset = false;
+ 
+ 		bool sourceEverActive = modelStack->checkSourceEverActive(s);
+ 		if (sourceEverActive) [[likely]] {
+@@ -297,6 +443,11 @@ activenessDetermined:
+ 			source->sampleControls.invertReversed = sound.invertReversed; // Copy the temporary flag from the sound
+ 			guides[s].setupPlaybackBounds(source->sampleControls.isCurrentlyReversed());
+ 
++			// Apply sample start offset (a patched param, so includes velocity / LFO / p-lock modulation)
++			int32_t startOffsetParam = paramFinalValues[params::LOCAL_OSC_A_START_OFFSET + s];
++			lastAppliedStartOffset[s] = startOffsetParam;
++			applyStartOffsetToGuide(guides[s], *source, startOffsetParam);
++
+ 			// if (source->repeatMode == SampleRepeatMode::STRETCH) samplesLateHere = 0;
+ 		}
+ 
+@@ -652,6 +803,9 @@ bool Voice::sampleZoneChanged(ModelStackWithSoundFlags* modelStack, int32_t s, M
+ 	Sample* sample = (Sample*)holder->audioFile;
+ 
+ 	guides[s].setupPlaybackBounds(source.sampleControls.isCurrentlyReversed());
++	guides[s].wrapAroundPending = false;
++	guides[s].loopSplit = false;
++	guides[s].loopWrapPhase = 0;
+ 
+ 	LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
+ 
+@@ -733,6 +887,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  		noteOff(modelStack);
  	}
  
@@ -9512,7 +10220,7 @@ index ccc3f332..c1881f94 100644
  	// Do envelopes - if they're patched to something (always do the first one though)
  	for (int32_t e = 0; e < kNumEnvelopes; e++) {
  		if (e == 0
-@@ -743,10 +752,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -743,10 +901,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  			if (e == 0 && overrideAmplitudeEnvelopeReleaseRate) {
  				release = overrideAmplitudeEnvelopeReleaseRate;
  			}
@@ -9527,7 +10235,29 @@ index ccc3f332..c1881f94 100644
  			uint32_t anyChange = (old != sourceValues[util::to_underlying(PatchSource::ENVELOPE_0) + e]);
  			sourcesChanged |= anyChange << (util::to_underlying(PatchSource::ENVELOPE_0) + e);
  		}
-@@ -1522,7 +1531,7 @@ skipUnisonPart: {}
+@@ -923,6 +1081,21 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+ 					int32_t bytesLeft =
+ 					    (int32_t)((uint32_t)guides[s].endPlaybackAtByte - (uint32_t)bytePos) * guides[s].playDirection;
+ 
++					// Split-loop (wrapping offset for ONCE): account for total remaining playback across both phases
++					// so auto-release doesn't trigger prematurely during the short first phase near the sample end.
++					if (guides[s].loopSplit && !guides[s].oneShotComplete) {
++						if (guides[s].loopWrapPhase == 1) {
++							// Phase 1 (near-end -> sample end): add phase 2 length
++							bytesLeft += (int32_t)(guides[s].loopEndPlaybackAtByte - guides[s].wrapAroundRestartByte)
++							             * guides[s].playDirection;
++						}
++						else if (guides[s].loopWrapPhase == 2) {
++							// Phase 2 (start -> loopEnd): use loopEnd as the actual end
++							bytesLeft = (int32_t)((uint32_t)guides[s].loopEndPlaybackAtByte - (uint32_t)bytePos)
++							            * guides[s].playDirection;
++						}
++					}
++
+ 					Source* source = &sound.sources[s];
+ 					int32_t bytesPerSample = sample->byteDepth * sample->numChannels;
+ 
+@@ -1522,7 +1695,7 @@ skipUnisonPart: {}
  		filterSet.renderLongStereo(oscBuffer, oscBufferEnd);
  
  		// No clipping
@@ -9536,7 +10266,7 @@ index ccc3f332..c1881f94 100644
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
-@@ -1550,7 +1559,38 @@ skipUnisonPart: {}
+@@ -1550,7 +1723,38 @@ skipUnisonPart: {}
  			} while (oscBufferPos != oscBufferEnd);
  		}
  
@@ -9576,7 +10306,7 @@ index ccc3f332..c1881f94 100644
  		else {
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
-@@ -1606,7 +1646,7 @@ skipUnisonPart: {}
+@@ -1606,7 +1810,7 @@ skipUnisonPart: {}
  		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples);
  
  		// No clipping
@@ -9585,7 +10315,7 @@ index ccc3f332..c1881f94 100644
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
  			int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
-@@ -1635,7 +1675,39 @@ skipUnisonPart: {}
+@@ -1635,7 +1839,39 @@ skipUnisonPart: {}
  			} while (++oscBufferPos != oscBufferEnd);
  		}
  
@@ -9626,7 +10356,134 @@ index ccc3f332..c1881f94 100644
  		else {
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
-@@ -2444,6 +2516,34 @@ dontUseCache: {}
+@@ -1966,6 +2202,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
+ 
+ 	GeneralMemoryAllocator::get().checkStack("Voice::renderBasicSource");
+ 
++	// Consume pre-roll silence for negative sample start offset.
++	// Moves the audio start later in the buffer so the first N samples stay silent.
++	if (sound.sources[s].oscType == OscType::SAMPLE && guides[s].preRollSamples > 0) {
++		int32_t samplesToSkip = std::min(guides[s].preRollSamples, numSamples);
++		guides[s].preRollSamples -= samplesToSkip;
++		if (samplesToSkip >= numSamples) {
++			return; // Entire block is silence
++		}
++		numSamples -= samplesToSkip;
++		oscBuffer += samplesToSkip * (stereoBuffer ? 2 : 1);
++		sourceAmplitude += amplitudeIncrement * samplesToSkip;
++	}
++
++	// Live offset update: if the start offset param changed since note-on (or last update), update playback so the
++	// change is audible immediately. Only for looping modes - one-shots just take the new offset at the next note.
++	if (sound.sources[s].oscType == OscType::SAMPLE && guides[s].audioFileHolder
++	    && (sound.sources[s].repeatMode == SampleRepeatMode::LOOP
++	        || sound.sources[s].repeatMode == SampleRepeatMode::STRETCH)) {
++		int32_t currentOffset = paramFinalValues[params::LOCAL_OSC_A_START_OFFSET + s];
++		if (currentOffset != lastAppliedStartOffset[s]) {
++			// Save old start position to compute the byte shift
++			uint32_t oldStartByte = guides[s].startPlaybackAtByte;
++
++			bool reversed = sound.sources[s].sampleControls.isCurrentlyReversed();
++			guides[s].setupPlaybackBounds(reversed);
++			applyStartOffsetToGuide(guides[s], sound.sources[s], currentOffset);
++
++			// For non-wrapping offset with no explicit loop start marker, also shift the loop restart point so the
++			// loop region moves.
++			if (!sound.sources[s].offsetWraps) {
++				auto* holder = static_cast<SampleHolderForVoice*>(guides[s].audioFileHolder);
++				int32_t loopStartMarker = reversed ? holder->loopEndPos : holder->loopStartPos;
++				if (!loopStartMarker) {
++					guides[s].loopStartPlaybackAtByte = guides[s].startPlaybackAtByte;
++				}
++			}
++
++			// STRETCH: kill the time stretcher so it recreates on the next render with the updated
++			// startPlaybackAtByte. Letting the old one continue would make its hopEnd() sync calculation jump.
++			if (sound.sources[s].repeatMode == SampleRepeatMode::STRETCH) {
++				for (int32_t iu = 0; iu < sound.numUnison; iu++) {
++					auto* vups = &unisonParts[iu].sources[s];
++					if (vups->active && vups->voiceSample && vups->voiceSample->timeStretcher) {
++						vups->voiceSample->endTimeStretching();
++					}
++				}
++			}
++
++			// LOOP: shift each reader's position by the offset delta so the change is audible immediately
++			else {
++				Sample* offsetSample = static_cast<Sample*>(guides[s].audioFileHolder->audioFile);
++				int32_t audioStart = static_cast<int32_t>(offsetSample->audioDataStartPosBytes);
++				int32_t physLen = static_cast<int32_t>(offsetSample->audioDataLengthBytes);
++				int32_t bytesPerFrame = offsetSample->numChannels * offsetSample->byteDepth;
++				int32_t byteShift =
++				    static_cast<int32_t>(guides[s].startPlaybackAtByte) - static_cast<int32_t>(oldStartByte);
++
++				for (int32_t iu = 0; iu < sound.numUnison; iu++) {
++					auto* vups = &unisonParts[iu].sources[s];
++					if (vups->active && vups->voiceSample) {
++						VoiceSample* vs = vups->voiceSample;
++						int32_t currentByte = vs->getPlayByteLowLevel(offsetSample, &guides[s]);
++						int32_t newByte = currentByte + byteShift;
++						// Wrap within loop region to prevent excessive boundary bouncing in changeClusterIfNecessary
++						int32_t loopStart = static_cast<int32_t>(guides[s].loopStartPlaybackAtByte);
++						int32_t loopEnd =
++						    static_cast<int32_t>(guides[s].loopEndPlaybackAtByte ? guides[s].loopEndPlaybackAtByte
++						                                                         : guides[s].endPlaybackAtByte);
++						int32_t loopLen = loopEnd - loopStart;
++						if (loopLen > bytesPerFrame) {
++							int32_t rel = ((newByte - loopStart) % loopLen + loopLen) % loopLen;
++							newByte = loopStart + (rel / bytesPerFrame) * bytesPerFrame;
++						}
++						else if (physLen > 0 && bytesPerFrame > 0) {
++							int32_t rel = ((newByte - audioStart) % physLen + physLen) % physLen;
++							newByte = audioStart + (rel / bytesPerFrame) * bytesPerFrame;
++						}
++						if (vs->cache) {
++							LoopType lt = guides[s].getLoopingType(sound.sources[s]);
++							vs->stopUsingCache(&guides[s], offsetSample, getPriorityRating(), lt != LoopType::NONE);
++						}
++						if (vs->timeStretcher) {
++							vs->endTimeStretching();
++						}
++						vs->unassignAllReasons(false);
++						if (!vs->setupClustersForPlayFromByte(&guides[s], offsetSample, newByte, getPriorityRating())) {
++							vs->pendingSamplesLate = 1;
++						}
++					}
++				}
++			}
++			lastAppliedStartOffset[s] = currentOffset;
++		}
++	}
++
+ 	// For each unison part
+ 	for (int32_t u = 0; u < sound.numUnison; u++) {
+ 
+@@ -2116,6 +2447,11 @@ pitchTooHigh:
+ 
+ 			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
+ 
++			// One-shot split-loop completed - stop the voice immediately
++			if (guides[s].oneShotComplete) {
++				goto instantUnassign;
++			}
++
+ 			int32_t interpolationBufferSize;
+ 
+ 			// If pitch adjustment...
+@@ -2133,6 +2469,12 @@ pitchTooHigh:
+ 				if (!voiceSample->doneFirstRenderYet && !tryToStartMidNote
+ 				    && portaEnvelopePos == 0xFFFFFFFF) { // No porta
+ 
++					// The cache plays from the unshifted sample start and can't represent a split loop, so bypass it
++					// whenever a start offset is active
++					if (guides[s].hasStartOffset) {
++						goto dontUseCache;
++					}
++
+ 					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
+ 					// accurate
+ 					if (loopingType != LoopType::NONE) {
+@@ -2444,6 +2786,34 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -9662,7 +10519,7 @@ index ccc3f332..c1881f94 100644
  			// Or regular wave
  		}
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e2..7b141664 100644
+index 33be91e2..e512bdec 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
 @@ -18,7 +18,9 @@
@@ -9675,7 +10532,7 @@ index 33be91e2..7b141664 100644
  #include "model/voice/voice_sample_playback_guide.h"
  #include "model/voice/voice_unison_part.h"
  #include "modulation/envelope.h"
-@@ -74,6 +76,7 @@ public:
+@@ -74,11 +76,13 @@ public:
  	int32_t portaEnvelopeMaxAmplitude;
  
  	std::array<uint32_t, 2> lastSaturationTanHWorkingValue;
@@ -9683,11 +10540,328 @@ index 33be91e2..7b141664 100644
  
  	int32_t overallOscAmplitudeLastTime;
  	std::array<int32_t, kNumSources> sourceAmplitudesLastTime;
+ 	std::array<int32_t, kNumModulators> modulatorAmplitudeLastTime;
+ 	std::array<uint32_t, kNumSources> sourceWaveIndexesLastTime;
++	std::array<int32_t, kNumSources> lastAppliedStartOffset{};
+ 
+ 	int32_t filterGainLastTime;
+ 	bool doneFirstRender;
+@@ -159,4 +163,5 @@ private:
+ 	bool areAllUnisonPartsInactive(ModelStackWithSoundFlags& modelStack) const;
+ 	void setupPorta(const Sound& sound);
+ 	int32_t combineExpressionValues(const Sound& sound, int32_t expressionDimension) const;
++	void applyStartOffsetToGuide(VoiceSamplePlaybackGuide& guide, const Source& source, int32_t startOffsetParam);
+ };
+diff --git a/src/deluge/model/voice/voice_sample.cpp b/src/deluge/model/voice/voice_sample.cpp
+index 27539505..a2c41388 100644
+--- a/src/deluge/model/voice/voice_sample.cpp
++++ b/src/deluge/model/voice/voice_sample.cpp
+@@ -528,6 +528,16 @@ bool VoiceSample::render(SamplePlaybackGuide* guide, int32_t* __restrict__ outpu
+ 
+ 		// If we should be time stretching now...
+ 		if (timeStretchRatio != kMaxSampleValue) {
++			// With a start offset, clusters may not be loaded yet (playback shifted outside the pre-loaded region, or
++			// a loop restart couldn't load the next cluster). A time stretcher created with unloaded clusters has both
++			// read heads die at once, restarting from the wrong position. Stay alive and let the late-start
++			// mechanism load the cluster on the next render.
++			if (guide->hasStartOffset && !timeStretcher && (!clusters[0] || !clusters[0]->loaded)) {
++				if (!pendingSamplesLate) {
++					pendingSamplesLate = 1;
++				}
++				return true;
++			}
+ 			bool stillGoing = weShouldBeTimeStretchingNow(sample, guide, numSamples, phaseIncrement, timeStretchRatio,
+ 			                                              playDirection, priorityRating, loopingType);
+ 			if (!stillGoing) {
+@@ -1017,9 +1027,12 @@ assessLoopPointAgainTimestretched:
+ 
+ 							D_PRINTLN("loop point reached, timestretching");
+ 
+-							int32_t newSamplePos =
+-							    (uint32_t)(guide->getBytePosToStartPlayback(true) - sample->audioDataStartPosBytes)
+-							    / (uint8_t)bytesPerSample; // Not including the overshoot yet
++							int32_t newStartByte = guide->getBytePosToStartPlayback(true);
++							if (guide->hasStartOffset) {
++								static_cast<VoiceSamplePlaybackGuide*>(guide)->phaseAdvancedByBoundaryCheck = true;
++							}
++							int32_t newSamplePos = (uint32_t)(newStartByte - sample->audioDataStartPosBytes)
++							                       / (uint8_t)bytesPerSample; // Not including the overshoot yet
+ 							int64_t newSamplePosBigOvershot =
+ 							    ((int64_t)newSamplePos << 24) - combinedIncrementingLeftToDo;
+ 
+@@ -1027,6 +1040,10 @@ assessLoopPointAgainTimestretched:
+ 							                      timeStretchRatio, phaseIncrement, combinedIncrement, playDirection,
+ 							                      loopingType, priorityRating);
+ 
++							// Refresh boundary for the new phase - split-loop transitions change the end position, and
++							// the stale value would cause incorrect overshoot detection on the next iteration.
++							reassessmentPos = guide->getBytePosToEndOrLoopPlayback();
++
+ 							// Without this bound, a tiny loop at an extreme stretch could hang the audio routine
+ 							// forever
+ 							if (count >= 1024) {
+@@ -1075,6 +1092,19 @@ readNonTimestretched:
+ 			    interpolationBufferSize, (cache != nullptr),
+ 			    priorityRating); // Keep it reading silence forever so we can definitely fill up the cache
+ 			if (!stillActive) {
++				if (guide->hasStartOffset) {
++					auto* vg = static_cast<VoiceSamplePlaybackGuide*>(guide);
++					if (vg->loopSplit && !vg->oneShotComplete) {
++						// Cluster loading failed during a split-loop phase transition. The phase was already advanced
++						// by getBytePosToStartPlayback(true) inside setupClusersForInitialPlay. Defer to late-start.
++						int32_t restartByte = (vg->loopWrapPhase == 2) ? static_cast<int32_t>(vg->wrapAroundRestartByte)
++						                                               : vg->loopStartPlaybackAtByte;
++						unassignAllReasons(false);
++						guide->startPlaybackAtByte = static_cast<uint32_t>(restartByte);
++						pendingSamplesLate = 1;
++						return true;
++					}
++				}
+ 				return false;
+ 			}
+ 
+@@ -1123,6 +1153,12 @@ readNonTimestretched:
+ 
+ 			// AudioEngine::logAction("yes timestretching");
+ 
++			// For split-loop, disable low-level looping on the time stretcher read heads. Non-synced: the boundary
++			// check above handles phase transitions. Synced: hopEnd wraps the position within the physical sample.
++			// Either way, read-head looping would call getBytePosToStartPlayback(true) and double-advance the phase.
++			bool splitLoopActive = guide->hasStartOffset && static_cast<VoiceSamplePlaybackGuide*>(guide)->loopSplit;
++			bool tsLowLevelLoop = (loopingType == LoopType::LOW_LEVEL) && !splitLoopActive;
++
+ 			int32_t* timeStretchResultWritePos;
+ 			int32_t numChannelsInTimeStretchResult;
+ 
+@@ -1187,10 +1223,14 @@ readTimestretched:
+ 
+ 						// Check this again, cos newer play-head can become inactive in hopEnd(). This probably isn't
+ 						// really crucial. Added June 2019
+-						if (!cache && loopingType == LoopType::NONE
+-						    && !timeStretcher->playHeadStillActive[PLAY_HEAD_OLDER]
++						if (!cache && !timeStretcher->playHeadStillActive[PLAY_HEAD_OLDER]
+ 						    && !timeStretcher->playHeadStillActive[PLAY_HEAD_NEWER]) {
+-							return false;
++							if (loopingType == LoopType::NONE) {
++								return false;
++							}
++							if (guide->hasStartOffset) {
++								return restartTimeStretchingWithStartOffset(guide, sample, priorityRating);
++							}
+ 						}
+ 					}
+ 					else {
+@@ -1323,8 +1363,8 @@ readNewerHead:
+ 					bool success = readSamplesForTimeStretching(
+ 					    timeStretchResultWritePos, guide, sample, numSamplesThisTimestretchedRead,
+ 					    sampleSourceNumChannels, numChannelsInTimeStretchResult, phaseIncrement,
+-					    newerSourceAmplitudeNow, newerAmplitudeIncrementNow, (loopingType == LoopType::LOW_LEVEL),
+-					    jumpAmount, interpolationBufferSize, timeStretcher,
++					    newerSourceAmplitudeNow, newerAmplitudeIncrementNow, tsLowLevelLoop, jumpAmount,
++					    interpolationBufferSize, timeStretcher,
+ #if TIME_STRETCH_ENABLE_BUFFER
+ 					    (timeStretcher->bufferFillingMode == BUFFER_FILLING_NEWER),
+ #else
+@@ -1359,8 +1399,8 @@ readOlderHeadUnbuffered:
+ 					bool success = timeStretcher->olderPartReader.readSamplesForTimeStretching(
+ 					    timeStretchResultWritePos, guide, sample, numSamplesThisTimestretchedRead,
+ 					    sampleSourceNumChannels, numChannelsInTimeStretchResult, phaseIncrement,
+-					    olderSourceAmplitudeNow, olderAmplitudeIncrementNow, (loopingType == LoopType::LOW_LEVEL),
+-					    jumpAmount, interpolationBufferSize, timeStretcher,
++					    olderSourceAmplitudeNow, olderAmplitudeIncrementNow, tsLowLevelLoop, jumpAmount,
++					    interpolationBufferSize, timeStretcher,
+ #if TIME_STRETCH_ENABLE_BUFFER
+ 					    (timeStretcher->bufferFillingMode == BUFFER_FILLING_OLDER),
+ #else
+@@ -1431,9 +1471,14 @@ headsFinishedReading:
+ 			}
+ #endif
+ 
+-			if (!cache && loopingType == LoopType::NONE && !timeStretcher->playHeadStillActive[PLAY_HEAD_OLDER]
++			if (!cache && !timeStretcher->playHeadStillActive[PLAY_HEAD_OLDER]
+ 			    && !timeStretcher->playHeadStillActive[PLAY_HEAD_NEWER]) {
+-				return false;
++				if (loopingType == LoopType::NONE) {
++					return false;
++				}
++				if (guide->hasStartOffset) {
++					return restartTimeStretchingWithStartOffset(guide, sample, priorityRating);
++				}
+ 			}
+ 
+ 			timeStretcher->samplesTilHopEnd -= numSamplesThisTimestretchedRead;
+@@ -1795,3 +1840,39 @@ bool VoiceSample::possiblySetUpCache(SampleControls* sampleControls, SamplePlayb
+ 
+ 	return true;
+ }
++
++// Both time stretcher play heads died while looping with a start offset (they regularly cross the physical sample
++// boundary). Restart from the right place; weShouldBeTimeStretchingNow() re-creates the time stretcher next render.
++// Returns false if the voice should end.
++bool VoiceSample::restartTimeStretchingWithStartOffset(SamplePlaybackGuide* guide, Sample* sample,
++                                                       int32_t priorityRating) {
++	auto* vg = static_cast<VoiceSamplePlaybackGuide*>(guide);
++	unassignAllReasons(false);
++	endTimeStretching();
++
++	int32_t restartByte;
++	if (vg->loopSplit) {
++		if (vg->oneShotComplete) {
++			return false; // One-shot cycle done
++		}
++		if (vg->phaseAdvancedByBoundaryCheck) {
++			// Boundary check already advanced the phase via getBytePosToStartPlayback(true). Use current phase start.
++			restartByte = (vg->loopWrapPhase == 2) ? static_cast<int32_t>(vg->wrapAroundRestartByte)
++			                                       : vg->loopStartPlaybackAtByte;
++			vg->phaseAdvancedByBoundaryCheck = false;
++		}
++		else {
++			// Read heads outran samplePosBig (pitched-down stretching). Boundary check didn't fire, so advance here.
++			restartByte = vg->getBytePosToStartPlayback(true);
++		}
++		if (!setupClustersForPlayFromByte(guide, sample, restartByte, priorityRating)) {
++			unassignAllReasons(false);
++			guide->startPlaybackAtByte = static_cast<uint32_t>(restartByte);
++			pendingSamplesLate = 1;
++		}
++	}
++	else if (!setupClusersForInitialPlay(guide, sample, 0, true, priorityRating)) {
++		pendingSamplesLate = 1;
++	}
++	return true;
++}
+diff --git a/src/deluge/model/voice/voice_sample.h b/src/deluge/model/voice/voice_sample.h
+index 5b006d27..75427f7f 100644
+--- a/src/deluge/model/voice/voice_sample.h
++++ b/src/deluge/model/voice/voice_sample.h
+@@ -95,6 +95,7 @@ public:
+ 	bool writingToCache = false; // Value is only valid if cache assigned
+ 
+ private:
++	bool restartTimeStretchingWithStartOffset(SamplePlaybackGuide* guide, Sample* sample, int32_t priorityRating);
+ 	bool weShouldBeTimeStretchingNow(Sample* sample, SamplePlaybackGuide* guide, int32_t numSamples,
+ 	                                 int32_t phaseIncrement, int32_t timeStretchRatio, int32_t playDirection,
+ 	                                 int32_t priorityRating, LoopType loopingType);
+diff --git a/src/deluge/model/voice/voice_sample_playback_guide.cpp b/src/deluge/model/voice/voice_sample_playback_guide.cpp
+index 771123d6..bc962fe4 100644
+--- a/src/deluge/model/voice/voice_sample_playback_guide.cpp
++++ b/src/deluge/model/voice/voice_sample_playback_guide.cpp
+@@ -71,31 +71,68 @@ void VoiceSamplePlaybackGuide::setupPlaybackBounds(bool reversed) {
+ // This is, whether to obey the loop-end point as opposed to the actual end-of-sample point (which sometimes might cause
+ // looping too)
+ bool VoiceSamplePlaybackGuide::shouldObeyLoopEndPointNow() {
+-	return (loopEndPlaybackAtByte && !noteOffReceived);
++	// During split-loop, the loop end defines the phase boundary and must
++	// always be respected (even after note-off) to maintain correct wrapping.
++	return (loopEndPlaybackAtByte && (!noteOffReceived || loopSplit));
+ }
+ 
+ int32_t VoiceSamplePlaybackGuide::getBytePosToStartPlayback(bool justLooped) {
++	if (justLooped && wrapAroundPending) {
++		wrapAroundPending = false;
++		if (loopSplit) {
++			loopWrapPhase = 2; // After initial wrap or phase 1, enter phase 2
++		}
++		return static_cast<int32_t>(wrapAroundRestartByte);
++	}
+ 	if (!justLooped) {
+ 		return SamplePlaybackGuide::getBytePosToStartPlayback(justLooped);
+ 	}
+-	else {
++	if (loopWrapPhase == 2) {
++		if (oneShotWrap) {
++			// One full cycle through both phases complete.
++			// Mark done so getLoopingType() returns NONE on the next render.
++			oneShotWrap = false;
++			oneShotComplete = true;
++		}
++		// Phase 2->1: finished playing sampleStart->loopEnd, restart at loopStart
++		loopWrapPhase = 1;
+ 		return loopStartPlaybackAtByte;
+ 	}
++	if (loopWrapPhase == 1) {
++		// Phase 1->2: finished playing loopStart->sampleEnd, restart at sampleStart
++		loopWrapPhase = 2;
++		return static_cast<int32_t>(wrapAroundRestartByte);
++	}
++	return loopStartPlaybackAtByte;
+ }
+ 
+ // This is actually an important function whose output is the basis for a lot of stuff
+ int32_t VoiceSamplePlaybackGuide::getBytePosToEndOrLoopPlayback() {
++	if (wrapAroundPending || loopWrapPhase == 1) {
++		// Phase 1 or initial wrap: play to sample end
++		return SamplePlaybackGuide::getBytePosToEndOrLoopPlayback();
++	}
+ 	if (shouldObeyLoopEndPointNow()) {
++		// Phase 2 or normal: play to loop end
+ 		return loopEndPlaybackAtByte;
+ 	}
+-	else {
+-		return SamplePlaybackGuide::getBytePosToEndOrLoopPlayback();
+-	}
++	return SamplePlaybackGuide::getBytePosToEndOrLoopPlayback();
+ }
+ 
+ LoopType VoiceSamplePlaybackGuide::getLoopingType(const Source& source) const {
+ 	if (loopEndPlaybackAtByte) {
++		if (loopSplit) {
++			return oneShotComplete ? LoopType::NONE : LoopType::LOW_LEVEL;
++		}
+ 		return noteOffReceived ? LoopType::NONE : LoopType::LOW_LEVEL;
+ 	}
+-	return (source.repeatMode == SampleRepeatMode::LOOP) ? LoopType::LOW_LEVEL : LoopType::NONE;
++	if (source.repeatMode == SampleRepeatMode::LOOP) {
++		return LoopType::LOW_LEVEL;
++	}
++	// Enable looping for STRETCH mode when start offset is active,
++	// so the time stretcher wraps around instead of stopping at the sample end
++	if (wrapSyncPosition) {
++		return LoopType::LOW_LEVEL;
++	}
++	return LoopType::NONE;
+ }
+diff --git a/src/deluge/model/voice/voice_sample_playback_guide.h b/src/deluge/model/voice/voice_sample_playback_guide.h
+index 1640f0db..25458b22 100644
+--- a/src/deluge/model/voice/voice_sample_playback_guide.h
++++ b/src/deluge/model/voice/voice_sample_playback_guide.h
+@@ -43,5 +43,14 @@ public:
+ 	                                  // so it can just be referred to when looping happens
+ 	uint32_t loopEndPlaybackAtByte;   // 0 means disabled
+ 
++	int32_t preRollSamples{0}; // Output samples of silence before playback starts (negative start offset)
++
+ 	bool noteOffReceived;
++	bool wrapAroundPending{false};            // When start offset puts play pos past loop end, play to sample end first
++	uint32_t wrapAroundRestartByte{0};        // Original sample start byte for wrap-around restart
++	bool loopSplit{false};                    // Loop region crosses sample boundary after offset shift
++	bool oneShotWrap{false};                  // Play through split-loop once then stop (CUT/ONCE audition)
++	bool oneShotComplete{false};              // Set after one-shot wrap cycle finishes; getLoopingType returns NONE
++	bool phaseAdvancedByBoundaryCheck{false}; // Boundary check (samplePosBig) already advanced the phase
++	uint8_t loopWrapPhase{0};                 // 0=normal, 1=loopStart->sampleEnd, 2=sampleStart->loopEnd
+ };
 diff --git a/src/deluge/model/voice/voice_unison_part_source.cpp b/src/deluge/model/voice/voice_unison_part_source.cpp
-index ad8bb93d..ef4963f1 100644
+index ad8bb93d..f5e5c665 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.cpp
 +++ b/src/deluge/model/voice/voice_unison_part_source.cpp
-@@ -80,6 +80,9 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+@@ -61,7 +61,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+ 		if (samplesLate != 0u) {
+ 			return true; // We're finished in this case
+ 		}
+-		return voiceSample->setupClusersForInitialPlay(guide, (Sample*)guide->audioFileHolder->audioFile, 0, false, 1);
++		if (!voiceSample->setupClusersForInitialPlay(guide, (Sample*)guide->audioFileHolder->audioFile, 0, false, 1)) {
++			if (!guide->hasStartOffset) {
++				return false;
++			}
++			// The start offset may have moved playback outside the pre-loaded region, so the first cluster may not
++			// be loaded yet. Defer to the late-start mechanism, which retries each render.
++			voiceSample->pendingSamplesLate = 1;
++		}
++		return true;
+ 	}
+ 
+ 	if (synthMode != SynthMode::FM
+@@ -80,6 +88,9 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
  		DxPatch* patch = source->ensureDxPatch();
  		dxVoice->init(*patch, voice->noteCodeAfterArpeggiation, velocity);
  	}
@@ -9780,10 +10954,38 @@ index 260849c6..8ef83665 100644
  	                          uint32_t newFastReleaseIncrement = SOFT_CULL_INCREMENT);
  	void unconditionalOff();
 diff --git a/src/deluge/modulation/params/param.cpp b/src/deluge/modulation/params/param.cpp
-index 6d45cbe3..47ad42b9 100644
+index 6d45cbe3..efda8413 100644
 --- a/src/deluge/modulation/params/param.cpp
 +++ b/src/deluge/modulation/params/param.cpp
-@@ -357,6 +357,12 @@ char const* getParamDisplayName(Kind kind, int32_t p, ModControllableAudio* modC
+@@ -28,6 +28,9 @@
+ namespace deluge::modulation::params {
+ 
+ bool isParamBipolar(Kind kind, int32_t paramID) {
++	if (kind == Kind::PATCHED && (paramID == LOCAL_OSC_A_START_OFFSET || paramID == LOCAL_OSC_B_START_OFFSET)) {
++		return true;
++	}
+ 	return (kind == Kind::PATCH_CABLE) || isParamPan(kind, paramID) || isParamPitch(kind, paramID)
+ 	       || isParamPitchBend(kind, paramID);
+ }
+@@ -137,6 +140,8 @@ char const* getPatchedParamShortName(ParamType type) {
+ 	    [LOCAL_OSC_A_WAVE_INDEX]         = "Osc1 wave",
+ 	    [LOCAL_OSC_B_WAVE_INDEX]         = "Osc2 wave",
+ 	    [LOCAL_PAN]                      = "Pan",
++	    [LOCAL_OSC_A_START_OFFSET]       = "Osc1 offset",
++	    [LOCAL_OSC_B_START_OFFSET]       = "Osc2 offset",
+ 	    [LOCAL_LPF_FREQ]                 = "LPf freq",
+ 	    [LOCAL_PITCH_ADJUST]             = "Pitch",
+ 	    [LOCAL_OSC_A_PITCH_ADJUST]       = "Osc1 pitch",
+@@ -226,6 +231,8 @@ char const* getPatchedParamDisplayName(int32_t p) {
+ 	    [LOCAL_OSC_A_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_A_WAVE_INDEX,
+ 	    [LOCAL_OSC_B_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_B_WAVE_INDEX,
+ 	    [LOCAL_PAN] = STRING_FOR_PARAM_LOCAL_PAN,
++	    [LOCAL_OSC_A_START_OFFSET] = STRING_FOR_PARAM_LOCAL_OSC_A_START_OFFSET,
++	    [LOCAL_OSC_B_START_OFFSET] = STRING_FOR_PARAM_LOCAL_OSC_B_START_OFFSET,
+ 	    [LOCAL_LPF_FREQ] = STRING_FOR_PARAM_LOCAL_LPF_FREQ,
+ 	    [LOCAL_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_PITCH_ADJUST,
+ 	    [LOCAL_OSC_A_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_OSC_A_PITCH_ADJUST,
+@@ -357,6 +364,12 @@ char const* getParamDisplayName(Kind kind, int32_t p, ModControllableAudio* modC
  	using enum l10n::String;
  
  	if (modControllable != nullptr) {
@@ -9796,6 +10998,45 @@ index 6d45cbe3..47ad42b9 100644
  		bool isLPFMorph = (kind == Kind::PATCHED && p == LOCAL_LPF_MORPH)
  		                  || (kind == Kind::UNPATCHED_GLOBAL && p == UnpatchedGlobal::UNPATCHED_LPF_MORPH);
  		bool isHPFMorph = (kind == Kind::PATCHED && p == LOCAL_HPF_MORPH)
+@@ -647,6 +660,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+ 		case LOCAL_PAN:
+ 			return "pan";
+ 
++		case LOCAL_OSC_A_START_OFFSET:
++			return "oscAStartOffset";
++
++		case LOCAL_OSC_B_START_OFFSET:
++			return "oscBStartOffset";
++
+ 		case LOCAL_MODULATOR_0_VOLUME:
+ 			return "modulator1Volume";
+ 
+diff --git a/src/deluge/modulation/params/param.h b/src/deluge/modulation/params/param.h
+index 6af0f7db..0aa9359d 100644
+--- a/src/deluge/modulation/params/param.h
++++ b/src/deluge/modulation/params/param.h
+@@ -97,6 +97,8 @@ enum Local : ParamType {
+ 	LOCAL_OSC_A_WAVE_INDEX,
+ 	LOCAL_OSC_B_WAVE_INDEX,
+ 	LOCAL_PAN,
++	LOCAL_OSC_A_START_OFFSET, // Sample start offset for oscillator A (bipolar)
++	LOCAL_OSC_B_START_OFFSET, // Sample start offset for oscillator B (bipolar)
+ 
+ 	// Local exp params begin
+ 	FIRST_LOCAL_EXP,
+diff --git a/src/deluge/modulation/params/param_set.cpp b/src/deluge/modulation/params/param_set.cpp
+index 1fbf667e..c7278686 100644
+--- a/src/deluge/modulation/params/param_set.cpp
++++ b/src/deluge/modulation/params/param_set.cpp
+@@ -565,6 +565,8 @@ bool PatchedParamSet::shouldParamIndicateMiddleValue(ModelStackWithParamId const
+ 	case params::LOCAL_MODULATOR_1_PITCH_ADJUST:
+ 	case params::GLOBAL_DELAY_FEEDBACK:
+ 	case params::GLOBAL_DELAY_RATE:
++	case params::LOCAL_OSC_A_START_OFFSET:
++	case params::LOCAL_OSC_B_START_OFFSET:
+ 		return true;
+ 	default:
+ 		return false;
 diff --git a/src/deluge/playback/autofill.cpp b/src/deluge/playback/autofill.cpp
 new file mode 100644
 index 00000000..5eb0155a
@@ -10931,7 +12172,7 @@ index 00000000..ec61102b
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..5185db6d 100644
+index 8dd1ce44..8b6376fd 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -10949,7 +12190,16 @@ index 8dd1ce44..5185db6d 100644
  }
  
  constexpr Patcher::Config kPatcherConfigForSound = {
-@@ -221,6 +225,93 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
+@@ -177,6 +181,8 @@ void Sound::initParams(ParamManager* paramManager) {
+ 	patchedParams->params[params::GLOBAL_LFO_FREQ_2].setCurrentValueBasicForSetup(
+ 	    getParamFromUserValue(params::GLOBAL_LFO_FREQ_2, 30));
+ 	patchedParams->params[params::LOCAL_PAN].setCurrentValueBasicForSetup(0);
++	patchedParams->params[params::LOCAL_OSC_A_START_OFFSET].setCurrentValueBasicForSetup(0);
++	patchedParams->params[params::LOCAL_OSC_B_START_OFFSET].setCurrentValueBasicForSetup(0);
+ 	patchedParams->params[params::LOCAL_NOISE_VOLUME].setCurrentValueBasicForSetup(-2147483648);
+ 	patchedParams->params[params::GLOBAL_MOD_FX_DEPTH].setCurrentValueBasicForSetup(0);
+ 	patchedParams->params[params::GLOBAL_MOD_FX_RATE].setCurrentValueBasicForSetup(0);
+@@ -221,6 +227,93 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -11043,7 +12293,7 @@ index 8dd1ce44..5185db6d 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -325,6 +416,124 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +418,124 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -11168,7 +12418,7 @@ index 8dd1ce44..5185db6d 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -2541,9 +2750,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2752,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -11180,7 +12430,7 @@ index 8dd1ce44..5185db6d 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -3405,6 +3616,19 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3618,19 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -11200,7 +12450,28 @@ index 8dd1ce44..5185db6d 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3758,6 +3982,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3424,6 +3650,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+ 			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
+ 			reader.exitTag("timeStretchAmount");
+ 		}
++		else if (!strcmp(tagName, "offsetWraps")) {
++			source->offsetWraps = reader.readTagOrAttributeValueInt();
++			reader.exitTag("offsetWraps");
++		}
+ 		else if (!strcmp(tagName, "linearInterpolation")) {
+ 			if (reader.readTagOrAttributeValueInt()) {
+ 				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
+@@ -3634,6 +3864,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+ 		writer.writeAttribute("reversed", source->sampleControls.reversed);
+ 		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
+ 		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
++		if (!source->offsetWraps) {
++			writer.writeAttribute("offsetWraps", (int32_t)0);
++		}
+ 		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
+ 			writer.writeAttribute("linearInterpolation", 1);
+ 		}
+@@ -3758,6 +3991,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -11212,6 +12483,31 @@ index 8dd1ce44..5185db6d 100644
  		else {
  justCloseTag:
  			writer.closeTag();
+@@ -3847,6 +4085,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+ 		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
+ 		reader.exitTag("waveFold");
+ 	}
++	else if (!strcmp(tagName, "oscAStartOffset")) {
++		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_A_START_OFFSET, readAutomationUpToPos);
++		reader.exitTag("oscAStartOffset");
++	}
++	else if (!strcmp(tagName, "oscBStartOffset")) {
++		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_B_START_OFFSET, readAutomationUpToPos);
++		reader.exitTag("oscBStartOffset");
++	}
+ 
+ 	else if (!strcmp(tagName, "envelope1")) {
+ 		reader.match('{');
+@@ -4125,6 +4371,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+ 
+ 	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
+ 
++	patchedParams->writeParamAsAttribute(writer, "oscAStartOffset", params::LOCAL_OSC_A_START_OFFSET, writeAutomation);
++	patchedParams->writeParamAsAttribute(writer, "oscBStartOffset", params::LOCAL_OSC_B_START_OFFSET, writeAutomation);
++
+ 	writer.writeOpeningTagEnd();
+ 
+ 	// Envelopes
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
 index 9d2550b6..4fdc3d58 100644
 --- a/src/deluge/processing/sound/sound.h
@@ -11257,7 +12553,7 @@ index 9d2550b6..4fdc3d58 100644
  	uint32_t getSyncedLFOPhaseIncrement(const LFOConfig& config);
  
 diff --git a/src/deluge/processing/source.h b/src/deluge/processing/source.h
-index 20b6b289..50f38cb2 100644
+index 20b6b289..1974c207 100644
 --- a/src/deluge/processing/source.h
 +++ b/src/deluge/processing/source.h
 @@ -18,6 +18,7 @@
@@ -11268,7 +12564,7 @@ index 20b6b289..50f38cb2 100644
  #include "model/sample/sample_controls.h"
  #include "storage/multi_range/multi_range_array.h"
  #include "util/phase_increment_fine_tuner.h"
-@@ -46,6 +47,7 @@ public:
+@@ -46,9 +47,11 @@ public:
  
  	DxPatch* dxPatch;
  	bool dxPatchChanged = false;
@@ -11276,6 +12572,10 @@ index 20b6b289..50f38cb2 100644
  	SampleRepeatMode repeatMode;
  
  	int8_t timeStretchAmount;
++	bool offsetWraps{true}; // When true, start offset wraps the playhead around the sample; when false, it clamps
+ 
+ 	int16_t defaultRangeI; // -1 means none yet
+ 
 diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
 index fd2e3f80..02a885e5 100644
 --- a/src/deluge/storage/storage_manager.cpp

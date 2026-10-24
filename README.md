@@ -1,6 +1,6 @@
-# Deluge Bribes v1.5
+# Deluge Bribes v1.6
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds seven things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds eight things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
@@ -8,7 +8,8 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
 6. **Drum synth:** synthesised drums on any kit row, from five engines: the LXR-02's kick / tom, snare and cymbal / hat voices, and two more called Drom1 and Drom2. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
-7. **Saturation (new in v1.5):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
+7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
+8. **Sample start offset (new in v1.6):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -16,13 +17,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.5.bin`](firmware/deluge-bribes-v1.5.bin)
+[`firmware/deluge-bribes-v1.6.bin`](firmware/deluge-bribes-v1.6.bin)
 
-SHA-256: `950edf7b8174d8ab8cefb186d00e2c24ba6e0d767791ece25f0e0e97c660a442`
+SHA-256: `b3c706c5a29c95102b96b8c6990291c64510fecaa9a4d30a0b8eff2671b003cc`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.5.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.6.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -52,6 +53,8 @@ To go back, install an official firmware file the same way.
 | **Hold a row's audition pad + OSC1 TYPE pad** | Pick the engine's variant or LXR voice (drum synth rows) |
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | The engine's two key settings (drum synth rows). Hold a step and turn to parameter lock |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
+| **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
+| **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 
 7-segment display names are in brackets below.
 
@@ -335,6 +338,35 @@ Hold **Affect Entire** while turning either setting in a kit row's menu to set e
 - Saturation sits after the filters and the amp envelope, as before, so the sound's volume and velocity change how hard it drives.
 - The curves are antialiased, so high notes alias less than with the original, except Fold, which aliases when pushed hard on bright sounds, as digital folders do.
 
+## 8. Sample start offset
+
+Moves where a sample starts playing. It's a normal Deluge parameter, so every step can start from a different point.
+
+### Using it
+
+On any synth or kit row whose oscillator plays a sample:
+
+- **SHIFT + the PULSE WIDTH pad** in the OSC1 or OSC2 column opens **Start offset** (**OFST**) for that oscillator. Pulse width does nothing on a sample, so the pad is reused. On synth waveforms it's still pulse width.
+- The offset runs from **-512** to **+512**. **+256** starts halfway through the sample, and **+512** goes all the way round, back to the start. Negative values start earlier.
+- **Offset wrap** (**WRAP**), just after it in the oscillator menu, is on by default. Off, the start stops at the sample's edges, and a negative offset that would start before the sample plays silence first.
+
+### Per-step offsets
+
+- **Automation view:** press the oscillator's **PULSE WIDTH** pad, then tap pads in each step's column to draw the offset across the pattern.
+- **Gold knob:** in the Start offset menu, hold **LEARN** and turn a gold knob to put the offset on it. Then hold a step and turn that knob to lock the step.
+- **Mod matrix:** patch velocity, an LFO or an envelope to it like any other parameter. Velocity to offset makes harder hits start later in the sample, for example.
+
+### With loops
+
+- The whole playback window moves, loop markers included. If that pushes the loop past the end of the sample, it plays from the loop start to the sample end, then from the sample start to the loop end, and repeats.
+- In **LOOP** and **STRETCH** modes, changing the offset while a note is held moves playback straight away. A small click on the jump is normal.
+- It works with reverse and time stretch too.
+
+### Good to know
+
+- The offset and its automation save with the song and the preset. Other firmware ignores them and plays from the normal start.
+- Pitched notes with an offset skip the Deluge's sample cache, so they cost a little more CPU than the same note without one.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -344,6 +376,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
+- **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
