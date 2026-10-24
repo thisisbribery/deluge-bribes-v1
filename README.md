@@ -1,12 +1,13 @@
-# Deluge Bribes v1.3
+# Deluge Bribes v1.4
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds five things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds six things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
-5. **Endless Record (new in v1.3):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
+5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
+6. **Drum synth (new in v1.4):** synthesised drums on any kit row, from five engines: the LXR-02's kick / tom, snare and cymbal / hat voices, and two more called Drom1 and Drom2. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -14,13 +15,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.3.bin`](firmware/deluge-bribes-v1.3.bin)
+[`firmware/deluge-bribes-v1.4.bin`](firmware/deluge-bribes-v1.4.bin)
 
-SHA-256: `d1ed31ef285dede58ce23357ab2d9b0c36811a6a3584bd436032acfce560e02b`
+SHA-256: `d990199923238bda9ae8b9275df7f1e03302abd7fccd4bd847927c5ab8d347bc`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.4.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -45,6 +46,10 @@ To go back, install an official firmware file the same way.
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples) or **Drum synth** (seven synthesised rows) |
+| **Hold a row's audition pad + SYNTH MODE pad** | Put the row on a drum synth engine (Drom1, Drom2 or Drum synth), or back to **Sample** |
+| **Hold a row's audition pad + OSC1 TYPE pad** | Pick the engine's variant or LXR voice (drum synth rows) |
+| **CUSTOM 2 / CUSTOM 3 gold knobs** | The engine's two key settings (drum synth rows). Hold a step and turn to parameter lock |
 
 7-segment display names are in brackets below.
 
@@ -228,6 +233,77 @@ On the stock Deluge, hitting RECORD while a new clip is already playing records 
 - With it on, the blink-and-stop-at-the-bar also applies when you record the stock way (stop, arm RECORD, press PLAY).
 - If you stop just after a bar line, the clip has already grown, so you'll get one extra empty bar.
 
+## 6. Drum synth
+
+Synthesised drums as a Deluge oscillator. A drum synth row is still a normal Deluge sound: its envelopes, filters, FX, mod matrix, automation and parameter locks all work on top.
+
+There are five engines:
+
+- **Kick / tom** (**DRUM**), **Snare** (**SNAR**) and **Cymbal / hat** (**METL**): ported from the drum voices of the open source LXR-02 firmware by Erica Synths. Choose them together as **Drum synth** (**DRUM**).
+- **Drom1** (**DRM1**): three sine operators and a carrier, phase modulating each other in three routings, **L**, **B** and **C**.
+- **Drom2** (**DRM2**): inharmonic, metallic partials with a noise strike, in three variants, **G**, **I** and **H**.
+
+### Making a drum synth kit
+
+1. In clip view on an empty clip, press **SHIFT + KIT**.
+2. The **New kit** (**NEW**) menu opens. Turn **SELECT** to **Drum synth** (**DRUM**) and press **SELECT**. Choose **Kit** for a normal, sample based kit.
+3. You get seven rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
+
+### Changing one row
+
+Any row of any kit, or any synth, can switch engine:
+
+1. Hold the row's audition pad and press the **SYNTH MODE** shortcut pad.
+2. Choose **Drom1**, **Drom2** or **Drum synth**. On a kit row the first option reads **Sample** (**SAMP**): choose it to put the row back on its sample.
+
+A row that wasn't a drum synth gets a percussive envelope (attack 0, decay 30, sustain 0, release 30), so each hit decays even if you let go early. Envelope 2 is set to a short blip (attack 0, decay 5, sustain 0, release 0): patch it to pitch for a transient snap.
+
+### Shortcut pads
+
+On a drum synth row the shortcut grid reads like an FM synth. The **OSC1** column is the drum voice, and the **OSC2** and **MOD** columns are its other parts. **OSC1 TYPE** picks the variant: L, B or C on Drom1, G, I or H on Drom2, or kick / tom, snare or cymbal / hat on the LXR voices.
+
+| Pad | Kick / tom | Snare | Cymbal / hat | Drom1 | Drom2 |
+|---|---|---|---|---|---|
+| OSC1 PULSE WIDTH | Osc wave | Osc wave | Osc wave | | Shape |
+| OSC1 RETRIGGER | Transient type | Transient type | Transient type | Punch | Punch |
+| OSC1 FEEDBACK | Transient level | Transient level | Transient level | Drive | Drive |
+| OSC1 WAVE INDEX | Transient speed | Transient speed | Transient speed | Engine decay | Engine decay |
+| OSC2 LEVEL | FM amount | Noise mix | FM amount | Blendex 1 | Alloy |
+| OSC2 TRANSPOSE | Mod pitch | Noise rate | Mod pitch | Freq 1 | Weight |
+| OSC2 TYPE | Mod wave | Noise filter | Mod wave | | |
+| OSC2 PULSE WIDTH | Mod fine | Noise cutoff | Mod fine | | |
+| OSC2 RETRIGGER | FM / mix | | | | |
+| OSC2 FEEDBACK | | Noise resonance | | | |
+| MOD1 LEVEL | Pitch decay | Pitch decay | FM 2 amount | Blendex 2 | Strike |
+| MOD1 TRANSPOSE | Pitch amount | Pitch amount | Mod 2 pitch | Freq 2 | |
+| MOD1 TYPE | | | Mod 2 wave | | |
+| MOD1 PULSE WIDTH | | | Mod 2 fine | | |
+| MOD1 FEEDBACK | Pitch curve | Pitch curve | | | |
+| MOD2 LEVEL / TRANSPOSE | | | | Blendex 3 / Freq 3 | |
+
+The other shortcuts keep their usual jobs.
+
+- **Blendex** moves a Drom1 operator from being heard (0) to modulating (127). **Freq** tunes it, from 24 semitones down, through unison at 64, to 24 up.
+- **Weight** picks Drom2's partial ratios, **Alloy** their levels, **Shape** their waveform (sine to triangle to square to saw), and **Strike** the noise burst at the start of each hit.
+- **Engine decay** is Drom1 and Drom2's own decay on top of the Deluge envelope. It starts at 127, which holds, so the Deluge envelope does the shaping.
+
+### Gold knobs
+
+**CUSTOM 1** tunes the drum. **CUSTOM 2 / CUSTOM 3** carry each engine's two key settings: pitch amount / FM amount (kick / tom), noise mix / pitch amount (snare), FM amount / FM 2 amount (cymbal / hat), Blendex 1 / Freq 1 (Drom1), Weight / Alloy (Drom2). The other gold knobs keep their Deluge jobs.
+
+Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated. They can't yet be modulated from the mod matrix.
+
+### Snappy decay
+
+**Snappy decay** (**SNAP**), in the sound menu of any drum synth row, makes the amp envelope's decay and release follow a steeper curve: tighter hits, and the same decay setting sounds about half as long. It's off by default and saved with the row.
+
+### Good to know
+
+- The full settings list and a pad-per-setting editor are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each Drom variant.
+- **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
+- Kits with drum synth rows won't play those rows on firmware without them.
+- The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -236,13 +312,14 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
+- **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines** or **Synthstrom Audible**. Stolperbeats is a product of Making Sound Machines, and the Deluge is a product of Synthstrom Audible. All trademarks belong to their owners.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths** or **Elektron**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, and the Model:Cycles is a product of Elektron. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
-Use it at your own risk, and please don't contact Making Sound Machines or Synthstrom Audible for help with this build.
+Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths or Elektron for help with this build.
 
 ## Source code
 
