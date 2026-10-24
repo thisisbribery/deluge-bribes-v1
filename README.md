@@ -1,10 +1,11 @@
-# Deluge Bribes v1.1
+# Deluge Bribes v1.2
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds three things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds four things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
+4. **Mono sequencer (new in v1.2):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -12,13 +13,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.1.bin`](firmware/deluge-bribes-v1.1.bin)
+[`firmware/deluge-bribes-v1.2.bin`](firmware/deluge-bribes-v1.2.bin)
 
-SHA-256: `3d197dd0f245ca83e39593ad7edcef5e4dfd29ca3696f69f426791da80b49f32`
+SHA-256: `f24cad22d43a88a5c8cecdb813ef35b1daacaf2eaa8adf6fe1409504aaed8463`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -38,6 +39,9 @@ To go back, install an official firmware file the same way.
 | **TAP** | Play a fill (with Tap Tempo Action set to Autofill). Hold for a longer fill. |
 | **Hold TAP + turn TEMPO** | Pick the fill: Ghost, Drive, Build, Climb, Stutter (Autofill) |
 | **SHIFT + TAP** | Metronome on/off, as before |
+| **Hold a note + turn the up/down knob** | Shift the note's octave, up to 4 either way (Mono sequencer) |
+| **Hold a note + press and turn the up/down knob** | Ratchet the note (note repeat), as normal (Mono sequencer) |
+| **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 
 7-segment display names are in brackets below.
 
@@ -154,13 +158,58 @@ Fills play on the bottom three rows of every playing kit: Kick, Snare and Hihat 
 - **Pitch** (Climb and Stutter) shifts just that one note. Your pitch knob, any pitch automation and other sounding notes are untouched. It works on normal sound drums; MIDI and gate drum rows play fills unpitched.
 - **Persistence:** the chosen fill is not remembered after power-off and starts on Build.
 
+## 4. Mono sequencer
+
+Turns a synth, MIDI or CV track's grid into a mono step sequencer, built for basslines. The notes are ordinary Deluge notes, so clip length, nudging, ratchets (note repeat), copy and paste, undo and saving all work as normal.
+
+### Turning it on
+
+1. Open the clip's menu (press **SELECT** in the clip).
+2. Turn **Mono Seq** (**MSEQ**) on. On synths it sits near the end of the menu, after Sequence Direction.
+
+Mono is a setting on the clip, so it carries over if you switch the track between Synth, MIDI and CV.
+
+### How it works
+
+- **8 fixed rows:** the scale's first 8 steps from the song's root, root at the bottom. With a 7-note scale that's one octave plus the root an octave up. The grid doesn't scroll up or down.
+- **One note per column:** placing a note clears that column on the other rows.
+- **Octaves:** hold a note and turn the up/down knob (without pressing it) to shift it up to 4 octaves either way. The display shows the note it now plays, e.g. **D#5**, and you hear it.
+- **Ratchets:** hold a note, then press and turn the up/down knob. This is the Deluge's normal note repeat.
+- **Holding a note** shows and sounds the note it actually plays, octave included.
+- **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
+
+### Colours
+
+| Pad | Means |
+|---|---|
+| White | A note in its own octave |
+| Red, deeper per octave | Shifted up 1 to 4 octaves |
+| Blue, deeper per octave | Shifted down 1 to 4 octaves |
+| Orange tint | Edited: nudged, ratcheted, or given a probability, iterance or fill |
+| Dim | The note's tail |
+
+### CUSTOM voltages (CV only)
+
+Set **Mono Scale** (**MSCL**) to **CUSTOM** and each of the 8 rows sends its own voltage instead of a scale note:
+
+- Hold a row's audition pad and turn the **lower gold knob** to set its voltage, from 0 to 10 V in 10 mV steps (1 mV with SHIFT held). The output follows as you turn, so you can tune by ear.
+- The rows start as a major scale between 0 and 1 V.
+- Octave shifts add or remove 1 V on top of the row's voltage.
+
+### How it plays
+
+- **Synth and MIDI:** a note's octave moves the note it plays. Each row remembers which octave its note started in, so note-offs always match.
+- **CV:** the octave, or the CUSTOM voltage, goes straight into the pitch voltage.
+- **Limits:** recording live into a mono clip resets recorded notes to their own octave. One note per column is enforced when you place notes by hand, so pasting or nudging can still stack two in a column. On CV, the arpeggiator and pitch-bend changes can override the octave and CUSTOM voltages.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
 
 - **The swing styles** came out of a swing visualiser built to study and sketch shuffle timings ([stolperbeats_v2](https://thisisbribery.github.io/stolperbeats_v2/)). DEEP, SQEZ and FOLD are original designs. HOPP follows the well-known MPC and Linn swing ladder (around 54, 58, 62, 66 and 71%), placed on whole ticks the way a 96 PPQN drum machine would.
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
-- **The ideas behind all three features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
+- **The Mono sequencer** is an original design for writing basslines on the Deluge.
+- **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
 

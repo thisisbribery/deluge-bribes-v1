@@ -1,5 +1,5 @@
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..91c0809e 100644
+index 38cab4d8..82535b3e 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -533,6 +533,7 @@
@@ -10,17 +10,20 @@ index 38cab4d8..91c0809e 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -705,6 +706,8 @@
+@@ -705,6 +706,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
 +    "STRING_FOR_STUMBLE": "Stumble",
 +    "STRING_FOR_STUMBLE_STYLE": "Stumble Style",
++    "STRING_FOR_MONO_SEQUENCER": "Mono Seq",
++    "STRING_FOR_MONO_SCALE": "Mono Scale",
++    "STRING_FOR_MONO_GATE": "Gate %",
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..c4073900 100644
+index 1f87aacf..c8168125 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -546,6 +546,7 @@ PLACE_SDRAM_DATA Language english{
@@ -31,29 +34,35 @@ index 1f87aacf..c4073900 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -718,6 +719,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +719,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
 +        {STRING_FOR_STUMBLE, "Stumble"},
 +        {STRING_FOR_STUMBLE_STYLE, "Stumble Style"},
++        {STRING_FOR_MONO_SEQUENCER, "Mono Seq"},
++        {STRING_FOR_MONO_SCALE, "Mono Scale"},
++        {STRING_FOR_MONO_GATE, "Gate %"},
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..1d5edaf5 100644
+index 1af382d5..bd2a82d6 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
-@@ -323,6 +323,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -323,6 +323,11 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
          {STRING_FOR_SWING_AMOUNT, "SWIA"},
          {STRING_FOR_SWING_INTERVAL, "SWII"},
 +        {STRING_FOR_STUMBLE, "STUM"},
 +        {STRING_FOR_STUMBLE_STYLE, "STYL"},
++        {STRING_FOR_MONO_SEQUENCER, "MSEQ"},
++        {STRING_FOR_MONO_SCALE, "MSCL"},
++        {STRING_FOR_MONO_GATE, "GATE"},
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +444,7 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +447,7 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
@@ -62,19 +71,22 @@ index 1af382d5..1d5edaf5 100644
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..388a3485 100644
+index 8328945b..d82aa8e3 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
-@@ -334,6 +334,8 @@
+@@ -334,6 +334,11 @@
          "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
          "STRING_FOR_SWING_AMOUNT": "SWIA",
          "STRING_FOR_SWING_INTERVAL": "SWII",
 +        "STRING_FOR_STUMBLE": "STUM",
 +        "STRING_FOR_STUMBLE_STYLE": "STYL",
++        "STRING_FOR_MONO_SEQUENCER": "MSEQ",
++        "STRING_FOR_MONO_SCALE": "MSCL",
++        "STRING_FOR_MONO_GATE": "GATE",
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +459,7 @@
+@@ -457,6 +462,7 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
@@ -83,7 +95,7 @@ index 8328945b..388a3485 100644
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..be1b65a6 100644
+index 49b15e92..5f11d255 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -576,6 +576,7 @@ enum class String : size_t {
@@ -94,15 +106,104 @@ index 49b15e92..be1b65a6 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -772,6 +773,8 @@ enum class String : size_t {
+@@ -772,6 +773,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
 +	STRING_FOR_STUMBLE,
 +	STRING_FOR_STUMBLE_STYLE,
++	STRING_FOR_MONO_SEQUENCER,
++	STRING_FOR_MONO_SCALE,
++	STRING_FOR_MONO_GATE,
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
+diff --git a/src/deluge/gui/menu_item/cv/mono.h b/src/deluge/gui/menu_item/cv/mono.h
+new file mode 100644
+index 00000000..07899a72
+--- /dev/null
++++ b/src/deluge/gui/menu_item/cv/mono.h
+@@ -0,0 +1,80 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++#include "gui/l10n/l10n.h"
++#include "gui/menu_item/integer.h"
++#include "gui/menu_item/selection.h"
++#include "gui/menu_item/toggle.h"
++#include "model/clip/instrument_clip.h"
++#include "model/song/song.h"
++
++// Mono sequencer settings, on synth, MIDI and CV clips' menus
++namespace deluge::gui::menu_item::cv {
++
++/// True when the sound editor is on a synth, MIDI or CV clip, which can be mono
++inline bool canBeMono() {
++	Clip* clip = getCurrentClip();
++	OutputType type = getCurrentOutputType();
++	return clip && clip->type == ClipType::INSTRUMENT
++	       && (type == OutputType::CV || type == OutputType::SYNTH || type == OutputType::MIDI_OUT);
++}
++
++/// Classic (off) or the mono sequencer (on) for this clip
++class Mono final : public Toggle {
++public:
++	using Toggle::Toggle;
++	void readCurrentValue() override { this->setValue(getCurrentInstrumentClip()->monoMode); }
++	void writeCurrentValue() override {
++		InstrumentClip* clip = getCurrentInstrumentClip();
++		clip->monoMode = this->getValue();
++		if (clip->monoMode) {
++			// The 8 rows start at the scale's root
++			clip->yScroll = clip->getMonoYScroll(currentSong);
++		}
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override { return canBeMono(); }
++};
++
++/// CV only: the song's scale, or a voltage set for each row
++class MonoScale final : public Selection {
++public:
++	using Selection::Selection;
++	void readCurrentValue() override { this->setValue(getCurrentInstrumentClip()->monoCustom); }
++	void writeCurrentValue() override { getCurrentInstrumentClip()->monoCustom = this->getValue(); }
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		return {"SCALE", "CUSTOM"};
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return canBeMono() && getCurrentOutputType() == OutputType::CV && getCurrentInstrumentClip()->monoMode;
++	}
++};
++
++/// How much of each note's length its gate stays open for
++class MonoGate final : public Integer {
++public:
++	using Integer::Integer;
++	void readCurrentValue() override { this->setValue(getCurrentInstrumentClip()->monoGatePercent); }
++	void writeCurrentValue() override { getCurrentInstrumentClip()->monoGatePercent = this->getValue(); }
++	[[nodiscard]] int32_t getMinValue() const override { return 1; }
++	[[nodiscard]] int32_t getMaxValue() const override { return 100; }
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return canBeMono() && getCurrentInstrumentClip()->monoMode;
++	}
++};
++
++} // namespace deluge::gui::menu_item::cv
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 index ab3a3d37..261ddbaf 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
@@ -214,10 +315,18 @@ index 00000000..bb20e681
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..153095f1 100644
+index 7bbd559f..1e87f104 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
-@@ -216,6 +216,8 @@
+@@ -35,6 +35,7 @@
+ #include "gui/menu_item/colour.h"
+ #include "gui/menu_item/cpu/voice_usage.h"
+ #include "gui/menu_item/cv/cv2Mapping.h"
++#include "gui/menu_item/cv/mono.h"
+ #include "gui/menu_item/cv/selection.h"
+ #include "gui/menu_item/cv/submenu.h"
+ #include "gui/menu_item/cv/transpose.h"
+@@ -216,6 +217,8 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -226,16 +335,38 @@ index 7bbd559f..153095f1 100644
  #include "gui/menu_item/synth_mode.h"
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
-@@ -985,6 +987,8 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +988,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
 +PLACE_SDRAM_BSS swing::Stumble stumbleMenu{STRING_FOR_STUMBLE};
++PLACE_SDRAM_BSS cv::Mono monoSequencerMenu{STRING_FOR_MONO_SEQUENCER};
++PLACE_SDRAM_BSS cv::MonoScale monoScaleMenu{STRING_FOR_MONO_SCALE};
++PLACE_SDRAM_BSS cv::MonoGate monoGateMenu{STRING_FOR_MONO_GATE};
 +PLACE_SDRAM_BSS swing::Style stumbleStyleMenu{STRING_FOR_STUMBLE_STYLE};
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1833,6 +1837,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1544,6 +1552,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+         &drumBendRangeMenu,
+         &patchCablesMenu,
+         &sequenceDirectionMenu,
++        &monoSequencerMenu,
++        &monoGateMenu,
+         &outputMidiSubmenu,
+     },
+ };
+@@ -1703,6 +1713,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+         &randomizerMenu,
+         &bendMenu,
+         &cv2SourceMenu,
++        &monoSequencerMenu,
++        &monoScaleMenu,
++        &monoGateMenu,
+         &mpeyToModWheelMenu,
+         &midiMPEMenu,
+         &sequenceDirectionMenu,
+@@ -1833,6 +1846,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -331,7 +462,7 @@ index c7f05939..61dfc609 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 4f8f5ec2..9b85f77b 100644
+index 4f8f5ec2..bd440cdc 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -34,10 +34,12 @@
@@ -347,7 +478,15 @@ index 4f8f5ec2..9b85f77b 100644
  #include "gui/views/timeline_view.h"
  #include "gui/views/view.h"
  #include "hid/buttons.h"
-@@ -575,6 +577,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -62,6 +64,7 @@
+ #include "model/consequence/consequence_note_row_length.h"
+ #include "model/drum/drum.h"
+ #include "model/drum/midi_drum.h"
++#include "model/instrument/cv_instrument.h"
+ #include "model/instrument/kit.h"
+ #include "model/instrument/melodic_instrument.h"
+ #include "model/instrument/non_audio_instrument.h"
+@@ -575,6 +578,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  		}
  	}
@@ -371,7 +510,7 @@ index 4f8f5ec2..9b85f77b 100644
  	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
  		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
  		if (noteRow->drum->type == DrumType::SOUND) {
-@@ -838,6 +857,14 @@ doCancelPopup:
+@@ -838,6 +858,14 @@ doCancelPopup:
  
  	else if (b == SELECT_ENC) {
  		if (on) {
@@ -386,7 +525,7 @@ index 4f8f5ec2..9b85f77b 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -1114,7 +1141,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1114,7 +1142,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -395,7 +534,7 @@ index 4f8f5ec2..9b85f77b 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1152,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1153,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -406,7 +545,7 @@ index 4f8f5ec2..9b85f77b 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1324,8 @@ ramError:
+@@ -1297,8 +1325,8 @@ ramError:
  	}
  }
  
@@ -417,7 +556,7 @@ index 4f8f5ec2..9b85f77b 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1689,11 +1716,107 @@ getOut: {}
+@@ -1689,11 +1717,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -526,7 +665,7 @@ index 4f8f5ec2..9b85f77b 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1774,6 +1897,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1774,6 +1898,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -548,8 +687,303 @@ index 4f8f5ec2..9b85f77b 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
+@@ -2585,9 +2724,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+ 					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
+ 					enterUIMode(UI_MODE_NOTES_PRESSED);
+ 
++					if (clip->isMono()) {
++						displayMonoNote(yDisplay);
++					}
++
+ 					// If new note...
+ 					if (squareType == SQUARE_NEW_NOTE) {
+ 
++						// Mono CV: one note per column, so the new note clears its column on every other row
++						if (clip->isMono()) {
++							clearOtherMonoRows(noteRow, squareStart, squareWidth, action);
++						}
++
+ 						// If we're cross-screen-editing, create other corresponding notes too
+ 						if (clip->wrapEditing) {
+ 							Error error = noteRow->addCorrespondingNotes(
+@@ -4935,6 +5083,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+ 	else {
+ 		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
+ 
++		// Mono: a held note sounds in its own octave, and a CUSTOM row at its voltage
++		InstrumentClip* clip = getCurrentInstrumentClip();
++		if (clip->isMono() && yDisplay < kDisplayHeight) {
++			if (on) {
++				monoAuditionOctave[yDisplay] = getHeldMonoOctave(yDisplay);
++			}
++			int32_t octave = monoAuditionOctave[yDisplay];
++			if (clip->isMonoCV()) {
++				if (on) {
++					bool custom = clip->monoCustom && yDisplay < InstrumentClip::kMonoNumRows;
++					((CVInstrument*)instrument)
++					    ->setMonoPitchForNextNote(octave, custom ? clip->monoCustomMillivolts[yDisplay] : -1);
++				}
++			}
++			else {
++				yNote += 12 * octave;
++			}
++		}
++
+ 		if (on) {
+ 			((MelodicInstrument*)instrument)
+ 			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
+@@ -6408,6 +6575,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+ 		commandShiftColour(offset);
+ 	}
+ 
++	// Mono CV: no scrolling, the 8 rows stay put. Holding notes and turning shifts their octave.
++	else if (getCurrentInstrumentClip()->isMono()) {
++		if (isUIModeActive(UI_MODE_NOTES_PRESSED)) {
++			adjustMonoOctave((offset > 0) ? 1 : -1);
++		}
++	}
++
+ 	// If neither button is pressed, we'll do vertical scrolling
+ 	else {
+ 		if (isUIModeWithinRange(verticalScrollUIModes)) {
+@@ -7548,6 +7722,16 @@ void InstrumentClipView::notifyPlaybackBegun() {
+ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
+                                         uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
+                                         bool drawUndefinedArea) {
++	// Mono CV: the 8 rows always start at the scale's root, whatever moved the scroll
++	InstrumentClip* monoClip = getCurrentInstrumentClip();
++	if (monoClip && monoClip->isMono()) {
++		int32_t monoYScroll = monoClip->getMonoYScroll(currentSong);
++		if (monoClip->yScroll != monoYScroll) {
++			monoClip->yScroll = monoYScroll;
++			recalculateColours();
++		}
++	}
++
+ 	if (!image) {
+ 		return true;
+ 	}
+@@ -7607,6 +7791,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+ 				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
+ 				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
+ 				                   renderWidth, false);
++				if (clip->isMono()) {
++					renderMonoRow(noteRow, modelStackWithNoteRow->getLoopLength(), image, renderWidth, xScroll, xZoom);
++				}
+ 			}
+ 
+ 			if (drawUndefinedArea) {
+@@ -7655,6 +7842,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+ 
+ 	InstrumentClip* clip = getCurrentInstrumentClip();
+ 
++	// Mono CV CUSTOM: holding a row's audition pad, the lower gold knob sets that row's voltage
++	if (whichModEncoder == 0 && clip->isMonoCV() && clip->monoCustom && isUIModeActive(UI_MODE_AUDITIONING)) {
++		adjustMonoCustomVoltage(offset);
++		return;
++	}
++
+ 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+ 	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
+ 
+@@ -8376,3 +8569,195 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+ 	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
+ 	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
+ }
++
++// Mono CV sequencer
++
++void InstrumentClipView::adjustMonoOctave(int32_t offset) {
++	auto edit_targets = get_note_edit_targets();
++	Action* action = actionLogger.getNewAction(ActionType::NOTE_EDIT, ActionAddition::ALLOWED);
++	if (!action) {
++		return;
++	}
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(modelStackMemory);
++
++	for (int32_t i = 0; i < edit_targets.size(); i++) {
++		if (!edit_targets[i].isActive) {
++			continue;
++		}
++		edit_targets[i].deleteOnDepress = false;
++		ModelStackWithNoteRow* modelStackWithNoteRow = get_note_edit_row(modelStack, edit_targets[i]);
++		NoteRow* noteRow = modelStackWithNoteRow->getNoteRow();
++
++		// Every note in the square, so ratchets move together
++		int32_t noteI = noteRow->notes.search(edit_targets[i].intendedPos, GREATER_OR_EQUAL);
++		Note* note = noteRow->notes.getElement(noteI);
++		while (note && note->pos - edit_targets[i].intendedPos < edit_targets[i].intendedLength) {
++			noteRow->changeNotesAcrossAllScreens(note->pos, modelStackWithNoteRow, action,
++			                                     CORRESPONDING_NOTES_ADJUST_MONO_OCTAVE, offset);
++			note = noteRow->notes.getElement(++noteI);
++		}
++	}
++
++	// Sound and show each held note at its new octave
++	uint8_t shownRow = 255;
++	for (int32_t i = 0; i < edit_targets.size(); i++) {
++		if (!edit_targets[i].isActive) {
++			continue;
++		}
++		uint8_t yDisplay = edit_targets[i].yDisplay;
++		if (yDisplay < kDisplayHeight && lastAuditionedVelocityOnScreen[yDisplay] != 255) {
++			sendAuditionNote(false, yDisplay, 127, 0);
++			sendAuditionNote(true, yDisplay, lastAuditionedVelocityOnScreen[yDisplay], 0);
++		}
++		if (shownRow == 255) {
++			shownRow = yDisplay;
++		}
++	}
++	if (shownRow != 255) {
++		displayMonoNote(shownRow);
++	}
++	uiNeedsRendering(this, 0xFFFFFFFF, 0);
++}
++
++int32_t InstrumentClipView::getHeldMonoOctave(uint8_t yDisplay) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	for (int32_t i = 0; i < kEditPadPressBufferSize; i++) {
++		if (!editPadPresses[i].isActive || editPadPresses[i].yDisplay != yDisplay) {
++			continue;
++		}
++		NoteRow* noteRow = clip->getNoteRowOnScreen(yDisplay, currentSong);
++		if (!noteRow) {
++			return 0;
++		}
++		int32_t noteI = noteRow->notes.search(editPadPresses[i].intendedPos, GREATER_OR_EQUAL);
++		Note* note = noteRow->notes.getElement(noteI);
++		if (note && note->pos < editPadPresses[i].intendedPos + editPadPresses[i].intendedLength) {
++			return InstrumentClip::getMonoOctave(note->getLift());
++		}
++	}
++	return 0;
++}
++
++void InstrumentClipView::displayMonoNote(uint8_t yDisplay) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	int32_t octave = getHeldMonoOctave(yDisplay);
++	char text[32];
++	if (clip->isMonoCV() && clip->monoCustom && yDisplay < InstrumentClip::kMonoNumRows) {
++		int32_t millivolts = std::clamp<int32_t>(clip->monoCustomMillivolts[yDisplay] + 1000 * octave, 0, 10000);
++		if (display->haveOLED()) {
++			snprintf(text, sizeof(text), "%d.%03d V (oct %+d)", (int)(millivolts / 1000), (int)(millivolts % 1000),
++			         (int)octave);
++		}
++		else {
++			snprintf(text, sizeof(text), "%d.%02d", (int)(millivolts / 1000), (int)(millivolts % 1000 / 10));
++		}
++	}
++	else {
++		char noteName[8];
++		noteCodeToString(clip->getYNoteFromYDisplay(yDisplay, currentSong) + 12 * octave, noteName);
++		if (display->haveOLED()) {
++			snprintf(text, sizeof(text), "%s (oct %+d)", noteName, (int)octave);
++		}
++		else {
++			snprintf(text, sizeof(text), "%s", noteName);
++		}
++	}
++	display->displayPopup(text);
++}
++
++void InstrumentClipView::clearOtherMonoRows(NoteRow* keep, int32_t start, int32_t width, Action* action) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(modelStackMemory);
++	for (int32_t i = 0; i < clip->noteRows.getNumElements(); i++) {
++		NoteRow* thisNoteRow = clip->noteRows.getElement(i);
++		if (thisNoteRow == keep || thisNoteRow->hasNoNotes()) {
++			continue;
++		}
++		ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(i, thisNoteRow);
++		thisNoteRow->clearArea(start, width, modelStackWithNoteRow, action, clip->getWrapEditLevel());
++	}
++	uiNeedsRendering(this, 0xFFFFFFFF, 0);
++}
++
++void InstrumentClipView::renderMonoRow(NoteRow* noteRow, int32_t loopLength, RGB* image, int32_t renderWidth,
++                                       int32_t xScroll, uint32_t xZoom) {
++	// White for notes in their own octave, reds going up and blues going down, warmed toward orange when a note has
++	// been edited (nudged, ratcheted, or given a probability, iterance or fill)
++	static constexpr RGB kUp[InstrumentClip::kMonoMaxOctave] = {
++	    {255, 120, 110}, {255, 70, 60}, {230, 25, 20}, {170, 0, 0}};
++	static constexpr RGB kDown[InstrumentClip::kMonoMaxOctave] = {
++	    {110, 140, 255}, {60, 90, 255}, {20, 40, 230}, {0, 0, 170}};
++	static constexpr RGB kOrange{255, 120, 0};
++	if (loopLength <= 0) {
++		return;
++	}
++
++	for (int32_t x = 0; x < renderWidth; x++) {
++		int32_t squareStart = xScroll + x * (int32_t)xZoom;
++		if (squareStart >= loopLength) {
++			break;
++		}
++		int32_t squareEnd = squareStart + (int32_t)xZoom;
++		int32_t i = noteRow->notes.search(squareEnd, LESS);
++		if (i < 0) {
++			continue;
++		}
++		Note* note = noteRow->notes.getElement(i);
++		bool head = note->pos >= squareStart;
++		if (!head && note->pos + note->length <= squareStart) {
++			continue; // Nothing sounding in this square
++		}
++
++		// The first note starting in the square decides the colour
++		int32_t notesInSquare = 0;
++		Note* first = note;
++		for (int32_t j = i; j >= 0; j--) {
++			Note* other = noteRow->notes.getElement(j);
++			if (other->pos < squareStart) {
++				break;
++			}
++			first = other;
++			notesInSquare++;
++		}
++		bool edited =
++		    head
++		    && (notesInSquare > 1 || first->pos != squareStart || first->getProbability() != kNumProbabilityValues
++		        || first->getIterance() != kDefaultIteranceValue || first->getFill() != FillMode::OFF);
++
++		int32_t octave = InstrumentClip::getMonoOctave(first->getLift());
++		RGB colour = (octave > 0) ? kUp[octave - 1] : (octave < 0) ? kDown[-octave - 1] : RGB{170, 170, 170};
++		if (edited) {
++			colour = RGB{(uint8_t)((colour.r * 7 + kOrange.r * 3) / 10), (uint8_t)((colour.g * 7 + kOrange.g * 3) / 10),
++			             (uint8_t)((colour.b * 7 + kOrange.b * 3) / 10)};
++		}
++		if (!head) {
++			colour = RGB{(uint8_t)(colour.r / 4), (uint8_t)(colour.g / 4), (uint8_t)(colour.b / 4)};
++		}
++		image[x] = colour;
++	}
++}
++
++void InstrumentClipView::adjustMonoCustomVoltage(int32_t offset) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	int32_t row = lastAuditionedYDisplay;
++	if (row < 0 || row >= InstrumentClip::kMonoNumRows) {
++		return;
++	}
++	// 10 mV a click, or 1 mV with SHIFT held
++	int32_t step = Buttons::isShiftButtonPressed() ? 1 : 10;
++	int32_t millivolts = std::clamp<int32_t>(clip->monoCustomMillivolts[row] + offset * step, 0, 10000);
++	clip->monoCustomMillivolts[row] = millivolts;
++	((CVInstrument*)clip->output)->sendMonoCustomVoltage(millivolts);
++
++	char text[24];
++	if (display->haveOLED()) {
++		snprintf(text, sizeof(text), "Row %d: %d.%03d V", (int)row + 1, (int)(millivolts / 1000),
++		         (int)(millivolts % 1000));
++	}
++	else {
++		snprintf(text, sizeof(text), "%d.%02d", (int)(millivolts / 1000), (int)(millivolts % 1000 / 10));
++	}
++	display->displayPopup(text);
++}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 38f8cbc9..999eed36 100644
+index 38f8cbc9..e667b40c 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -311,7 +311,13 @@ public:
@@ -567,7 +1001,26 @@ index 38f8cbc9..999eed36 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -397,11 +403,13 @@ private:
+@@ -352,6 +358,18 @@ public:
+ 	ModControllableAudio* getModControllableAudioOrNone() override;
+ 
+ private:
++	// Mono CV sequencer
++	void adjustMonoOctave(int32_t offset);
++	void clearOtherMonoRows(NoteRow* keep, int32_t start, int32_t width, Action* action);
++	void renderMonoRow(NoteRow* noteRow, int32_t loopLength, RGB* image, int32_t renderWidth, int32_t xScroll,
++	                   uint32_t xZoom);
++	void adjustMonoCustomVoltage(int32_t offset);
++	/// The octave of a note held on this row, or 0 if none
++	int32_t getHeldMonoOctave(uint8_t yDisplay);
++	/// Shows what a row plays at its held note's octave: the note name, or a CUSTOM row's voltage
++	void displayMonoNote(uint8_t yDisplay);
++	int8_t monoAuditionOctave[kDisplayHeight]{}; // The octave each row's audition started in
++
+ 	bool doneAnyNudgingSinceFirstEditPadPress{};
+ 	bool offsettingNudgeNumberDisplay{};
+ 
+@@ -397,11 +415,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -1020,7 +1473,7 @@ index 21f193b9..2076fed5 100644
  			else {
  				UI* currentUI = getCurrentUI();
 diff --git a/src/deluge/model/clip/instrument_clip.cpp b/src/deluge/model/clip/instrument_clip.cpp
-index babfd854..056491d2 100644
+index babfd854..52824cf4 100644
 --- a/src/deluge/model/clip/instrument_clip.cpp
 +++ b/src/deluge/model/clip/instrument_clip.cpp
 @@ -47,8 +47,10 @@
@@ -1034,7 +1487,18 @@ index babfd854..056491d2 100644
  #include "processing/sound/sound_instrument.h"
  #include "storage/storage_manager.h"
  #include "util/const_functions.h"
-@@ -893,6 +895,12 @@ doNewProbability:
+@@ -135,6 +137,10 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
+ 	yScroll = otherInstrumentClip->yScroll;
+ 	keyboardState = otherInstrumentClip->keyboardState;
+ 	sequenceDirectionMode = otherInstrumentClip->sequenceDirectionMode;
++	monoMode = otherInstrumentClip->monoMode;
++	monoCustom = otherInstrumentClip->monoCustom;
++	monoGatePercent = otherInstrumentClip->monoGatePercent;
++	monoCustomMillivolts = otherInstrumentClip->monoCustomMillivolts;
+ 
+ 	affectEntire = otherInstrumentClip->affectEntire;
+ 
+@@ -893,6 +899,12 @@ doNewProbability:
  					}
  				}
  
@@ -1047,7 +1511,31 @@ index babfd854..056491d2 100644
  				// probability, iterance and fill conditions have passed
  				if (conditionPassed) {
  					sendPendingNoteOn(modelStack, &pendingNoteOnList.pendingNoteOns[i]);
-@@ -938,6 +946,45 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
+@@ -931,13 +943,66 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
+ 	else {
+ 		ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
+ 		    modelStackWithNoteRow->addOtherTwoThings(output->toModControllable(), &paramManager);
++		// Mono CV: the note's octave, or its row's custom voltage, goes straight into the voltage. The note code stays
++		// the row's own, so the note-off still matches it.
++		int32_t noteCode = pendingNoteOn->noteRow->getNoteCode();
++		if (isMonoCV()) {
++			int32_t row = getYVisualFromYNote(pendingNoteOn->noteRow->y, modelStack->song) - yScroll;
++			((CVInstrument*)output)
++			    ->setMonoPitchForNextNote(getMonoOctave(pendingNoteOn->lift),
++			                              (monoCustom && row >= 0 && row < kMonoNumRows) ? monoCustomMillivolts[row]
++			                                                                             : -1);
++		}
++		// Synth and MIDI: the octave moves the note code, and the row remembers it so the note-off matches
++		else if (monoShiftsNoteCode()) {
++			pendingNoteOn->noteRow->monoSoundingOctave = getMonoOctave(pendingNoteOn->lift);
++			noteCode += 12 * pendingNoteOn->noteRow->monoSoundingOctave;
++		}
+ 		((MelodicInstrument*)output)
+-		    ->sendNote(modelStackWithThreeMainThings, true, pendingNoteOn->noteRow->getNoteCode(), mpeValues,
+-		               MIDI_CHANNEL_NONE, pendingNoteOn->velocity, pendingNoteOn->sampleSyncLength,
+-		               pendingNoteOn->ticksLate);
++		    ->sendNote(modelStackWithThreeMainThings, true, noteCode, mpeValues, MIDI_CHANNEL_NONE,
++		               pendingNoteOn->velocity, pendingNoteOn->sampleSyncLength, pendingNoteOn->ticksLate);
  	}
  }
  
@@ -1093,8 +1581,91 @@ index babfd854..056491d2 100644
  void InstrumentClip::toggleNoteRowMute(ModelStackWithNoteRow* modelStack) {
  
  	// Record action
+@@ -2392,6 +2457,16 @@ void InstrumentClip::writeDataToFile(Serializer& writer, Song* song) {
+ 	writer.writeAttribute("drumsZoomLevel", keyboardState.drums.zoom_level);
+ 	writer.writeAttribute("inKeyScrollOffset", keyboardState.inKey.scrollOffset);
+ 	writer.writeAttribute("inKeyRowInterval", keyboardState.inKey.rowInterval);
++	if (monoMode) {
++		writer.writeAttribute("monoMode", 1);
++		writer.writeAttribute("monoCustom", monoCustom);
++		writer.writeAttribute("monoGate", monoGatePercent);
++		for (int32_t r = 0; r < kMonoNumRows; r++) {
++			char name[12];
++			snprintf(name, sizeof(name), "monoV%d", (int)r);
++			writer.writeAttribute(name, monoCustomMillivolts[r]);
++		}
++	}
+ 
+ 	writer.writeOpeningTagEnd();
+ 
+@@ -2589,6 +2664,22 @@ someError:
+ 			keyboardState.inKey.scrollOffset = reader.readTagOrAttributeValueInt();
+ 		}
+ 
++		else if (!strcmp(tagName, "monoMode")) {
++			monoMode = reader.readTagOrAttributeValueInt() != 0;
++			reader.exitTag("monoMode");
++		}
++		else if (!strcmp(tagName, "monoCustom")) {
++			monoCustom = reader.readTagOrAttributeValueInt() != 0;
++			reader.exitTag("monoCustom");
++		}
++		else if (!strcmp(tagName, "monoGate")) {
++			monoGatePercent = std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 1, 100);
++			reader.exitTag("monoGate");
++		}
++		else if (!strncmp(tagName, "monoV", 5) && tagName[5] >= '0' && tagName[5] < '0' + kMonoNumRows && !tagName[6]) {
++			monoCustomMillivolts[tagName[5] - '0'] = std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, 10000);
++			reader.exitTag();
++		}
+ 		else if (!strcmp(tagName, "inKeyRowInterval")) {
+ 			keyboardState.inKey.rowInterval = reader.readTagOrAttributeValueInt();
+ 		}
+@@ -3663,6 +3754,42 @@ void InstrumentClip::ensureScrollWithinKitBounds() {
+ }
+ 
+ // Make sure not a Kit before calling this
++bool InstrumentClip::isMono() const {
++	return monoMode && output
++	       && (output->type == OutputType::CV || output->type == OutputType::SYNTH
++	           || output->type == OutputType::MIDI_OUT);
++}
++
++bool InstrumentClip::isMonoCV() const {
++	return isMono() && output->type == OutputType::CV;
++}
++
++bool InstrumentClip::monoShiftsNoteCode() const {
++	return isMono() && output->type != OutputType::CV;
++}
++
++int32_t InstrumentClip::getMonoYScroll(Song* song) {
++	int32_t yNote = ((uint16_t)(song->key.rootNote + 120) % 12) + 60;
++	if (yNote > 66) {
++		yNote -= 12;
++	}
++	return getYVisualFromYNote(yNote, song);
++}
++
++int32_t InstrumentClip::getMonoOctave(int32_t lift) {
++	if (lift <= 0 || lift > 127) {
++		return 0;
++	}
++	return std::clamp<int32_t>(lift - kDefaultLiftValue, -kMonoMaxOctave, kMonoMaxOctave);
++}
++
++int32_t InstrumentClip::getGateLength(int32_t noteLength) const {
++	if (monoGatePercent >= 100 || !isMono()) {
++		return noteLength;
++	}
++	return std::max<int32_t>(1, (int64_t)noteLength * monoGatePercent / 100);
++}
++
+ bool InstrumentClip::isScrollWithinRange(int32_t scrollAmount, int32_t newYNote) {
+ 
+ 	if (output->type == OutputType::SYNTH) {
 diff --git a/src/deluge/model/clip/instrument_clip.h b/src/deluge/model/clip/instrument_clip.h
-index b6e15e33..64e37696 100644
+index b6e15e33..fb5ee2b1 100644
 --- a/src/deluge/model/clip/instrument_clip.h
 +++ b/src/deluge/model/clip/instrument_clip.h
 @@ -47,6 +47,12 @@ enum class VerticalNudgeType { ROW, OCTAVE };
@@ -1110,6 +1681,210 @@ index b6e15e33..64e37696 100644
  	explicit InstrumentClip(Song* song = nullptr);
  	~InstrumentClip() override;
  	void increaseLengthWithRepeats(ModelStackWithTimelineCounter* modelStack, int32_t newLength,
+@@ -122,6 +128,25 @@ public:
+ 	bool wrapEditing;
+ 	uint32_t wrapEditLevel{};
+ 
++	// Mono sequencer, for synth, MIDI and CV clips: 8 fixed rows of the scale from its root, one note per column, and
++	// an octave offset on each note (kept in the note's lift). On CV, CUSTOM sends a set voltage for each row.
++	static constexpr int32_t kMonoNumRows = 8;
++	static constexpr int32_t kMonoMaxOctave = 4;
++	bool monoMode = false;
++	bool monoCustom = false;
++	uint8_t monoGatePercent = 100; // Each note sounds for this much of its length
++	std::array<int16_t, kMonoNumRows> monoCustomMillivolts{0, 167, 333, 417, 583, 750, 917, 1000}; // A major scale
++	bool isMono() const;
++	bool isMonoCV() const;
++	/// Synth and MIDI mono clips move a note by its octave in its note code. CV puts the octave in the voltage.
++	bool monoShiftsNoteCode() const;
++	/// The yScroll that puts the scale's root on the bottom row
++	int32_t getMonoYScroll(Song* song);
++	/// The octave offset, -kMonoMaxOctave to kMonoMaxOctave, a note carries in a mono CV clip
++	static int32_t getMonoOctave(int32_t lift);
++	/// How long a note sounds, after the mono gate %
++	int32_t getGateLength(int32_t noteLength) const;
++
+ 	// These *only* store a valid preset number for the instrument-types that the Clip is not currently on
+ 	int8_t backedUpInstrumentSlot[4]{};
+ 	int8_t backedUpInstrumentSubSlot[4]{};
+diff --git a/src/deluge/model/instrument/cv_instrument.cpp b/src/deluge/model/instrument/cv_instrument.cpp
+index 6b202b0f..5697db7e 100644
+--- a/src/deluge/model/instrument/cv_instrument.cpp
++++ b/src/deluge/model/instrument/cv_instrument.cpp
+@@ -35,12 +35,25 @@ void CVInstrument::noteOnPostArp(int32_t noteCodePostArp, ArpNote* arpNote, int3
+ 	auto channel = getPitchChannel();
+ 	arpNote->outputMemberChannel[noteIndex] = channel;
+ 
+-	cvEngine.sendNote(true, channel, noteCodePostArp);
++	if (monoPitchPending) {
++		monoPitchPending = false;
++		int32_t voltage = (monoCustomMillivolts >= 0)
++		                      ? millivoltsToCV(monoCustomMillivolts + 1000 * monoOctave)
++		                      : cvEngine.calculateVoltage(noteCodePostArp + 12 * monoOctave, channel);
++		cvEngine.sendNoteVoltage(channel, noteCodePostArp, voltage);
++	}
++	else {
++		cvEngine.sendNote(true, channel, noteCodePostArp);
++	}
+ 	if (cvmode[1] == CVMode::velocity) {
+ 		cvEngine.sendVoltageOut(1, arpNote->velocity << 8);
+ 	}
+ }
+ 
++void CVInstrument::sendMonoCustomVoltage(int32_t millivolts) {
++	cvEngine.sendVoltageOut(getPitchChannel(), std::clamp<int32_t>(millivoltsToCV(millivolts), 0, 65535));
++}
++
+ void CVInstrument::noteOffPostArp(int32_t noteCodePostArp, int32_t oldMIDIChannel, int32_t velocity,
+                                   int32_t noteIndex) {
+ 
+diff --git a/src/deluge/model/instrument/cv_instrument.h b/src/deluge/model/instrument/cv_instrument.h
+index a58e4ff9..98e162b8 100644
+--- a/src/deluge/model/instrument/cv_instrument.h
++++ b/src/deluge/model/instrument/cv_instrument.h
+@@ -31,6 +31,16 @@ constexpr int32_t kNumCVInstrumentChannels = both + 1;
+ class CVInstrument final : public NonAudioInstrument {
+ public:
+ 	CVInstrument();
++	/// Mono CV: the next note-on is shifted by octaves, or sends customMillivolts (if not -1) plus 1 V per octave
++	void setMonoPitchForNextNote(int32_t octave, int32_t customMillivolts) {
++		monoPitchPending = true;
++		monoOctave = octave;
++		monoCustomMillivolts = customMillivolts;
++	}
++	/// Mono CV CUSTOM: sets the pitch CV straight away, while its row is auditioned and its voltage turned
++	void sendMonoCustomVoltage(int32_t millivolts);
++	static int32_t millivoltsToCV(int32_t millivolts) { return millivolts * 6552 / 1000; }
++
+ 	void noteOnPostArp(int32_t noteCodePostArp, ArpNote* arpNote, int32_t noteIndex) override;
+ 	void noteOffPostArp(int32_t noteCode, int32_t oldMIDIChannel, int32_t velocity, int32_t noteIndex) override;
+ 	void polyphonicExpressionEventPostArpeggiator(int32_t newValue, int32_t noteCodeAfterArpeggiation,
+@@ -119,4 +129,9 @@ private:
+ 	GateMode gateMode[2]{GateMode::off, GateMode::off};
+ 	CVMode cvmode[2]{CVMode::off, CVMode::off};
+ 	void sendMonophonicExpressionEvent(int32_t dimension);
++
++private:
++	bool monoPitchPending = false;
++	int32_t monoOctave = 0;
++	int32_t monoCustomMillivolts = -1;
+ };
+diff --git a/src/deluge/model/note/note_row.cpp b/src/deluge/model/note/note_row.cpp
+index 58e8fb77..f791c1db 100644
+--- a/src/deluge/model/note/note_row.cpp
++++ b/src/deluge/model/note/note_row.cpp
+@@ -1822,6 +1822,12 @@ Error NoteRow::changeNotesAcrossAllScreens(int32_t editPos, ModelStackWithNoteRo
+ 			case CORRESPONDING_NOTES_SET_FILL: {
+ 				thisNote->setFill(changeValue);
+ 			} break;
++
++			case CORRESPONDING_NOTES_ADJUST_MONO_OCTAVE: {
++				int32_t octave = InstrumentClip::getMonoOctave(thisNote->getLift()) + changeValue;
++				octave = std::clamp<int32_t>(octave, -InstrumentClip::kMonoMaxOctave, InstrumentClip::kMonoMaxOctave);
++				thisNote->setLift(kDefaultLiftValue + octave);
++			} break;
+ 			}
+ 		}
+ 	}
+@@ -2217,7 +2223,7 @@ stopNote:
+ 					if (posRelativeToNoteLeftEdge < 0) {
+ 						posRelativeToNoteLeftEdge += effectiveLength;
+ 					}
+-					if (posRelativeToNoteLeftEdge >= thisNote->length) {
++					if (posRelativeToNoteLeftEdge >= clip->getGateLength(thisNote->length)) {
+ 						goto stopNote; // This is probably fine as either ">" or ">="
+ 					}
+ 				}
+@@ -2225,7 +2231,7 @@ stopNote:
+ 				int32_t noteLateEdgePos = thisNote->pos; // Depending on play direction, this will be either the
+ 				                                         // left or right edge of the Note.
+ 				if (!playingReversedNow) {
+-					noteLateEdgePos += thisNote->length;
++					noteLateEdgePos += clip->getGateLength(thisNote->length);
+ 				}
+ 
+ 				if (wrapping) {
+@@ -2382,8 +2388,8 @@ gotValidNoteIndex:
+ 						goto stopNote;
+ 					}
+ 
+-					newTicksTil =
+-					    nextNote->length; // Want this even if we're "skipping" playing the note (why exactly?)
++					// Want this even if we're "skipping" playing the note (why exactly?)
++					newTicksTil = clip->getGateLength(nextNote->length);
+ 				}
+ 
+ 				ticksTilNextNoteEvent = newTicksTil;
+@@ -2554,6 +2560,7 @@ storePendingNoteOn:
+ 					    thisNote->getProbability();
+ 					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].iterance = thisNote->getIterance();
+ 					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].fill = thisNote->getFill();
++					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].lift = thisNote->getLift();
+ 					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].sampleSyncLength =
+ 					    thisNote->getLength();
+ 					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].ticksLate = ticksLate;
+@@ -2568,8 +2575,13 @@ storePendingNoteOn:
+ 					ModelStackWithThreeMainThings* modelStackWithThreeMainThings = modelStack->addOtherTwoThings(
+ 					    ((Clip*)modelStack->getTimelineCounter())->output->toModControllable(),
+ 					    &modelStack->getTimelineCounter()->paramManager);
++					int32_t noteCode = getNoteCode();
++					if (clip->monoShiftsNoteCode()) {
++						monoSoundingOctave = InstrumentClip::getMonoOctave(thisNote->getLift());
++						noteCode += 12 * monoSoundingOctave;
++					}
+ 					((MelodicInstrument*)output)
+-					    ->sendNote(modelStackWithThreeMainThings, true, getNoteCode(), mpeValues, MIDI_CHANNEL_NONE,
++					    ->sendNote(modelStackWithThreeMainThings, true, noteCode, mpeValues, MIDI_CHANNEL_NONE,
+ 					               thisNote->velocity, thisNote->length, ticksLate, samplesLate);
+ 				}
+ 			}
+@@ -2585,8 +2597,13 @@ storePendingNoteOn:
+ 			ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
+ 			    modelStack->addOtherTwoThings(((Clip*)modelStack->getTimelineCounter())->output->toModControllable(),
+ 			                                  &modelStack->getTimelineCounter()->paramManager);
++			// A mono synth or MIDI note stops in the octave it started in
++			int32_t noteCode = getNoteCode();
++			if (clip->monoShiftsNoteCode()) {
++				noteCode += 12 * monoSoundingOctave;
++			}
+ 			((MelodicInstrument*)output)
+-			    ->sendNote(modelStackWithThreeMainThings, false, getNoteCode(), nullptr, MIDI_CHANNEL_NONE, lift);
++			    ->sendNote(modelStackWithThreeMainThings, false, noteCode, nullptr, MIDI_CHANNEL_NONE, lift);
+ 		}
+ 	}
+ 	else if (drum) {
+diff --git a/src/deluge/model/note/note_row.h b/src/deluge/model/note/note_row.h
+index ca04ec3f..883e1806 100644
+--- a/src/deluge/model/note/note_row.h
++++ b/src/deluge/model/note/note_row.h
+@@ -38,6 +38,7 @@
+ #define CORRESPONDING_NOTES_SET_VELOCITY 2
+ #define CORRESPONDING_NOTES_SET_ITERANCE 3
+ #define CORRESPONDING_NOTES_SET_FILL 4
++#define CORRESPONDING_NOTES_ADJUST_MONO_OCTAVE 5
+ 
+ class InstrumentClip;
+ class Song;
+@@ -78,6 +79,7 @@ struct PendingNoteOn {
+ 	uint8_t velocity;
+ 	Iterance iterance;
+ 	uint8_t fill;
++	uint8_t lift; // Carries the octave in mono CV clips
+ };
+ 
+ struct PendingNoteOnList {
+@@ -126,8 +128,9 @@ public:
+ 
+ 	int16_t y; // This has to be at the top
+ 	bool muted;
+-	bool mutedBeforeStemExport; // Used by stem export to restore previous state
+-	bool exportStem;            // Used by stem export to flag if this note row should be exported
++	int8_t monoSoundingOctave = 0; // Mono synth or MIDI clips: the octave the row's note started in
++	bool mutedBeforeStemExport;    // Used by stem export to restore previous state
++	bool exportStem;               // Used by stem export to flag if this note row should be exported
+ 
+ 	int32_t loopLengthIfIndependent; // 0 means obeying parent
+ 	int32_t lastProcessedPosIfIndependent;
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
 index c127568b..5afce648 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
@@ -2393,6 +3168,45 @@ index 98ff45dd..67f653f9 100644
  	void commandDisplaySwingInterval();
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
+diff --git a/src/deluge/processing/engines/cv_engine.cpp b/src/deluge/processing/engines/cv_engine.cpp
+index 17eebd99..4ce75e89 100644
+--- a/src/deluge/processing/engines/cv_engine.cpp
++++ b/src/deluge/processing/engines/cv_engine.cpp
+@@ -239,6 +239,21 @@ void CVEngine::sendNote(bool on, uint8_t channel, int16_t note) {
+ 	}
+ }
+ 
++void CVEngine::sendNoteVoltage(uint8_t channel, int16_t note, int32_t voltage) {
++	if (gateChannels[channel].mode == GateType::SPECIAL) {
++		return;
++	}
++	if (channel < NUM_PHYSICAL_CV_CHANNELS) {
++		cvOutPending = true;
++		sendVoltageOut(channel, std::clamp<int32_t>(voltage, 0, 65535));
++		switchGateOn(channel); // won't switch before the cv has been updated
++		cvChannels[channel].noteCurrentlyPlaying = note;
++	}
++	else {
++		switchGateOn(channel);
++	}
++}
++
+ void CVEngine::sendVoltageOut(uint8_t channel, uint16_t voltage) {
+ 	uint32_t output = (uint32_t)(0b00110000 | (1 << channel)) << 24;
+ 	output |= (uint32_t)voltage << 8;
+diff --git a/src/deluge/processing/engines/cv_engine.h b/src/deluge/processing/engines/cv_engine.h
+index 9eca346b..8ddedad0 100644
+--- a/src/deluge/processing/engines/cv_engine.h
++++ b/src/deluge/processing/engines/cv_engine.h
+@@ -68,6 +68,8 @@ public:
+ 	CVEngine();
+ 	void init();
+ 	void sendNote(bool on, uint8_t channel, int16_t note = -32768);
++	/// A note-on with a set voltage (0 to 65535) instead of the note's own. The note is kept for matching its note-off.
++	void sendNoteVoltage(uint8_t channel, int16_t note, int32_t voltage);
+ 	void setGateType(uint8_t whichGate, GateType value);
+ 	void setCVVoltsPerOctave(uint8_t channel, uint8_t value);
+ 	void setCVTranspose(uint8_t channel, int32_t semitones, int32_t cents);
 diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
 index fd2e3f80..02a885e5 100644
 --- a/src/deluge/storage/storage_manager.cpp
