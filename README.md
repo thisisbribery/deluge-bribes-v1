@@ -1,4 +1,4 @@
-# Deluge Bribes v1.7
+# Deluge Bribes v1.7.1
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds nine things for people who want more groove and more wonk:
 
@@ -18,13 +18,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.7.bin`](firmware/deluge-bribes-v1.7.bin)
+[`firmware/deluge-bribes-v1.7.1.bin`](firmware/deluge-bribes-v1.7.1.bin)
 
-SHA-256: `d889bd1333f91ffc6cb23347bfc43e6df1083aec9834e6ca43147cdab0a50fcb`
+SHA-256: `09ee2190a0345273ae26f0461be455840a8ff1d66559ddf4a524e02521418f13`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.7.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.7.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -188,9 +188,10 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 
 ### How it works
 
-- **8 fixed rows:** the scale's first 8 steps from the song's root, root at the bottom. With a 7-note scale that's one octave plus the root an octave up. The grid doesn't scroll up or down.
+- **8 fixed rows:** the scale's first 8 steps from the song's root, root at the bottom. With a 7-note scale that's one octave plus the root an octave up. The grid doesn't scroll up or down; it follows your notes instead (see below).
 - **One note per column:** placing a note clears that column on the other rows.
 - **Octaves:** hold a note and turn the up/down knob (without pressing it) to shift it up to 4 octaves either way. The display shows the note it now plays, e.g. **D#5**, and you hear it.
+- **Transposing the whole clip:** press and turn the up/down knob (with no note held) to move every note up or down an octave, as on any synth clip. The 8 rows follow the notes to their new octave, so they stay on the grid (fixed in v1.7.1).
 - **Ratchets:** hold a note, then press and turn the up/down knob. This is the Deluge's normal note repeat.
 - **Holding a note** shows and sounds the note it actually plays, octave included.
 - **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
