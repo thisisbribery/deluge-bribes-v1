@@ -1,8 +1,16 @@
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..95da4207 100644
+index 38cab4d8..91c0809e 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
-@@ -705,6 +705,8 @@
+@@ -533,6 +533,7 @@
+     "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "Alternative Playback Start Behaviour",
+     "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "Grid View Loop Layer Pads",
+     "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "Alternative Tap Tempo Behaviour",
++    "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "Tap Tempo Action",
+     "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
+     "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
+     "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
+@@ -705,6 +706,8 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -12,10 +20,18 @@ index 38cab4d8..95da4207 100644
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..554ba8f4 100644
+index 1f87aacf..c4073900 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
-@@ -718,6 +718,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -546,6 +546,7 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "Alternative Playback Start Behaviour"},
+         {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "Grid View Loop Layer Pads"},
+         {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "Alternative Tap Tempo Behaviour"},
++        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "Tap Tempo Action"},
+         {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
+         {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
+         {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
+@@ -718,6 +719,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -25,7 +41,7 @@ index 1f87aacf..554ba8f4 100644
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..90078203 100644
+index 1af382d5..1d5edaf5 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,8 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -37,8 +53,16 @@ index 1af382d5..90078203 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
+@@ -442,6 +444,7 @@ PLACE_SDRAM_DATA Language seven_segment{
+         {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
+         {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
+         {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
++        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "TAPA"},
+         {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
+         {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
+         {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..56ec0ad3 100644
+index 8328945b..388a3485 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,8 @@
@@ -50,11 +74,27 @@ index 8328945b..56ec0ad3 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
+@@ -457,6 +459,7 @@
+         "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
+         "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
+         "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
++        "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "TAPA",
+         "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
+         "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
+         "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..ad82476c 100644
+index 49b15e92..be1b65a6 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
-@@ -772,6 +772,8 @@ enum class String : size_t {
+@@ -576,6 +576,7 @@ enum class String : size_t {
+ 	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR,
+ 	STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS,
+ 	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR,
++	STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION,
+ 	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
+ 	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
+ 	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
+@@ -772,6 +773,8 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -63,6 +103,26 @@ index 49b15e92..ad82476c 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
+diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
+index ab3a3d37..261ddbaf 100644
+--- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
++++ b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
+@@ -56,6 +56,7 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
+ SettingToggle menuDeleteUnusedKitRows(RuntimeFeatureSettingType::DeleteUnusedKitRows);
+ SettingToggle menuAltGoldenKnobDelayParams(RuntimeFeatureSettingType::AltGoldenKnobDelayParams);
+ Setting menuSyncScalingAction(RuntimeFeatureSettingType::SyncScalingAction);
++Setting menuTapTempoAction(RuntimeFeatureSettingType::TapTempoAction);
+ DevSysexSetting menuDevSysexAllowed(RuntimeFeatureSettingType::DevSysexAllowed);
+ SettingToggle menuHighlightIncomingNotes(RuntimeFeatureSettingType::HighlightIncomingNotes);
+ SettingToggle menuDisplayNornsLayout(RuntimeFeatureSettingType::DisplayNornsLayout);
+@@ -96,6 +97,7 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
+     &menuAlternativePlaybackStartBehaviour,
+     &menuEnableGridViewLoopPads,
+     &menuAlternativeTapTempoBehaviour,
++    &menuTapTempoAction,
+     &menuHorizontalMenus,
+     &menuRoundedCorners,
+     &menuTrimFromStartOfAudioClip,
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
 index 00000000..662c41d0
@@ -184,6 +244,941 @@ index 7bbd559f..153095f1 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
+diff --git a/src/deluge/gui/ui/save/save_pattern_ui.cpp b/src/deluge/gui/ui/save/save_pattern_ui.cpp
+index 1d13a128..3b757113 100644
+--- a/src/deluge/gui/ui/save/save_pattern_ui.cpp
++++ b/src/deluge/gui/ui/save/save_pattern_ui.cpp
+@@ -47,7 +47,19 @@ SavePatternUI::SavePatternUI() {
+ 	filePrefix = "PATTERN";
+ }
+ 
++void SavePatternUI::setupRowPattern(char const* dir, char const* fileName, int32_t rowLength) {
++	rowPatternDir = dir;
++	rowPatternFileName = fileName;
++	rowPatternLength = rowLength;
++	rowPatternPending = true;
++}
++
+ bool SavePatternUI::opened() {
++	// A row pattern save only applies to the opening it was set up for
++	if (!rowPatternPending) {
++		rowPatternLength = 0;
++	}
++	rowPatternPending = false;
+ 
+ 	if (!getRootUI()->toClipMinder() || (getCurrentOutputType() == OutputType::AUDIO)) {
+ 		return false;
+@@ -68,6 +80,13 @@ bool SavePatternUI::opened() {
+ 		display->displayError(error);
+ 		return false;
+ 	}
++	if (rowPatternLength) {
++		error = createFoldersRecursiveIfNotExists(rowPatternDir.c_str());
++		if (error != Error::NONE) {
++			display->displayError(error);
++			return false;
++		}
++	}
+ 
+ 	Instrument* currentInstrument = getCurrentInstrument();
+ 	// Must set this before calling SaveUI::opened(), which uses this to work out folder name
+@@ -84,7 +103,13 @@ doReturnFalse:
+ 	currentFolderIsEmpty = false;
+ 
+ 	std::string patternFolder = "";
+-	if (getCurrentOutputType() == OutputType::KIT) {
++	if (rowPatternLength) {
++		defaultDir = rowPatternDir;
++		title = "Save Track Pattern";
++		selectedDrumOnly = true;
++		enteredText.set(rowPatternFileName.c_str());
++	}
++	else if (getCurrentOutputType() == OutputType::KIT) {
+ 		if (getRootUI()->getAffectEntire()) {
+ 			defaultDir = PATTERN_RHYTHMIC_KIT_DEFAULT_FOLDER;
+ 			title = "Save Kit Pattern";
+@@ -184,7 +209,7 @@ fail:
+ 
+ 	Serializer& writer = GetSerializer();
+ 
+-	instrumentClipView.copyNotesToFile(writer, selectedDrumOnly);
++	instrumentClipView.copyNotesToFile(writer, selectedDrumOnly, rowPatternLength);
+ 
+ 	writer.closeFileAfterWriting();
+ 
+diff --git a/src/deluge/gui/ui/save/save_pattern_ui.h b/src/deluge/gui/ui/save/save_pattern_ui.h
+index c7f05939..61dfc609 100644
+--- a/src/deluge/gui/ui/save/save_pattern_ui.h
++++ b/src/deluge/gui/ui/save/save_pattern_ui.h
+@@ -24,6 +24,8 @@ class SavePatternUI final : public SaveUI {
+ public:
+ 	SavePatternUI();
+ 	bool opened() override;
++	/// Kit pattern mode: the next time this opens, it saves one whole kit row of rowLength into dir, offering fileName
++	void setupRowPattern(char const* dir, char const* fileName, int32_t rowLength);
+ 
+ 	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
+ 
+@@ -42,6 +44,10 @@ public:
+ private:
+ 	bool selectedDrumOnly;
+ 	std::string defaultDir;
++	std::string rowPatternDir;
++	std::string rowPatternFileName;
++	int32_t rowPatternLength = 0; // Not 0 while saving a kit row for kit pattern mode
++	bool rowPatternPending = false;
+ };
+ 
+ extern SavePatternUI savePatternUI;
+diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
+index 4f8f5ec2..9b85f77b 100644
+--- a/src/deluge/gui/views/instrument_clip_view.cpp
++++ b/src/deluge/gui/views/instrument_clip_view.cpp
+@@ -34,10 +34,12 @@
+ #include "gui/ui/rename/rename_drum_ui.h"
+ #include "gui/ui/sample_marker_editor.h"
+ #include "gui/ui/save/save_kit_row_ui.h"
++#include "gui/ui/save/save_pattern_ui.h"
+ #include "gui/ui/sound_editor.h"
+ #include "gui/ui/ui.h"
+ #include "gui/ui_timer_manager.h"
+ #include "gui/views/automation_view.h"
++#include "gui/views/kit_pattern_mode.h"
+ #include "gui/views/timeline_view.h"
+ #include "gui/views/view.h"
+ #include "hid/buttons.h"
+@@ -575,6 +577,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+ 			}
+ 		}
+ 	}
++	// Kit pattern mode: save the held track's pattern over its slot
++	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING
++	         && deluge::gui::kit_pattern::kitPatternMode.isActiveHere()) {
++		if (on) {
++			if (inCardRoutine) {
++				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++			}
++			int32_t noteRowIndex = -1;
++			getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, &noteRowIndex);
++			if (deluge::gui::kit_pattern::kitPatternMode.setUpTrackSave(noteRowIndex)) {
++				AudioEngine::stopAnyPreviewing();
++				cancelAllAuditioning();
++				display->cancelPopup();
++				openUI(&savePatternUI);
++			}
++		}
++	}
+ 	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
+ 		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
+ 		if (noteRow->drum->type == DrumType::SOUND) {
+@@ -838,6 +857,14 @@ doCancelPopup:
+ 
+ 	else if (b == SELECT_ENC) {
+ 		if (on) {
++			// Kit pattern mode: load the picked bank into all six tracks
++			if (currentUIMode == UI_MODE_NONE && deluge::gui::kit_pattern::kitPatternMode.isActiveHere()) {
++				if (inCardRoutine) {
++					return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++				}
++				deluge::gui::kit_pattern::kitPatternMode.loadBank();
++				return ActionResult::DEALT_WITH;
++			}
+ 			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
+ 				if (enterNoteEditor()) {
+ 					return ActionResult::DEALT_WITH;
+@@ -1114,7 +1141,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+ 	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
+ }
+ 
+-void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
++void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly, int32_t fullLength) {
+ 
+ 	bool copyToFile = false;
+ 	if (writer) {
+@@ -1125,8 +1152,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+ 	// Clear out previously copied stuff
+ 	deleteCopiedNoteRows();
+ 
+-	int32_t startPos = getPosFromSquare(0);
+-	int32_t endPos = getPosFromSquare(kDisplayWidth);
++	int32_t startPos = fullLength ? 0 : getPosFromSquare(0);
++	int32_t endPos = fullLength ? fullLength : getPosFromSquare(kDisplayWidth);
+ 
+ 	copiedScreenWidth = endPos - startPos;
+ 	if (copiedScreenWidth == 0) {
+@@ -1297,8 +1324,8 @@ ramError:
+ 	}
+ }
+ 
+-void InstrumentClipView::copyNotesToFile(Serializer& writer, bool selectedDrumOnly) {
+-	copyNotes(&writer, selectedDrumOnly);
++void InstrumentClipView::copyNotesToFile(Serializer& writer, bool selectedDrumOnly, int32_t fullLength) {
++	copyNotes(&writer, selectedDrumOnly, fullLength);
+ }
+ 
+ void InstrumentClipView::deleteCopiedNoteRows() {
+@@ -1689,11 +1716,107 @@ getOut: {}
+ 	}
+ 
+ 	// Pasting notes to the View
+-	pasteNotes(overwriteExisting, true, noScaling, previewOnly, selectedDrumOnly);
++	if (rowPatternTarget >= 0) {
++		applyRowPattern(rowPatternTarget, firstCopiedNoteRow, copiedScreenWidth, rowPatternAction);
++	}
++	else {
++		pasteNotes(overwriteExisting, true, noScaling, previewOnly, selectedDrumOnly);
++	}
+ 
+ 	return Error::NONE;
+ }
+ 
++Error InstrumentClipView::loadRowPatternFromFile(Deserializer& reader, int32_t noteRowIndex, Action* action) {
++	rowPatternTarget = noteRowIndex;
++	rowPatternAction = action;
++	Error error = pasteNotesFromFile(reader, true, true, false, true);
++	rowPatternTarget = -1;
++	rowPatternAction = nullptr;
++	return error;
++}
++
++// Sets a NoteRow's length the way editing it by hand does, so it can be undone
++static void setNoteRowLengthWithUndo(ModelStackWithNoteRow* modelStack, int32_t newLength, Action* action) {
++	NoteRow* noteRow = modelStack->getNoteRow();
++	int32_t oldPos = modelStack->getLastProcessedPos();
++	bool hadIndependentPlayPosBefore = noteRow->hasIndependentPlayPos();
++	void* consMemory = action ? GeneralMemoryAllocator::get().allocLowSpeed(sizeof(ConsequenceNoteRowLength)) : nullptr;
++	if (consMemory) {
++		auto* consequence = new (consMemory) ConsequenceNoteRowLength(modelStack->noteRowId, newLength);
++		action->addConsequence(consequence);
++		consequence->performChange(modelStack, action, oldPos, hadIndependentPlayPosBefore);
++	}
++	else {
++		noteRow->setLength(modelStack, newLength, nullptr, oldPos, hadIndependentPlayPosBefore);
++	}
++}
++
++void InstrumentClipView::applyRowPattern(int32_t noteRowIndex, CopiedNoteRow* source, int32_t patternLength,
++                                         Action* action) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	if (noteRowIndex < 0 || noteRowIndex >= clip->noteRows.getNumElements()) {
++		return;
++	}
++	if (patternLength > kMaxSequenceLength) {
++		patternLength = 0; // Too long to hold, so the row stays the clip's length
++	}
++
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(modelStackMemory);
++
++	// A pattern longer than the clip lengthens it the way clip multiply does, repeating every row's notes to fill it
++	if (patternLength > clip->loopLength) {
++		int32_t oldLength = clip->loopLength;
++		clip->increaseLengthWithRepeats(modelStack, patternLength, IndependentNoteRowLengthIncrease::ROUND_UP, false,
++		                                action);
++		if (action) {
++			action->recordClipLengthChange(clip, oldLength);
++		}
++		clip->output->clipLengthChanged(clip, oldLength);
++		if (playbackHandler.isEitherClockActive() && currentSong->isClipActive(clip)) {
++			currentPlaybackMode->reSyncClip(modelStack);
++		}
++	}
++
++	// Every row runs the clip's length, so any shorter row is repeated out to it
++	int32_t clipLength = clip->loopLength;
++	for (int32_t i = 0; i < clip->noteRows.getNumElements(); i++) {
++		NoteRow* thisNoteRow = clip->noteRows.getElement(i);
++		int32_t rowLength = thisNoteRow->loopLengthIfIndependent;
++		if (!rowLength || rowLength > clipLength) {
++			continue;
++		}
++		ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(i, thisNoteRow);
++		if (rowLength < clipLength) {
++			thisNoteRow->generateRepeats(modelStackWithNoteRow, rowLength, clipLength,
++			                             (clipLength + (rowLength >> 1)) / rowLength, action);
++		}
++		setNoteRowLengthWithUndo(modelStackWithNoteRow, clipLength, action);
++	}
++
++	// The pattern replaces the row's notes, repeated to fill the clip if it's shorter
++	NoteRow* noteRow = clip->noteRows.getElement(noteRowIndex);
++	ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(noteRowIndex, noteRow);
++	noteRow->clearArea(0, clipLength, modelStackWithNoteRow, action, clipLength);
++	if (source && patternLength > 0) {
++		for (int32_t repeatStart = 0; repeatStart < clipLength; repeatStart += patternLength) {
++			for (int32_t n = 0; n < source->numNotes; n++) {
++				Note* note = &source->notes[n];
++				int32_t pos = repeatStart + note->pos;
++				if (note->pos < 0 || note->pos >= patternLength || pos >= clipLength) {
++					continue;
++				}
++				noteRow->attemptNoteAdd(pos, std::min(note->length, clipLength - pos), note->velocity,
++				                        note->probability, note->iterance, note->fill, modelStackWithNoteRow, action);
++			}
++		}
++	}
++
++	clip->expectEvent();
++	recalculateColours();
++	uiNeedsRendering(this);
++}
++
+ void InstrumentClipView::doubleClipLengthAction() {
+ 
+ 	// If too big...
+@@ -1774,6 +1897,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+ 
+ 	exitedShortcutOverview = true;
+ 	uiNeedsRendering(this);
++
++	// Kit pattern mode: step the held track's pattern, or with no pad held, pick a bank
++	if (deluge::gui::kit_pattern::kitPatternMode.isActiveHere()) {
++		int32_t step = (offset > 0) ? 1 : -1;
++		if (currentUIMode == UI_MODE_AUDITIONING) {
++			int32_t noteRowIndex = -1;
++			getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, &noteRowIndex);
++			deluge::gui::kit_pattern::kitPatternMode.stepTrackPattern(noteRowIndex, step);
++			return;
++		}
++		if (currentUIMode == UI_MODE_NONE) {
++			deluge::gui::kit_pattern::kitPatternMode.browseBanks(step);
++			return;
++		}
++	}
+ 	// User may be trying to edit noteCode...
+ 	if (currentUIMode == UI_MODE_AUDITIONING) {
+ 		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
+diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
+index 38f8cbc9..999eed36 100644
+--- a/src/deluge/gui/views/instrument_clip_view.h
++++ b/src/deluge/gui/views/instrument_clip_view.h
+@@ -311,7 +311,13 @@ public:
+ 	bool handleNoteRowEditorPadAction(int32_t x, int32_t y, int32_t on);
+ 	bool handleNoteRowEditorMainPadAction(int32_t x, int32_t y, int32_t on);
+ 	void handleNoteRowEditorAuditionPadAction(int32_t y);
+-	void copyNotesToFile(Serializer& writer, bool selectedDrumOnly = false);
++	/// fullLength, if not 0, copies from the start of the clip to fullLength instead of what's on screen
++	void copyNotesToFile(Serializer& writer, bool selectedDrumOnly = false, int32_t fullLength = 0);
++	/// Kit pattern mode: replaces one kit row with the pattern in an open pattern file
++	Error loadRowPatternFromFile(Deserializer& reader, int32_t noteRowIndex, Action* action);
++	/// Kit pattern mode: replaces one kit row's notes with source's (or clears the row if source is null) and sets the
++	/// row to patternLength. A longer pattern lengthens the clip, and every other row keeps the length it had.
++	void applyRowPattern(int32_t noteRowIndex, CopiedNoteRow* source, int32_t patternLength, Action* action);
+ 	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
+ 	                         bool selectedDrumOnly);
+ 	void patternPreview();
+@@ -397,11 +403,13 @@ private:
+ 	bool updating_note_pulse_directly = false;
+ 
+ 	// note row functions
+-	void copyNotes(Serializer* writer, bool selectedDrumOnly = false);
++	void copyNotes(Serializer* writer, bool selectedDrumOnly = false, int32_t fullLength = 0);
+ 	void pasteNotes(bool overwriteExisting = true, bool pasteFromFile = false, bool noScaling = false,
+ 	                bool previewOnly = false, bool selectedDrumOnly = false);
+ 	void deleteCopiedNoteRows();
+ 	CopiedNoteRow* firstCopiedNoteRow;
++	int32_t rowPatternTarget = -1; // When not -1, pasteNotesFromFile() fills just this kit row
++	Action* rowPatternAction = nullptr;
+ 	int32_t copiedScreenWidth{};
+ 	ScaleType copiedScaleType{};
+ 	int16_t copiedYNoteOfBottomRow{};
+diff --git a/src/deluge/gui/views/kit_pattern_mode.cpp b/src/deluge/gui/views/kit_pattern_mode.cpp
+new file mode 100644
+index 00000000..4a339b19
+--- /dev/null
++++ b/src/deluge/gui/views/kit_pattern_mode.cpp
+@@ -0,0 +1,221 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "gui/views/kit_pattern_mode.h"
++#include "fatfs/ff.h"
++#include "gui/ui/save/save_pattern_ui.h"
++#include "gui/views/instrument_clip_view.h"
++#include "gui/views/view.h"
++#include "hid/display/display.h"
++#include "model/action/action_logger.h"
++#include "model/clip/instrument_clip.h"
++#include "model/note/note_row.h"
++#include "model/settings/runtime_feature_settings.h"
++#include "model/song/song.h"
++#include "storage/storage_manager.h"
++#include <cstdio>
++#include <cstring>
++
++namespace deluge::gui::kit_pattern {
++
++KitPatternMode kitPatternMode{};
++
++namespace {
++
++constexpr char const* kRootFolder = "PATTERNS/RHYTHMIC/STUMBLE";
++
++// In the module's order, bottom row first. These are also the track folder names.
++constexpr char const* kTrackNames[kNumTracks] = {"KICK", "SNARE", "HIHAT1", "HIHAT2", "PERC1", "PERC2"};
++constexpr char const* kTrackShortNames[kNumTracks] = {"BD", "SD", "H1", "H2", "P1", "P2"};
++
++int32_t wrap(int32_t value, int32_t size) {
++	return ((value % size) + size) % size;
++}
++
++} // namespace
++
++bool KitPatternMode::isChosenInSettings() {
++	return runtimeFeatureSettings.get(RuntimeFeatureSettingType::SyncScalingAction)
++	       == RuntimeFeatureStateSyncScalingAction::Pattern;
++}
++
++bool KitPatternMode::isActiveHere() {
++	return on_ && isChosenInSettings() && getCurrentUI() == &instrumentClipView
++	       && getCurrentOutputType() == OutputType::KIT;
++}
++
++void KitPatternMode::toggle() {
++	on_ = !on_;
++	browsedBank_ = -1;
++	if (on_) {
++		if (!bank_[0] && readBanks()) {
++			strcpy(bank_, banks_[0]);
++		}
++		char text[64];
++		snprintf(text, sizeof(text), "Kit pattern mode\n%s", bank_[0] ? bank_ : "No pattern banks");
++		show(text, "PATT");
++	}
++	else {
++		show("Kit pattern mode off", "OFF");
++	}
++	view.setTimeBaseScaleLedState();
++}
++
++int32_t KitPatternMode::readBanks() {
++	numBanks_ = 0;
++	DIR dir;
++	if (f_opendir(&dir, kRootFolder) != FR_OK) {
++		return 0;
++	}
++	FILINFO fileInfo;
++	while (numBanks_ < kMaxBanks && f_readdir(&dir, &fileInfo) == FR_OK && fileInfo.fname[0]) {
++		if (!(fileInfo.fattrib & AM_DIR) || fileInfo.fname[0] == '.') {
++			continue;
++		}
++		strncpy(banks_[numBanks_], fileInfo.fname, kMaxBankNameLength - 1);
++		banks_[numBanks_][kMaxBankNameLength - 1] = 0;
++		numBanks_++;
++	}
++	f_closedir(&dir);
++
++	// Alphabetical, so banks come round in the same order every time
++	for (int32_t i = 1; i < numBanks_; i++) {
++		for (int32_t j = i; j > 0 && strcasecmp(banks_[j - 1], banks_[j]) > 0; j--) {
++			char swap[kMaxBankNameLength];
++			strcpy(swap, banks_[j]);
++			strcpy(banks_[j], banks_[j - 1]);
++			strcpy(banks_[j - 1], swap);
++		}
++	}
++	return numBanks_;
++}
++
++void KitPatternMode::stepTrackPattern(int32_t noteRowIndex, int32_t offset) {
++	if (noteRowIndex < 0 || noteRowIndex >= kNumTracks) {
++		show("Patterns are on the bottom 6 rows", "NONE");
++		return;
++	}
++	if (!bank_[0]) {
++		show("No pattern banks", "NOBK");
++		return;
++	}
++	slot_[noteRowIndex] = wrap(slot_[noteRowIndex] + offset, kNumSlots);
++	Action* action = actionLogger.getNewAction(ActionType::PATTERN_PASTE, ActionAddition::NOT_ALLOWED);
++	bool found = loadTrack(noteRowIndex, action);
++	actionLogger.closeAction(ActionType::PATTERN_PASTE);
++	showTrack(noteRowIndex, !found);
++}
++
++void KitPatternMode::browseBanks(int32_t offset) {
++	if (!readBanks()) {
++		show("No pattern banks", "NOBK");
++		return;
++	}
++	if (browsedBank_ < 0 || browsedBank_ >= numBanks_) {
++		browsedBank_ = 0;
++		for (int32_t i = 0; i < numBanks_; i++) {
++			if (!strcasecmp(banks_[i], bank_)) {
++				browsedBank_ = i;
++			}
++		}
++	}
++	browsedBank_ = wrap(browsedBank_ + offset, numBanks_);
++	char text[64];
++	snprintf(text, sizeof(text), "Bank: %s\nPress SELECT to load", banks_[browsedBank_]);
++	show(text, banks_[browsedBank_]);
++}
++
++void KitPatternMode::loadBank() {
++	if (browsedBank_ >= 0 && browsedBank_ < numBanks_) {
++		strcpy(bank_, banks_[browsedBank_]);
++	}
++	browsedBank_ = -1;
++	if (!bank_[0]) {
++		show("No pattern banks", "NOBK");
++		return;
++	}
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	Action* action = actionLogger.getNewAction(ActionType::PATTERN_PASTE, ActionAddition::NOT_ALLOWED);
++	for (int32_t track = 0; track < kNumTracks && track < clip->noteRows.getNumElements(); track++) {
++		loadTrack(track, action);
++	}
++	actionLogger.closeAction(ActionType::PATTERN_PASTE);
++	char text[64];
++	snprintf(text, sizeof(text), "%s loaded", bank_);
++	show(text, bank_);
++}
++
++bool KitPatternMode::loadTrack(int32_t track, Action* action) {
++	char path[160];
++	snprintf(path, sizeof(path), "%s/%s/%s/PATTERN%03d.XML", kRootFolder, bank_, kTrackNames[track],
++	         (int)slot_[track] + 1);
++	FilePointer filePointer;
++	if (StorageManager::fileExists(path, &filePointer)) {
++		Error error = StorageManager::loadRowPatternFile(&filePointer, track, action);
++		if (error != Error::NONE) {
++			display->displayError(error);
++		}
++		return true;
++	}
++	// An empty slot is an empty pattern
++	instrumentClipView.applyRowPattern(track, nullptr, 0, action);
++	return false;
++}
++
++bool KitPatternMode::setUpTrackSave(int32_t noteRowIndex) {
++	if (noteRowIndex < 0 || noteRowIndex >= kNumTracks) {
++		show("Patterns are on the bottom 6 rows", "NONE");
++		return false;
++	}
++	if (!bank_[0]) {
++		show("Make a bank folder in PATTERNS/RHYTHMIC/STUMBLE first", "NOBK");
++		return false;
++	}
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	NoteRow* noteRow = clip->noteRows.getElement(noteRowIndex);
++	int32_t rowLength = noteRow->loopLengthIfIndependent ? noteRow->loopLengthIfIndependent : clip->loopLength;
++
++	char dir[128];
++	snprintf(dir, sizeof(dir), "%s/%s/%s", kRootFolder, bank_, kTrackNames[noteRowIndex]);
++	char fileName[16];
++	snprintf(fileName, sizeof(fileName), "PATTERN%03d", (int)slot_[noteRowIndex] + 1);
++
++	// The save writes the selected drum's row
++	instrumentClipView.setSelectedDrum(noteRow->drum, true);
++	savePatternUI.setupRowPattern(dir, fileName, rowLength);
++	return true;
++}
++
++void KitPatternMode::showTrack(int32_t track, bool empty) {
++	char text[64];
++	snprintf(text, sizeof(text), "%s\n%s %d%s", bank_, kTrackNames[track], (int)slot_[track] + 1,
++	         empty ? " (empty)" : "");
++	char shortText[8];
++	snprintf(shortText, sizeof(shortText), "%s%02d", kTrackShortNames[track], (int)slot_[track] + 1);
++	show(text, shortText);
++}
++
++void KitPatternMode::show(char const* oledText, char const* sevenSegText) {
++	if (display->haveOLED()) {
++		display->popupTextTemporary(oledText);
++	}
++	else {
++		display->displayPopup(sevenSegText);
++	}
++}
++
++} // namespace deluge::gui::kit_pattern
+diff --git a/src/deluge/gui/views/kit_pattern_mode.h b/src/deluge/gui/views/kit_pattern_mode.h
+new file mode 100644
+index 00000000..4bbd4cbd
+--- /dev/null
++++ b/src/deluge/gui/views/kit_pattern_mode.h
+@@ -0,0 +1,76 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include <array>
++#include <cstdint>
++
++class Action;
++
++// Kit pattern mode: a pattern store for the first six rows of a kit, after the Stolperbeats module. With the Sync
++// Scaling button set to "Kit pattern mode" in community features, pressing it latches the mode on (its LED flashes).
++// Then, in a kit clip:
++// - Hold a track's audition pad and turn SELECT to step that track through its 24 saved patterns.
++// - With no pad held, turn SELECT to pick a bank, and press SELECT to load it into all six tracks.
++// - Hold a track's audition pad and press SAVE to save that track's pattern over its slot.
++// Patterns are ordinary pattern files at PATTERNS/RHYTHMIC/STUMBLE/<bank>/<track>/PATTERN001.XML to PATTERN024.XML,
++// where a bank is any folder, such as TECHNO or HOUSE.
++namespace deluge::gui::kit_pattern {
++
++constexpr int32_t kNumTracks = 6;
++constexpr int32_t kNumSlots = 24;
++constexpr int32_t kMaxBanks = 64;
++constexpr int32_t kMaxBankNameLength = 32;
++
++class KitPatternMode {
++public:
++	/// True when the Sync Scaling button is set to kit pattern mode in community features
++	static bool isChosenInSettings();
++	/// True when the mode is latched on and the current view is a kit clip
++	bool isActiveHere();
++	bool isOn() const { return on_; }
++	void toggle();
++
++	/// Turning SELECT with a track's audition pad held: steps that track to its next or previous pattern
++	void stepTrackPattern(int32_t noteRowIndex, int32_t offset);
++	/// Turning SELECT with no pad held: picks the bank that pressing SELECT will load
++	void browseBanks(int32_t offset);
++	/// Pressing SELECT with no pad held: loads the picked bank into all six tracks, each on its own pattern number
++	void loadBank();
++	/// Holding a track's audition pad and pressing SAVE: sets up the pattern save screen for that track's slot.
++	/// Returns false if the row isn't one of the six tracks or there's no bank, after saying why.
++	bool setUpTrackSave(int32_t noteRowIndex);
++
++private:
++	/// Returns false if the track's slot has no file, in which case the track is cleared
++	bool loadTrack(int32_t track, Action* action);
++	int32_t readBanks();
++	void showTrack(int32_t track, bool empty);
++	void show(char const* oledText, char const* sevenSegText);
++
++	bool on_ = false;
++	char bank_[kMaxBankNameLength] = "";
++	int32_t browsedBank_ = -1;               // Index into banks_ while browsing, or -1
++	std::array<int32_t, kNumTracks> slot_{}; // 0 to kNumSlots - 1 for each track
++	char banks_[kMaxBanks][kMaxBankNameLength];
++	int32_t numBanks_ = 0;
++};
++
++extern KitPatternMode kitPatternMode;
++
++} // namespace deluge::gui::kit_pattern
+diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
+index 0690e2bb..2001354a 100644
+--- a/src/deluge/gui/views/view.cpp
++++ b/src/deluge/gui/views/view.cpp
+@@ -37,6 +37,7 @@
+ #include "gui/views/arranger_view.h"
+ #include "gui/views/automation_view.h"
+ #include "gui/views/instrument_clip_view.h"
++#include "gui/views/kit_pattern_mode.h"
+ #include "gui/views/performance_view.h"
+ #include "gui/views/session_view.h"
+ #include "hid/buttons.h"
+@@ -76,6 +77,7 @@
+ #include "modulation/params/param.h"
+ #include "modulation/params/param_collection.h"
+ #include "modulation/params/param_set.h"
++#include "playback/autofill.h"
+ #include "playback/mode/arrangement.h"
+ #include "playback/mode/session.h"
+ #include "processing/audio_output.h"
+@@ -162,12 +164,19 @@ doEndMidiLearnPressSession:
+ 				endMidiLearnPressSession();
+ 			}
+ 		}
++		else if (!on && deluge::autofill::Autofill::isChosenInSettings()) {
++			deluge::autofill::autofill.tapReleased();
++		}
+ 		else if (currentUIMode == UI_MODE_NONE || currentUIMode == UI_MODE_RECORD_COUNT_IN) {
+ 			if (on) {
+ 				// If shift button, toggle metronome
+ 				if (Buttons::isShiftButtonPressed()) {
+ 					playbackHandler.toggleMetronomeStatus();
+ 				}
++				// Or, with TAP set to autofill, play a fill instead of tapping the tempo
++				else if (deluge::autofill::Autofill::isChosenInSettings()) {
++					deluge::autofill::autofill.tapPressed();
++				}
+ 				// Otherwise, normal - tap tempo, but not during record count in
+ 				else if (currentUIMode == UI_MODE_NONE) {
+ 					bool useNormalTapTempoBehaviour =
+@@ -328,8 +337,17 @@ doEndMidiLearnPressSession:
+ 		}
+ 	}
+ 
+-	// Sync-scaling button - can be repurposed as Fill Mode in community settings
++	// Sync-scaling button - can be repurposed as Fill Mode or Kit pattern mode in community settings
+ 	else if (b == SYNC_SCALING) {
++		if (deluge::gui::kit_pattern::KitPatternMode::isChosenInSettings()) {
++			if (on) {
++				if (inCardRoutine) {
++					return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++				}
++				deluge::gui::kit_pattern::kitPatternMode.toggle();
++			}
++			return ActionResult::DEALT_WITH;
++		}
+ 		if ((runtimeFeatureSettings.get(RuntimeFeatureSettingType::SyncScalingAction)
+ 		     == RuntimeFeatureStateSyncScalingAction::Fill)) {
+ 			// If currently in the sound editor note editor / note row editor, keep this button as the global
+@@ -499,6 +517,17 @@ void View::endMIDILearn() {
+ }
+ 
+ void View::setTimeBaseScaleLedState() {
++	// In kit pattern mode the LED flashes while the mode is on, and isn't used for sync scaling
++	if (deluge::gui::kit_pattern::KitPatternMode::isChosenInSettings()) {
++		if (deluge::gui::kit_pattern::kitPatternMode.isOn()) {
++			indicator_leds::blinkLed(IndicatorLED::SYNC_SCALING);
++		}
++		else {
++			indicator_leds::setLedState(IndicatorLED::SYNC_SCALING, false);
++		}
++		return;
++	}
++
+ 	// If this Clip is the inputTickScaleClip, flash the LED
+ 	if (getCurrentUI()->toClipMinder() && getCurrentClip() == currentSong->getSyncScalingClip()) {
+ 		indicator_leds::blinkLed(IndicatorLED::SYNC_SCALING);
+diff --git a/src/deluge/hid/buttons.cpp b/src/deluge/hid/buttons.cpp
+index 21f193b9..2076fed5 100644
+--- a/src/deluge/hid/buttons.cpp
++++ b/src/deluge/hid/buttons.cpp
+@@ -26,6 +26,7 @@
+ #include "gui/views/view.h"
+ #include "model/mod_controllable/mod_controllable.h"
+ #include "model/settings/runtime_feature_settings.h"
++#include "playback/autofill.h"
+ #include "playback/mode/playback_mode.h"
+ #include "playback/playback_handler.h"
+ #include "processing/engines/audio_engine.h"
+@@ -175,6 +176,10 @@ ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
+ 	// Shift button
+ 	else if (b == SHIFT) {
+ 		commandToggleShift(on);
++		// The swing popup stays up while SHIFT is held
++		if (!on && display->hasPopupOfType(PopupType::SWING)) {
++			display->cancelPopup();
++		}
+ 	}
+ 	// Record button
+ 	else if (b == RECORD) {
+@@ -211,12 +216,25 @@ ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
+ 
+ 	// Tempo encoder button
+ 	else if (b == TEMPO_ENC) {
++		// SHIFT + click clears tempo automation, on release, unless the knob was turned to change the swing style
++		if (!on) {
++			if (playbackHandler.tempoPressedWithShift && !playbackHandler.tempoTurnedWhilePressedWithShift) {
++				playbackHandler.commandClearTempoAutomation();
++			}
++			playbackHandler.tempoPressedWithShift = false;
++		}
+ 		if (on) {
+ 			if (isShiftButtonPressed()) {
+-				playbackHandler.commandClearTempoAutomation();
++				playbackHandler.tempoPressedWithShift = true;
++				playbackHandler.tempoTurnedWhilePressedWithShift = false;
+ 			}
+ 			else if (isButtonPressed(TAP_TEMPO)) {
+-				playbackHandler.commandDisplaySwingInterval();
++				if (deluge::autofill::Autofill::isChosenInSettings()) {
++					deluge::autofill::autofill.displayFill();
++				}
++				else {
++					playbackHandler.commandDisplaySwingInterval();
++				}
+ 			}
+ 			else {
+ 				UI* currentUI = getCurrentUI();
+diff --git a/src/deluge/model/clip/instrument_clip.cpp b/src/deluge/model/clip/instrument_clip.cpp
+index babfd854..056491d2 100644
+--- a/src/deluge/model/clip/instrument_clip.cpp
++++ b/src/deluge/model/clip/instrument_clip.cpp
+@@ -47,8 +47,10 @@
+ #include "modulation/midi/midi_param.h"
+ #include "modulation/midi/midi_param_collection.h"
+ #include "modulation/patch/patch_cable_set.h"
++#include "playback/autofill.h"
+ #include "processing/engines/audio_engine.h"
+ #include "processing/engines/cv_engine.h"
++#include "processing/sound/sound_drum.h"
+ #include "processing/sound/sound_instrument.h"
+ #include "storage/storage_manager.h"
+ #include "util/const_functions.h"
+@@ -893,6 +895,12 @@ doNewProbability:
+ 					}
+ 				}
+ 
++				// Autofill can take a hit away while it plays a fill
++				if (conditionPassed
++				    && deluge::autofill::autofill.shouldSilence(this, pendingNoteOnList.pendingNoteOns[i].noteRowId)) {
++					conditionPassed = false;
++				}
++
+ 				// probability, iterance and fill conditions have passed
+ 				if (conditionPassed) {
+ 					sendPendingNoteOn(modelStack, &pendingNoteOnList.pendingNoteOns[i]);
+@@ -938,6 +946,45 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
+ 	}
+ }
+ 
++void InstrumentClip::playAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId, int32_t velocity,
++                                     int32_t semitones) {
++	NoteRow* noteRow = noteRows.getElement(noteRowId);
++	if (output->type != OutputType::KIT || !noteRow->drum) {
++		return;
++	}
++	PendingNoteOn pendingNoteOn{};
++	pendingNoteOn.noteRow = noteRow;
++	pendingNoteOn.noteRowId = noteRowId;
++	pendingNoteOn.probability = kNumProbabilityValues;
++	pendingNoteOn.velocity = velocity;
++	pendingNoteOn.iterance = kDefaultIteranceValue;
++	pendingNoteOn.fill = FillMode::OFF;
++
++	// A voice takes its pitch from the sound's transpose when it starts, so shifting the transpose just around this
++	// note-on pitches this hit alone, without touching the pitch knob, its automation or other sounding notes
++	SoundDrum* soundDrum = (semitones && noteRow->drum->type == DrumType::SOUND) ? (SoundDrum*)noteRow->drum : nullptr;
++	int16_t oldTranspose = 0;
++	if (soundDrum) {
++		oldTranspose = soundDrum->transpose;
++		soundDrum->transpose = std::clamp<int32_t>(oldTranspose + semitones, -96, 96);
++	}
++	sendPendingNoteOn(modelStack, &pendingNoteOn);
++	if (soundDrum) {
++		soundDrum->transpose = oldTranspose;
++	}
++}
++
++void InstrumentClip::stopAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId) {
++	NoteRow* noteRow = noteRows.getElement(noteRowId);
++	if (output->type != OutputType::KIT || !noteRow->drum) {
++		return;
++	}
++	ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
++	    modelStack->addNoteRow(noteRowId, noteRow)
++	        ->addOtherTwoThings(noteRow->drum->toModControllable(), &noteRow->paramManager);
++	noteRow->drum->kit->noteOffPreKitArp(modelStackWithThreeMainThings, noteRow->drum);
++}
++
+ void InstrumentClip::toggleNoteRowMute(ModelStackWithNoteRow* modelStack) {
+ 
+ 	// Record action
+diff --git a/src/deluge/model/clip/instrument_clip.h b/src/deluge/model/clip/instrument_clip.h
+index b6e15e33..64e37696 100644
+--- a/src/deluge/model/clip/instrument_clip.h
++++ b/src/deluge/model/clip/instrument_clip.h
+@@ -47,6 +47,12 @@ enum class VerticalNudgeType { ROW, OCTAVE };
+ 
+ class InstrumentClip final : public Clip {
+ public:
++	/// Autofill: plays a kit row's drum now, as if a note had started on it, and stops it again
++	/// semitones shifts just this hit, for drums that are sounds
++	void playAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId, int32_t velocity,
++	                     int32_t semitones = 0);
++	void stopAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId);
++
+ 	explicit InstrumentClip(Song* song = nullptr);
+ 	~InstrumentClip() override;
+ 	void increaseLengthWithRepeats(ModelStackWithTimelineCounter* modelStack, int32_t newLength,
+diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
+index c127568b..5afce648 100644
+--- a/src/deluge/model/settings/runtime_feature_settings.cpp
++++ b/src/deluge/model/settings/runtime_feature_settings.cpp
+@@ -75,6 +75,28 @@ static void SetupSyncScalingActionSetting(RuntimeFeatureSetting& setting, deluge
+ 	        .displayName = display->haveOLED() ? "Fill mode" : "FILL",
+ 	        .value = RuntimeFeatureStateSyncScalingAction::Fill,
+ 	    },
++	    {
++	        .displayName = display->haveOLED() ? "Kit pattern mode" : "PATT",
++	        .value = RuntimeFeatureStateSyncScalingAction::Pattern,
++	    },
++	};
++}
++
++static void SetupTapTempoActionSetting(RuntimeFeatureSetting& setting, deluge::l10n::String displayName,
++                                       std::string_view xmlName, RuntimeFeatureStateTapTempoAction def) {
++	setting.displayName = displayName;
++	setting.xmlName = xmlName;
++	setting.value = static_cast<uint32_t>(def);
++
++	setting.options = {
++	    {
++	        .displayName = display->haveOLED() ? "Tap tempo" : "TAP",
++	        .value = RuntimeFeatureStateTapTempoAction::TapTempo,
++	    },
++	    {
++	        .displayName = display->haveOLED() ? "Autofill" : "FILL",
++	        .value = RuntimeFeatureStateTapTempoAction::AutoFill,
++	    },
+ 	};
+ }
+ 
+@@ -181,6 +203,11 @@ void RuntimeFeatureSettings::init() {
+ 	                  STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "enableGridViewLoopPads",
+ 	                  RuntimeFeatureStateToggle::Off);
+ 
++	// TapTempoAction
++	SetupTapTempoActionSetting(settings[RuntimeFeatureSettingType::TapTempoAction],
++	                           STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "tapTempoAction",
++	                           RuntimeFeatureStateTapTempoAction::TapTempo);
++
+ 	// AlternativeTapTempoBehaviour
+ 	SetupOnOffSetting(settings[RuntimeFeatureSettingType::AlternativeTapTempoBehaviour],
+ 	                  STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "alternativeTapTempoBehaviour",
+diff --git a/src/deluge/model/settings/runtime_feature_settings.h b/src/deluge/model/settings/runtime_feature_settings.h
+index 55e809ef..3fe36c8e 100644
+--- a/src/deluge/model/settings/runtime_feature_settings.h
++++ b/src/deluge/model/settings/runtime_feature_settings.h
+@@ -37,7 +37,10 @@ class DevSysexSetting;
+ enum RuntimeFeatureStateToggle : uint32_t { Off = 0, On = 1 };
+ 
+ // Declare additional enums for specific multi state settings (e.g. like RuntimeFeatureStateTrackLaunchStyle)
+-enum RuntimeFeatureStateSyncScalingAction : uint32_t { SyncScaling = 0, Fill = 1 };
++enum RuntimeFeatureStateSyncScalingAction : uint32_t { SyncScaling = 0, Fill = 1, Pattern = 2 };
++
++/// What the TAP TEMPO button does: tap tempo, or trigger autofills
++enum RuntimeFeatureStateTapTempoAction : uint32_t { TapTempo = 0, AutoFill = 1 };
+ 
+ enum RuntimeFeatureStateEmulatedDisplay : uint32_t { Hardware = 0, Toggle = 1, OnBoot = 2 };
+ 
+@@ -68,6 +71,7 @@ enum RuntimeFeatureSettingType : uint32_t {
+ 	ShowBatteryLevel,
+ 	RoundedCorners,
+ 	ShortcutOverlay,
++	TapTempoAction,
+ 	MaxElement // Keep as boundary
+ };
+ 
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
 index 4d3fe415..86e320e9 100644
 --- a/src/deluge/model/song/song.cpp
@@ -567,11 +1562,543 @@ index 00000000..6c4f5585
 +uint32_t unswungToSwung(Style style, int32_t level, uint32_t swingIntervalTicks, uint64_t unswungIntoBlock);
 +
 +} // namespace deluge::swing_style
+diff --git a/src/deluge/playback/autofill.cpp b/src/deluge/playback/autofill.cpp
+new file mode 100644
+index 00000000..5eb0155a
+--- /dev/null
++++ b/src/deluge/playback/autofill.cpp
+@@ -0,0 +1,401 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "playback/autofill.h"
++#include "hid/display/display.h"
++#include "hid/led/indicator_leds.h"
++#include "model/clip/instrument_clip.h"
++#include "model/model_stack.h"
++#include "model/note/note.h"
++#include "model/note/note_row.h"
++#include "model/settings/runtime_feature_settings.h"
++#include "model/song/clip_iterators.h"
++#include "model/song/song.h"
++#include "playback/playback_handler.h"
++#include "processing/engines/audio_engine.h"
++#include <algorithm>
++#include <limits>
++
++namespace deluge::autofill {
++
++Autofill autofill{};
++
++namespace {
++
++constexpr int32_t kStepsPerBar = 16;
++constexpr int32_t kNumTracks = 3; // Kick, Snare and Hihat 1: the bottom three rows of a kit
++constexpr int32_t kKick = 0;
++
++constexpr char const* kFillNames[kNumFills] = {"Ghost", "Drive", "Build", "Climb", "Stutter"};
++constexpr char const* kFillShortNames[kNumFills] = {"GHST", "DRIV", "BILD", "CLMB", "STUT"};
++
++int32_t velocityFor(int32_t permille) {
++	return std::clamp<int32_t>(127 * permille / 1000, 1, 127);
++}
++
++} // namespace
++
++bool Autofill::isChosenInSettings() {
++	return runtimeFeatureSettings.get(RuntimeFeatureSettingType::TapTempoAction)
++	       == RuntimeFeatureStateTapTempoAction::AutoFill;
++}
++
++uint32_t Autofill::random() {
++	// xorshift32, as on the module
++	rng_ ^= rng_ << 13;
++	rng_ ^= rng_ >> 17;
++	rng_ ^= rng_ << 5;
++	return rng_;
++}
++
++void Autofill::tapPressed() {
++	held_ = true;
++	if (playbackHandler.isEitherClockActive() && !active_) {
++		pending_ = true; // Starts on the next 16th
++		playbackHandler.expectEvent();
++	}
++	displayFill();
++}
++
++void Autofill::tapReleased() {
++	held_ = false;
++}
++
++void Autofill::changeFill(int32_t offset) {
++	// Turning TEMPO while holding TAP is for picking a fill, not playing one
++	pending_ = false;
++	if (active_) {
++		active_ = false;
++		numRetriggers_ = 0;
++		setLed();
++	}
++	fill_ = (fill_ + offset % kNumFills + kNumFills) % kNumFills;
++	displayFill();
++}
++
++void Autofill::displayFill() {
++	if (display->haveOLED()) {
++		char text[32];
++		snprintf(text, sizeof(text), "Fill %d: %s", (int)fill_ + 1, kFillNames[fill_]);
++		display->popupTextTemporary(text);
++	}
++	else {
++		display->displayPopup(kFillShortNames[fill_]);
++	}
++}
++
++void Autofill::setLed() {
++	indicator_leds::setLedState(IndicatorLED::TAP_TEMPO, active_ || playbackHandler.metronomeOn);
++}
++
++void Autofill::playbackStopped() {
++	pending_ = false;
++	active_ = false;
++	numRetriggers_ = 0;
++	numSilenced_ = 0;
++	numSounding_ = 0;
++	setLed();
++}
++
++bool Autofill::shouldSilence(InstrumentClip const* clip, int32_t noteRowId) const {
++	for (int32_t i = 0; i < numSilenced_; i++) {
++		if (silenced_[i].clip == clip && silenced_[i].noteRowId == noteRowId) {
++			return true;
++		}
++	}
++	return false;
++}
++
++int32_t Autofill::processTick(int64_t swungTick, int32_t swungTickIncrement) {
++	// After a song swap, the clips in the lists are gone
++	if (song_ != currentSong) {
++		song_ = currentSong;
++		numRetriggers_ = 0;
++		numSounding_ = 0;
++		numSilenced_ = 0;
++	}
++	if (!active_ && !pending_ && !numRetriggers_ && !numSounding_) {
++		return std::numeric_limits<int32_t>::max();
++	}
++	int32_t sixteenth = currentSong->getSixteenthNoteLength();
++
++	// Ratchet hits that are due
++	for (int32_t i = 0; i < numRetriggers_; i++) {
++		if (retriggers_[i].tick <= swungTick) {
++			hit(retriggers_[i].clip, retriggers_[i].noteRowId, retriggers_[i].velocity, retriggers_[i].semitones);
++			retriggers_[i--] = retriggers_[--numRetriggers_];
++		}
++	}
++
++	if (swungTick % sixteenth == 0) {
++		int32_t step = (swungTick / sixteenth) % kStepsPerBar;
++
++		// A fill runs to the end of the bar, and on into the next while TAP is held
++		if (active_ && step == 0 && !held_) {
++			active_ = false;
++			setLed();
++		}
++		if (pending_) {
++			pending_ = false;
++			active_ = true;
++			elapsed_ = 0;
++			startStep_ = step;
++			rng_ ^= AudioEngine::audioSampleTimer;
++			if (!rng_) {
++				rng_ = 0x9E3779B9;
++			}
++			setLed();
++		}
++
++		stopSoundingHits();
++		if (active_) {
++			processStep(swungTick, swungTickIncrement, step);
++			elapsed_++;
++		}
++	}
++
++	if (!active_ && !pending_ && !numRetriggers_ && !numSounding_) {
++		return std::numeric_limits<int32_t>::max();
++	}
++	int64_t nextTick = swungTick - swungTick % sixteenth + sixteenth;
++	for (int32_t i = 0; i < numRetriggers_; i++) {
++		nextTick = std::min(nextTick, retriggers_[i].tick);
++	}
++	return (int32_t)(nextTick - swungTick);
++}
++
++void Autofill::processStep(int64_t swungTick, int32_t swungTickIncrement, int32_t step) {
++	for (Clip* clip : AllClips::everywhere(currentSong)) {
++		if (clip->type == ClipType::INSTRUMENT && clip->output->type == OutputType::KIT
++		    && currentSong->isClipActive(clip)) {
++			processClip(static_cast<InstrumentClip*>(clip), swungTick, swungTickIncrement, step);
++		}
++	}
++}
++
++void Autofill::processClip(InstrumentClip* clip, int64_t stepTick, int32_t swungTickIncrement, int32_t s) {
++	int32_t sixteenth = currentSong->getSixteenthNoteLength();
++	int32_t barLength = sixteenth * kStepsPerBar;
++
++	// What the pattern does on each track at this step
++	struct Track {
++		NoteRow* noteRow = nullptr;
++		bool canSound = false;
++		bool busy = false;      // The pattern plays this track here
++		int32_t velocity = 127; // The pattern's velocity here, when busy
++		int32_t pos = 0;        // This track's position in its own loop
++		int32_t length = 1;
++	};
++	std::array<Track, kNumTracks> tracks{};
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack = setupModelStackWithTimelineCounter(modelStackMemory, currentSong, clip);
++	int32_t numTracks = std::min(kNumTracks, clip->noteRows.getNumElements());
++	for (int32_t t = 0; t < numTracks; t++) {
++		Track& track = tracks[t];
++		track.noteRow = clip->noteRows.getElement(t);
++		ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(t, track.noteRow);
++		track.length = std::max(modelStackWithNoteRow->getLoopLength(), 1_i32);
++		// The clips haven't moved on to this tick yet
++		track.pos = (modelStackWithNoteRow->getLastProcessedPos() + swungTickIncrement) % track.length;
++		if (track.pos < 0) {
++			track.pos += track.length;
++		}
++		track.canSound = track.noteRow->drum && !track.noteRow->muted;
++		int32_t i = track.noteRow->notes.search(track.pos, GREATER_OR_EQUAL);
++		if (i < track.noteRow->notes.getNumElements()) {
++			Note* note = track.noteRow->notes.getElement(i);
++			if (note->pos < track.pos + sixteenth) {
++				track.busy = true;
++				track.velocity = note->velocity;
++			}
++		}
++	}
++
++	// Plays a fill hit, returning its velocity, or 0 if the track can't sound
++	auto fillHit = [&](int32_t t, int32_t permille, int32_t semitones = 0) -> int32_t {
++		if (t >= numTracks || !tracks[t].canSound) {
++			return 0;
++		}
++		int32_t velocity = velocityFor(permille);
++		hit(clip, t, velocity, semitones);
++		return velocity;
++	};
++	auto busy = [&](int32_t t) { return t < numTracks && tracks[t].busy; };
++	auto ratchet = [&](int32_t t, int32_t numHits, int32_t velocity, int32_t semitones = 0) {
++		if (t < numTracks && tracks[t].canSound) {
++			addRatchet(clip, t, stepTick, numHits, velocity, semitones);
++		}
++	};
++	auto silence = [&](int32_t t) {
++		if (busy(t) && numSilenced_ < kMaxSilenced) {
++			silenced_[numSilenced_++] = {clip, t};
++		}
++	};
++
++	switch (fill_) {
++	case 0: { // Ghost: quiet snare and hat notes on the off 16ths
++		for (int32_t t : {1, 2}) {
++			if (!busy(t) && (s & 1) && chance(350)) {
++				fillHit(t, 250 + random() % 201);
++			}
++		}
++		break;
++	}
++	case 1: { // Drive: 16th hats, snare pickups and a kick at the end of the bar
++		if (!busy(2)) {
++			fillHit(2, (s & 1) ? 550 : 800);
++		}
++		if (!busy(1) && (s == 8 || s == 11 || s == 14) && chance(850)) {
++			fillHit(1, 700);
++		}
++		if (!busy(kKick) && ((s == 15 && chance(900)) || (s == 14 && chance(400)))) {
++			fillHit(kKick, 800);
++		}
++		break;
++	}
++	case 2: { // Build: random hits, more likely as the bar goes on, with some snare and hat ratchets
++		int32_t base = 333 + 333 * s / 15;
++		int32_t factor = (s % 4 == 0) ? 500 : ((s & 1) ? 1300 : 1000);
++		int32_t chanceSnareHat = base * factor / 1000;
++		int32_t chanceKick = base * factor / 2000;
++		for (int32_t t = 0; t < kNumTracks; t++) {
++			int32_t velocity = busy(t) ? tracks[t].velocity : 0;
++			if (!velocity && chance(t == kKick ? chanceKick : chanceSnareHat)) {
++				velocity = fillHit(t, 600 + random() % 301);
++			}
++			if (velocity && t != kKick && chance(250)) {
++				ratchet(t, 2 + (random() & 1), velocity);
++			}
++		}
++		break;
++	}
++	case 3: { // Climb: odds and velocity rise steeply, with more ratchets late in the bar
++		int32_t odds = (1000 * s / 15) * 750 / 1000 + 200;
++		int32_t permille = 500 + 1000 * s / 30;
++		// The snare steps up in pitch each beat, on every snare hit in the step
++		constexpr int32_t kSnarePitch[4] = {0, 3, 5, 7};
++		int32_t snarePitch = kSnarePitch[s >> 2];
++		for (int32_t t = 0; t < kNumTracks; t++) {
++			int32_t semitones = (t == 1) ? snarePitch : 0;
++			int32_t velocity = busy(t) ? tracks[t].velocity : 0;
++			if (velocity && semitones && tracks[t].canSound) {
++				// The pattern's own snare is played again by the fill, at its own velocity, so it can be pitched
++				silence(t);
++				hit(clip, t, velocity, semitones);
++			}
++			if (!velocity && chance(t == kKick ? odds / 2 : odds)) {
++				velocity = fillHit(t, permille, semitones);
++			}
++			if (velocity && t != kKick) {
++				if (s <= 5) {
++					if (chance(300)) {
++						ratchet(t, 2, velocity, semitones);
++					}
++				}
++				else if (s <= 11) {
++					if (chance(500)) {
++						ratchet(t, 2 + (random() & 1), velocity, semitones);
++					}
++				}
++				else if (chance(800)) {
++					ratchet(t, 3 + (random() & 1), velocity, semitones);
++				}
++			}
++		}
++		break;
++	}
++	default: { // Stutter: repeats the live pattern in shrinking loops of 4, 2 and then 1 step
++		int32_t e = elapsed_;
++		int32_t loopLength = ((e & 12) == 0) ? 4 : ((e & 8) ? 1 : 2);
++		int32_t source = (startStep_ + (e & 15) % loopLength) & 15;
++		for (int32_t t = 0; t < kNumTracks; t++) {
++			bool sourceHit = false;
++			if (t < numTracks) {
++				Track& track = tracks[t];
++				int32_t sourcePos = (track.pos / barLength * barLength + source * sixteenth) % track.length;
++				int32_t i = track.noteRow->notes.search(sourcePos, GREATER_OR_EQUAL);
++				sourceHit = i < track.noteRow->notes.getNumElements()
++				            && track.noteRow->notes.getElement(i)->pos < sourcePos + sixteenth;
++			}
++			int32_t chanceAdd = (t == kKick) ? 150 : 400;
++			bool play = sourceHit ? (!chance(150) || chance(chanceAdd)) : chance(chanceAdd);
++			// The fill decides this step completely, so the pattern's own hit goes either way
++			silence(t);
++			if (play) {
++				// Drawn in the module's order, so the fills come out the same
++				int32_t permille = 500 + random() % 501;
++				int32_t numHits = chance(t == kKick ? 300 : 600) ? 2 + random() % 3 : 0;
++				int32_t semitones = 0;
++				if (chance(t == kKick ? 150 : 300)) {
++					semitones = chance(500) ? 12 : -12;
++				}
++				int32_t velocity = fillHit(t, permille, semitones);
++				if (numHits) {
++					ratchet(t, numHits, velocity, semitones);
++				}
++			}
++		}
++		break;
++	}
++	}
++}
++
++void Autofill::addRatchet(InstrumentClip* clip, int32_t noteRowId, int64_t stepTick, int32_t numHits, int32_t velocity,
++                          int32_t semitones) {
++	// The extra hits split the step evenly at three quarters of the velocity. The step is in swung ticks, so they
++	// follow the swing.
++	int32_t sixteenth = currentSong->getSixteenthNoteLength();
++	uint8_t retriggerVelocity = std::clamp<int32_t>(velocity * 3 / 4, 1, 127);
++	for (int32_t k = 1; k < numHits && numRetriggers_ < kMaxRetriggers; k++) {
++		retriggers_[numRetriggers_++] = {clip, noteRowId, stepTick + k * sixteenth / numHits, retriggerVelocity,
++		                                 (int8_t)semitones};
++	}
++}
++
++void Autofill::hit(InstrumentClip* clip, int32_t noteRowId, int32_t velocity, int32_t semitones) {
++	if (velocity <= 0 || noteRowId >= clip->noteRows.getNumElements()) {
++		return;
++	}
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack = setupModelStackWithTimelineCounter(modelStackMemory, currentSong, clip);
++
++	// Retriggering a row autofill is already sounding ends that note first
++	for (int32_t i = 0; i < numSounding_; i++) {
++		if (sounding_[i].clip == clip && sounding_[i].noteRowId == noteRowId) {
++			clip->stopAutofillHit(modelStack, noteRowId);
++			sounding_[i--] = sounding_[--numSounding_];
++		}
++	}
++	clip->playAutofillHit(modelStack, noteRowId, velocity, semitones);
++	if (numSounding_ < kMaxSounding) {
++		sounding_[numSounding_++] = {clip, noteRowId};
++	}
++}
++
++void Autofill::stopSoundingHits() {
++	for (int32_t i = 0; i < numSounding_; i++) {
++		InstrumentClip* clip = sounding_[i].clip;
++		if (sounding_[i].noteRowId < clip->noteRows.getNumElements()) {
++			char modelStackMemory[MODEL_STACK_MAX_SIZE];
++			clip->stopAutofillHit(setupModelStackWithTimelineCounter(modelStackMemory, currentSong, clip),
++			                      sounding_[i].noteRowId);
++		}
++	}
++	numSounding_ = 0;
++}
++
++} // namespace deluge::autofill
+diff --git a/src/deluge/playback/autofill.h b/src/deluge/playback/autofill.h
+new file mode 100644
+index 00000000..4a1f0653
+--- /dev/null
++++ b/src/deluge/playback/autofill.h
+@@ -0,0 +1,103 @@
++/*
++ * Copyright © 2026 Synthstrom Audible Limited
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include <array>
++#include <cstdint>
++
++class Clip;
++class InstrumentClip;
++class Song;
++
++// Autofill, after the fills on the experimental Stolperbeats module firmware. With Tap Tempo Action set to Autofill
++// in community features, pressing TAP plays a fill on the bottom three rows (Kick, Snare, Hihat 1) of every playing
++// kit clip: from the next 16th to the end of the bar, carrying on while TAP is held. Hold TAP and turn TEMPO to pick
++// one of five fills. Fill hits land on the swung 16ths, so they follow the song's swing.
++namespace deluge::autofill {
++
++constexpr int32_t kNumFills = 5;
++
++class Autofill {
++public:
++	/// True when TAP is set to play fills in community features
++	static bool isChosenInSettings();
++
++	void tapPressed();
++	void tapReleased();
++	/// Holding TAP and turning TEMPO: picks the fill (and cancels the one the press started)
++	void changeFill(int32_t offset);
++	void displayFill();
++
++	/// Called for every swung tick before the clips play it. Returns swung ticks until autofill next needs a tick.
++	int32_t processTick(int64_t swungTick, int32_t swungTickIncrement);
++	/// Called after the clips have played the tick
++	void afterTick() { numSilenced_ = 0; }
++	/// True if autofill has taken this row's hit away on the current tick
++	bool shouldSilence(InstrumentClip const* clip, int32_t noteRowId) const;
++	void playbackStopped();
++
++	bool isPlayingFill() const { return active_; }
++
++private:
++	struct Retrigger {
++		InstrumentClip* clip;
++		int32_t noteRowId;
++		int64_t tick;
++		uint8_t velocity;
++		int8_t semitones;
++	};
++	struct Sounding {
++		InstrumentClip* clip;
++		int32_t noteRowId;
++	};
++
++	void processStep(int64_t swungTick, int32_t swungTickIncrement, int32_t step);
++	void processClip(InstrumentClip* clip, int64_t stepTick, int32_t swungTickIncrement, int32_t step);
++	void hit(InstrumentClip* clip, int32_t noteRowId, int32_t velocity, int32_t semitones);
++	void addRatchet(InstrumentClip* clip, int32_t noteRowId, int64_t stepTick, int32_t numHits, int32_t velocity,
++	                int32_t semitones);
++	void stopSoundingHits();
++	void setLed();
++	uint32_t random();
++	bool chance(int32_t permille) { return (int32_t)(random() % 1000) < permille; }
++
++	int32_t fill_ = 2; // 0 to kNumFills - 1. Build, the one the module falls back to.
++	bool held_ = false;
++	bool pending_ = false;
++	bool active_ = false;
++	int32_t elapsed_ = 0;   // Fill steps played so far
++	int32_t startStep_ = 0; // Step in the bar the fill started on
++	uint32_t rng_ = 0x9E3779B9;
++	Song* song_ = nullptr; // The song the lists below belong to
++
++	static constexpr int32_t kMaxRetriggers = 48;
++	std::array<Retrigger, kMaxRetriggers> retriggers_{};
++	int32_t numRetriggers_ = 0;
++
++	static constexpr int32_t kMaxSilenced = 32;
++	std::array<Sounding, kMaxSilenced> silenced_{};
++	int32_t numSilenced_ = 0;
++
++	static constexpr int32_t kMaxSounding = 32;
++	std::array<Sounding, kMaxSounding> sounding_{};
++	int32_t numSounding_ = 0;
++};
++
++extern Autofill autofill;
++
++} // namespace deluge::autofill
 diff --git a/src/deluge/playback/playback_handler.cpp b/src/deluge/playback/playback_handler.cpp
-index f039781a..f11cd21a 100644
+index f039781a..39aaa1c4 100644
 --- a/src/deluge/playback/playback_handler.cpp
 +++ b/src/deluge/playback/playback_handler.cpp
-@@ -716,10 +716,8 @@ void PlaybackHandler::actionTimerTick() {
+@@ -59,6 +59,7 @@
+ #include "model/settings/runtime_feature_settings.h"
+ #include "model/song/song.h"
+ #include "model/sync.h"
++#include "playback/autofill.h"
+ #include "playback/clock_output_scheduler.h"
+ #include "playback/mode/arrangement.h"
+ #include "playback/mode/session.h"
+@@ -580,6 +581,7 @@ void PlaybackHandler::setupPlayback(int32_t newPlaybackState, int32_t playFromPo
+ }
+ 
+ void PlaybackHandler::endPlayback() {
++	deluge::autofill::autofill.playbackStopped();
+ 	if (isInternalClockActive() && currentlySendingMIDIOutputClocks()) {
+ 		midiEngine.sendStop(this);
+ 	}
+@@ -716,10 +718,8 @@ void PlaybackHandler::actionTimerTick() {
  // same time as a timer tick
  void PlaybackHandler::actionTimerTickPart2() {
  
@@ -584,7 +2111,23 @@ index f039781a..f11cd21a 100644
  
  	// But if count-in happening, limit it to one bar's length (or perhaps this should be one beat, to avoid slight
  	// screwiness with very long swing intervals?)
-@@ -1102,7 +1100,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
+@@ -1039,7 +1039,14 @@ void PlaybackHandler::actionSwungTick() {
+ 	swungTicksTilNextEvent = 2147483647;
+ 
+ 	if (isEitherClockActive()) { // Occasionally, considerLaunchEvent() will stop playback
+-		currentPlaybackMode->doTickForward(swungTickIncrement);
++		{
++			// Autofill decides its hits before the clips play theirs, so it can take theirs away
++			int32_t swungTicksTilAutofillEvent =
++			    deluge::autofill::autofill.processTick(lastSwungTickActioned, swungTickIncrement);
++			currentPlaybackMode->doTickForward(swungTickIncrement);
++			deluge::autofill::autofill.afterTick();
++			swungTicksTilNextEvent = std::min(swungTicksTilNextEvent, swungTicksTilAutofillEvent);
++		}
+ 
+ 		if (isEitherClockActive()) { // Occasionally, doTickForward() will stop playback
+ 
+@@ -1102,7 +1109,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
  		swungTickScheduled = true;
  		uint32_t swungTicksIntoTimerBit = nextSwungTick - lastTimerTickActioned;
  
@@ -600,7 +2143,7 @@ index f039781a..f11cd21a 100644
  			int32_t leftShift = 9 - currentSong->swingInterval;
  			leftShift = std::max(leftShift, 0_i32);
  			uint32_t swingInterval = 3 << (leftShift);
-@@ -1145,7 +1150,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
+@@ -1145,7 +1159,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
  
  	uint32_t timePassed = AudioEngine::audioSampleTimer - (uint32_t)(timeLastTimerTickBig >> 32);
  
@@ -618,7 +2161,7 @@ index f039781a..f11cd21a 100644
  
  		if (timeRemainder) {
  			*timeRemainder = 0; // To be improved
-@@ -1225,6 +1239,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
+@@ -1225,6 +1248,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
  			actualSwungTick = currentInternalTick;
  		}
  
@@ -633,7 +2176,7 @@ index f039781a..f11cd21a 100644
  		// Yes swing
  		else {
  
-@@ -1763,6 +1785,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
+@@ -1763,6 +1794,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
  	if (!currentSong->hasAnySwing()) {
  		internalTickPositionForNextSwungTickTimes50 = nextSwungTick * 50;
  	}
@@ -647,7 +2190,7 @@ index f039781a..f11cd21a 100644
  	else {
  
  		int32_t leftShift = 10 - currentSong->swingInterval;
-@@ -2090,17 +2119,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
+@@ -2090,17 +2128,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
  	lastMIDIClockOutTickDone = (uint64_t)getCurrentInternalTickCount() * midiClockOutTicksPer / internalTicksPer;
  }
  
@@ -703,7 +2246,7 @@ index f039781a..f11cd21a 100644
  		text.append("\n");
  	}
  	syncValueToString(currentSong->swingInterval, text, currentSong->getInputTickMagnitude());
-@@ -2115,23 +2175,12 @@ void PlaybackHandler::commandClearTempoAutomation() {
+@@ -2115,25 +2184,14 @@ void PlaybackHandler::commandClearTempoAutomation() {
  void PlaybackHandler::commandDisplaySwingAmount() {
  	DEF_STACK_STRING_BUF(text, 30);
  	if (display->haveOLED()) {
@@ -727,9 +2270,12 @@ index f039781a..f11cd21a 100644
 -		}
 +		appendSwingAmount(text, true);
  	}
- 	display->popupTextTemporary(text.c_str(), PopupType::SWING);
+-	display->popupTextTemporary(text.c_str(), PopupType::SWING);
++	showSwingPopup(text.c_str());
  }
-@@ -2142,6 +2191,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
+ 
+ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
+@@ -2142,6 +2200,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
  }
  
  void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
@@ -742,6 +2288,158 @@ index f039781a..f11cd21a 100644
  	int32_t newSwingAmount = std::clamp(currentSong->swingAmount + offset, -49, 49);
  	if (newSwingAmount != currentSong->swingAmount) {
  		actionLogger.recordSwingChange(currentSong->swingAmount, newSwingAmount);
+@@ -2150,6 +2214,49 @@ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
+ 	commandDisplaySwingAmount();
+ }
+ 
++/// Shows the swing style. On 7seg, just its name, so it can be told apart from the level.
++void PlaybackHandler::commandDisplaySwingStyle() {
++	DEF_STACK_STRING_BUF(text, 30);
++	if (currentSong->stumble) {
++		std::string_view name = deluge::swing_style::getName(currentSong->stumbleStyle);
++		if (display->haveOLED()) {
++			text.append("Swing style: ");
++			text.append(name.data());
++			text.append("\nLevel ");
++			text.appendInt(currentSong->stumbleLevel);
++		}
++		else {
++			text.append(name.data());
++		}
++	}
++	else {
++		text.append(display->haveOLED() ? "Swing style: Classic\nTurn on Stumble in the Song menu" : "CLAS");
++	}
++	showSwingPopup(text.c_str());
++}
++
++/// Steps through Classic swing and each Stumble style, switching Stumble on or off to match
++void PlaybackHandler::commandEditSwingStyle(int8_t offset) {
++	// Only the Stumble styles: Classic swing is the Stumble setting being off, which is only in the Song menu
++	if (currentSong->stumble) {
++		int32_t numStumbleStyles = deluge::swing_style::kNumStyles - 1;
++		int32_t current = util::to_underlying(currentSong->stumbleStyle) - 1;
++		int32_t next = (current + offset % numStumbleStyles + numStumbleStyles) % numStumbleStyles;
++		currentSong->changeStumbleStyle(static_cast<deluge::swing_style::Style>(next + 1));
++	}
++	commandDisplaySwingStyle();
++}
++
++// While SHIFT is held the swing popup stays up, so you can turn, listen and turn again. It goes when SHIFT is let go.
++void PlaybackHandler::showSwingPopup(char const* text) {
++	if (Buttons::isShiftButtonPressed()) {
++		display->popupText(text, PopupType::SWING);
++	}
++	else {
++		display->popupTextTemporary(text, PopupType::SWING);
++	}
++}
++
+ void PlaybackHandler::commandNudgeClock(int8_t offset) {
+ 	if (!isEitherClockActive()) {
+ 		// Nothing to nudge
+@@ -2271,6 +2378,10 @@ void PlaybackHandler::commandEditTempoFine(int8_t offset) {
+ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPressed, bool shiftButtonPressed) {
+ 
+ 	if (Buttons::isButtonPressed(deluge::hid::button::TAP_TEMPO)) {
++		// With TAP playing fills, TAP + TEMPO picks the fill
++		if (deluge::autofill::Autofill::isChosenInSettings()) {
++			return deluge::autofill::autofill.changeFill((offset > 0) ? 1 : -1);
++		}
+ 		if (display->hasPopupOfType(PopupType::SWING)) {
+ 			// If not yet displaying, don't change the value
+ 			return commandEditSwingInterval(offset);
+@@ -2287,6 +2398,17 @@ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPresse
+ 		return commandNudgeClock(offset);
+ 	}
+ 
++	// Change swing style: Classic, then the Stumble styles
++	else if (shiftButtonPressed && encoderButtonPressed) {
++		tempoTurnedWhilePressedWithShift = true;
++		if (display->hasPopupOfType(PopupType::SWING)) {
++			return commandEditSwingStyle(offset);
++		}
++		else {
++			return commandDisplaySwingStyle();
++		}
++	}
++
+ 	// Adjust swing
+ 	else if (shiftButtonPressed) {
+ 		if (display->hasPopupOfType(PopupType::SWING)) {
+diff --git a/src/deluge/playback/playback_handler.h b/src/deluge/playback/playback_handler.h
+index 98ff45dd..67f653f9 100644
+--- a/src/deluge/playback/playback_handler.h
++++ b/src/deluge/playback/playback_handler.h
+@@ -158,6 +158,11 @@ public:
+ 
+ 	bool songSwapShouldPreserveTempo;
+ 
++	// SHIFT + clicking the TEMPO knob clears tempo automation, and SHIFT + pushing and turning it changes the swing
++	// style, so the clear waits for the knob's release and only happens if it wasn't turned
++	bool tempoPressedWithShift = false;
++	bool tempoTurnedWhilePressedWithShift = false;
++
+ 	// User options
+ 	bool metronomeOn;
+ 	bool midiOutClockEnabled;
+@@ -229,6 +234,9 @@ public:
+ 	// TEMPO encoder commands
+ 	void commandDisplaySwingAmount();
+ 	void commandEditSwingAmount(int8_t offset);
++	void commandDisplaySwingStyle();
++	void commandEditSwingStyle(int8_t offset);
++	void showSwingPopup(char const* text);
+ 	void commandDisplaySwingInterval();
+ 	void commandEditSwingInterval(int8_t offset);
+ 	void commandNudgeClock(int8_t offset);
+diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
+index fd2e3f80..02a885e5 100644
+--- a/src/deluge/storage/storage_manager.cpp
++++ b/src/deluge/storage/storage_manager.cpp
+@@ -525,6 +525,21 @@ Error StorageManager::loadPatternFile(FilePointer* filePointer, String* fileName
+ 	return Error::NONE;
+ }
+ 
++Error StorageManager::loadRowPatternFile(FilePointer* filePointer, int32_t noteRowIndex, Action* action) {
++	Error error = openPatternFile(filePointer);
++	if (error != Error::NONE) {
++		return error;
++	}
++
++	error = instrumentClipView.loadRowPatternFromFile(smDeserializer, noteRowIndex, action);
++
++	FRESULT fileSuccess = activeDeserializer->closeWriter();
++	if (error == Error::NONE && fileSuccess != FR_OK) {
++		error = Error::SD_CARD;
++	}
++	return error;
++}
++
+ // Returns error status
+ Error StorageManager::loadFavouriteFile(FilePointer* filePointer, String* fileName) {
+ 
+diff --git a/src/deluge/storage/storage_manager.h b/src/deluge/storage/storage_manager.h
+index 366f8de7..c2e04ba8 100644
+--- a/src/deluge/storage/storage_manager.h
++++ b/src/deluge/storage/storage_manager.h
+@@ -34,6 +34,7 @@ extern void deleteOldSongBeforeLoadingNew();
+ 
+ extern FatFS::Filesystem fileSystem;
+ 
++class Action;
+ class Instrument;
+ class PlaybackMode;
+ class ParamManagerForTimeline;
+@@ -399,6 +400,8 @@ Error loadMidiDeviceDefinitionFile(MIDIInstrument* midiInstrument, FilePointer*
+ Error openPatternFile(FilePointer* filePointer);
+ Error loadPatternFile(FilePointer* filePointer, String* fileName, bool overwriteExisting, bool noScaling,
+                       bool previewOnly, bool selectedDrumOnly);
++/// Kit pattern mode: loads a pattern file into one kit row of the current clip
++Error loadRowPatternFile(FilePointer* filePointer, int32_t noteRowIndex, Action* action);
+ 
+ Error openFavouriteFile(FilePointer* filePointer);
+ Error loadFavouriteFile(FilePointer* filePointer, String* fileName);
 diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
 index 048faee9..cc3edf9f 100644
 --- a/tests/unit/CMakeLists.txt
