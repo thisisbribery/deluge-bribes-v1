@@ -1,15 +1,16 @@
-# Deluge Bribes v1.6
+# Deluge Bribes v1.7
 
-Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds eight things for people who want more groove and more wonk:
+Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds nine things for people who want more groove and more wonk:
 
 1. **Stumble swing:** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob.
 2. **Kit pattern mode:** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
-4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, gate control and, on CV, a custom voltage for each row.
+4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
 6. **Drum synth:** synthesised drums on any kit row, from five engines: the LXR-02's kick / tom, snare and cymbal / hat voices, and two more called Drom1 and Drom2. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
 7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
-8. **Sample start offset (new in v1.6):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
+8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
+9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta.
 
@@ -17,13 +18,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.6.bin`](firmware/deluge-bribes-v1.6.bin)
+[`firmware/deluge-bribes-v1.7.bin`](firmware/deluge-bribes-v1.7.bin)
 
-SHA-256: `b3c706c5a29c95102b96b8c6990291c64510fecaa9a4d30a0b8eff2671b003cc`
+SHA-256: `d889bd1333f91ffc6cb23347bfc43e6df1083aec9834e6ca43147cdab0a50fcb`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.6.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.7.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -45,6 +46,7 @@ To go back, install an official firmware file the same way.
 | **SHIFT + TAP** | Metronome on/off, as before |
 | **Hold a note + turn the up/down knob** | Shift the note's octave, up to 4 either way (Mono sequencer) |
 | **Hold a note + press and turn the up/down knob** | Ratchet the note (note repeat), as normal (Mono sequencer) |
+| **Hold a note + click the up/down knob** | Slide on or off for that step (Mono sequencer) |
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
@@ -55,6 +57,8 @@ To go back, install an official firmware file the same way.
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
+| **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
+| **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Env mod / Decay (303 synth) |
 
 7-segment display names are in brackets below.
 
@@ -191,6 +195,17 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 - **Holding a note** shows and sounds the note it actually plays, octave included.
 - **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
 
+### Slide
+
+- **Hold a note and click the up/down knob** (press and let go without turning) to switch slide on or off for that step. The display shows **SLID** or **OFF**. Holding several notes sets them all.
+- A slide step plays its whole length, whatever Gate % is set to, and keeps sounding until the next step's note has started, so the two overlap.
+- **On the 303** the pitch glides into the next note without retriggering, as on a real TB-303.
+- **Over MIDI** the overlapping notes make 303 clones and other mono synths slide.
+- **On CV** the gate stays open while the pitch moves.
+- **On other Deluge synths** set Polyphony to Legato and turn up Portamento to hear a glide.
+- Sliding into the same note ties it: the note carries on without retriggering. Sliding into a rest plays a normal note, as on a 303.
+- Octaves and slides are kept together, so you can shift a slide step's octave and it stays a slide.
+
 ### Colours
 
 | Pad | Means |
@@ -199,6 +214,7 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 | Red, deeper per octave | Shifted up 1 to 4 octaves |
 | Blue, deeper per octave | Shifted down 1 to 4 octaves |
 | Orange tint | Edited: nudged, ratcheted, or given a probability, iterance or fill |
+| Green tint | A slide step |
 | Dim | The note's tail |
 
 ### CUSTOM voltages (CV only)
@@ -367,6 +383,44 @@ On any synth or kit row whose oscillator plays a sample:
 - The offset and its automation save with the song and the preset. Other firmware ignores them and plays from the normal start.
 - Pitched notes with an offset skip the Deluge's sample cache, so they cost a little more CPU than the same note without one.
 
+## 9. 303 synth
+
+A TB-303 style bass voice, ported from the open source [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt: its saw and square oscillator, its model of the 303's ladder filter, its envelopes, accent and slide. The Deluge's saturation, mod FX, EQ, delay, reverb, sidechain and volume all work after it.
+
+### Turning it on
+
+1. On a synth track, press the **SYNTH MODE** shortcut pad (or find **Synth mode** in the sound menu).
+2. Choose **303**. The sound starts on an acid setting: cutoff 500 Hz, resonance and env mod well up, decay 400 ms.
+
+A 303 track always plays from the mono sequencer, so its grid becomes the 8 fixed rows with octaves and slides, and the **Mono Seq** setting is hidden. Choose another synth mode to go back; the clip goes back to how it was.
+
+### Controls
+
+| Control | Where | What it does |
+|---|---|---|
+| **Cutoff** (**CUT**) | Gold knob Cutoff/Res (top), SHIFT + LPF FREQUENCY pad | Filter cutoff, 314 to 2394 Hz as on the 303 |
+| **Resonance** (**RES**) | Gold knob Cutoff/Res (bottom), SHIFT + LPF RESONANCE pad | Filter resonance |
+| **Env mod** (**ENV**) | Gold knob Attack/Release (top), SHIFT + MOD1 LEVEL pad | How far the envelope opens the filter |
+| **Decay** (**DCAY**) | Gold knob Attack/Release (bottom), SHIFT + MOD2 LEVEL pad | The filter envelope's decay, 200 to 2000 ms |
+| **Accent** (**ACC**) | Gold knob Portamento (bottom), SHIFT + OSC1 FEEDBACK pad | How hard accented notes hit |
+| **Saw-square** (**WAVE**) | SHIFT + OSC2 FEEDBACK pad | Fades from saw (0) to square (50) |
+| **Slide time** (**SLID**) | SHIFT + MOD1 FEEDBACK pad | How long a slide takes to arrive |
+| **Filter** (**FILT**) | SHIFT + MOD2 FEEDBACK pad | **303**, a model of the TB-303's filter, or **LP18**, Open303's plainer 18 dB lowpass |
+
+They're all in the sound menu under **303** too. Every one except Filter is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated.
+
+### Accent and slide
+
+- **Accent:** any note with velocity 100 or more is accented. It opens the filter further, with a fixed short decay, and hits harder. Set a note's velocity as normal on the Deluge.
+- **Slide:** hold a step and click the up/down knob (see the mono sequencer). Played live, notes slide when they overlap, as on Open303.
+
+### Good to know
+
+- The 303's own oscillator, filter and envelopes replace the Deluge's: the oscillator, filter, envelope and unison settings do nothing in 303 mode. **Saturation** (SHIFT + SATURATION pad) works as on any synth, and drives the 303 the way it drives a voice.
+- Patch cables (LFOs and envelopes) don't reach the 303's controls yet. Gold knobs, menus, parameter locks and automation do.
+- Transpose, Fine tune and the arpeggiator all work. It's mono, so it plays one note at a time.
+- Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -376,15 +430,16 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
+- **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths** or **Elektron**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, and the Model:Cycles is a product of Elektron. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Elektron** or **Roland**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles is a product of Elektron, and the TB-303 is a product of Roland. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
-Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths or Elektron for help with this build.
+Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron or Roland for help with this build.
 
 ## Source code
 
