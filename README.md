@@ -1,4 +1,4 @@
-# BRIBELUGE: Deluge Bribes FW v1.13
+# BRIBELUGE: Deluge Bribes FW v1.14
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -7,7 +7,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
+6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads.
 7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
 8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
@@ -19,15 +19,15 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.13.bin`](firmware/deluge-bribes-v1.13.bin)
+[`firmware/deluge-bribes-v1.14.bin`](firmware/deluge-bribes-v1.14.bin)
 
-SHA-256: `ed604be1bddb9b006ee8149034bd1307c6b6d1d35c908f4a20028b2054ba298f`
+SHA-256: `cb006e2a3fafe816df30fe88edc26330771cb1b8d9998da4ff9c1ffd4be63802`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
 ## Install
 
-1. Copy `deluge-bribes-v1.13.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.14.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -60,6 +60,7 @@ To go back, install an official firmware file the same way.
 | **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
 | **Mod rate / Mod depth gold knobs** | The sweep's speed / depth: Sweep / Contour on the Cyc engines, the filter envelope's Decay / Env mod on the 303 |
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | Two voicing settings: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
+| **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
@@ -431,7 +432,14 @@ Every drum synth row and the 303 share one layout, after the Cycles' knobs (chan
 | Cyc engines | Sweep / Contour (Pitch sweep / Mod envelope on Vtg Snr, Spacing crunch / Body envelope on clap eng) | Color / Shape (Inharm / Freq complex on Vtg Snr, Body char / Balance on clap eng) |
 | GIN | Mod rate / Mod amount | Mix / Noise freq |
 
-Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated. They can't yet be modulated from the mod matrix.
+Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated.
+
+### Modulation and automation (new in v1.14)
+
+- **Mod matrix:** every continuous setting on every engine can be modulated. Open the setting (its pad or the Drum synth menu) and press a mod source pad, as for any Deluge parameter: LFOs, envelopes, velocity, note, random, aftertouch and MPE all work. Each voice gets its own modulation, so velocity on Decay or random on Color changes every hit.
+- **Depth:** the same on every setting. A cable at 50 with its source at full moves the setting 64 steps, from the middle to either end.
+- **Automation view:** on a drum synth row the OSC1, OSC2, MOD1 and MOD2 columns follow the drum synth's shortcut pads, so each setting is on the pad you already use for it. Pads holding a choice (waves, modes, filter type, Punch) are blank. The mod FX pads stay mod FX rate and depth, since every sweep setting also has a pad in those columns.
+- **GIN EQ freq** is now a parameter too, so it can be locked, automated and modulated. GIN rows saved with v1.13 keep their EQ setting. EQ gain and GIN level stay row settings.
 
 ### Cyc engines
 

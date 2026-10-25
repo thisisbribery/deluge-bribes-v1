@@ -1341,10 +1341,10 @@ index 00000000..6294f30f
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 00000000..22a8b3eb
+index 00000000..c8aca12d
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1298 @@
+@@ -0,0 +1,1302 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -1616,6 +1616,7 @@ index 00000000..22a8b3eb
 +	c.values[S::GIN_TONE_ATTACK] = S::fromKnob(ginKnob(sound.toneAttack));
 +	c.values[S::COMMON_DECAY] = S::fromValue(64);
 +	c.values[S::GIN_TONE_DECAY] = S::fromKnob(ginKnob(sound.toneDecay));
++	c.values[S::GIN_EQ_FREQ] = S::fromKnob(ginKnob(sound.eqFreq));
 +	return c;
 +}
 +
@@ -1731,6 +1732,7 @@ index 00000000..22a8b3eb
 +	case XIA_PUNCH:
 +	case SNAPPY_DECAY:
 +	case CONTROLS_VERSION:
++	case GIN_EQ_CONTROL:
 +		return 1;
 +	default:
 +		return 127;
@@ -1743,6 +1745,7 @@ index 00000000..22a8b3eb
 +	case SNAPPY_DECAY:
 +		return true;
 +	case CONTROLS_VERSION:
++	case GIN_EQ_CONTROL:
 +		return false;
 +	case OSC_WAVE:
 +	case TRANS_MODE:
@@ -1777,10 +1780,11 @@ index 00000000..22a8b3eb
 +	case GIN_WAVE:
 +	case GIN_MOD_MODE:
 +	case GIN_NOISE_ENV:
-+	case GIN_EQ_FREQ:
 +	case GIN_EQ_GAIN:
 +	case GIN_LEVEL:
 +		return isGin(engine);
++	case GIN_EQ_FREQ: // Now a control
++		return false;
 +	default:
 +		return isXia(engine);
 +	}
@@ -2620,7 +2624,7 @@ index 00000000..22a8b3eb
 +	s.noiseDecay = std::clamp(s.burstSpacing + decayOffset, 0.f, 1.f);
 +	s.mix = knob(DrumControls::GIN_MIX);
 +	s.drive = knob(DrumControls::GIN_DRIVE);
-+	s.eqFreq = p[Patch::GIN_EQ_FREQ] / 127.f;
++	s.eqFreq = knob(DrumControls::GIN_EQ_FREQ);
 +	s.eqGain = (eqGain <= 64) ? eqGain / 128.f : 0.5f + (eqGain - 64) / 126.f;
 +	s.level = gin::levelGain(p[Patch::GIN_LEVEL] / 127.f);
 +
@@ -2645,10 +2649,10 @@ index 00000000..22a8b3eb
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 00000000..768232f4
+index 00000000..6af1a239
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,426 @@
+@@ -0,0 +1,435 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -2758,7 +2762,8 @@ index 00000000..768232f4
 +		GIN_NOISE_ATTACK = 7, ///< Noise envelope attack
 +		GIN_TONE_ATTACK = 8,
 +		GIN_TONE_DECAY = 10,
-+		NUM_SLOTS = 11,
++		GIN_EQ_FREQ = 11, ///< Peak EQ frequency. Added after GIN, on a param only a sample oscillator reads.
++		NUM_SLOTS = 12,
 +	};
 +	/// Raw Deluge param values: the whole int32 range, centre 0
 +	std::array<int32_t, NUM_SLOTS> values{};
@@ -2911,12 +2916,14 @@ index 00000000..768232f4
 +		                  ///< default.
 +		CONTROLS_VERSION, ///< 1 once the drive and decay controls exist. Sounds saved before have no byte for it.
 +		// GIN. Its continuous settings are on Deluge params: see DrumControls. The noise filter is NOISE_FILTER_TYPE.
-+		GIN_WAVE,      ///< gin::Wave
-+		GIN_MOD_MODE,  ///< gin::ModMode
-+		GIN_NOISE_ENV, ///< gin::NoiseEnv
-+		GIN_EQ_FREQ,   ///< Peak EQ frequency, 20 Hz to 20 kHz
-+		GIN_EQ_GAIN,   ///< Peak EQ gain, 64 = flat, 0 / 127 = 40 dB cut / boost
-+		GIN_LEVEL,     ///< GIN's level before its clipper. 102 is about -2 dB.
++		// The EQ frequency has moved to DrumControls::GIN_EQ_FREQ: this byte is only read from sounds saved before.
++		GIN_WAVE,       ///< gin::Wave
++		GIN_MOD_MODE,   ///< gin::ModMode
++		GIN_NOISE_ENV,  ///< gin::NoiseEnv
++		GIN_EQ_FREQ,    ///< Peak EQ frequency, 20 Hz to 20 kHz
++		GIN_EQ_GAIN,    ///< Peak EQ gain, 64 = flat, 0 / 127 = 40 dB cut / boost
++		GIN_LEVEL,      ///< GIN's level before its clipper. 102 is about -2 dB.
++		GIN_EQ_CONTROL, ///< 1 once GIN's EQ frequency is a control. Sounds saved before have no byte for it.
 +		NUM_PARAMS,
 +	};
 +
@@ -2950,17 +2957,23 @@ index 00000000..768232f4
 +	void readLegacyDrumBytes(const uint8_t* bytes, int32_t length);
 +
 +	/// Called after reading a saved patch of length bytes. A sound saved before the drive and decay controls existed
-+	/// has whatever its params held on their slots: needsControlDefaults() says to put them back to neutral.
++	/// has whatever its params held on their slots, and one saved before GIN's EQ frequency became a control has it in
++	/// the patch: needsControlDefaults() says to sort them out (savedBeforeControls(), savedBeforeGinEqControl()).
 +	void loadedBytes(int32_t length) {
-+		needsControlDefaults_ = length <= CONTROLS_VERSION;
++		savedBeforeControls_ = length <= CONTROLS_VERSION;
++		savedBeforeGinEqControl_ = length <= GIN_EQ_CONTROL;
 +		params_[CONTROLS_VERSION] = 1;
++		params_[GIN_EQ_CONTROL] = 1;
 +	}
-+	[[nodiscard]] bool needsControlDefaults() const { return needsControlDefaults_; }
-+	void clearNeedsControlDefaults() { needsControlDefaults_ = false; }
++	[[nodiscard]] bool needsControlDefaults() const { return savedBeforeControls_ || savedBeforeGinEqControl_; }
++	[[nodiscard]] bool savedBeforeControls() const { return savedBeforeControls_; }
++	[[nodiscard]] bool savedBeforeGinEqControl() const { return savedBeforeGinEqControl_; }
++	void clearNeedsControlDefaults() { savedBeforeControls_ = savedBeforeGinEqControl_ = false; }
 +
 +private:
 +	std::array<uint8_t, NUM_PARAMS> params_{};
-+	bool needsControlDefaults_ = false; ///< Not saved
++	bool savedBeforeControls_ = false;     ///< Not saved
++	bool savedBeforeGinEqControl_ = false; ///< Not saved
 +};
 +
 +/// The control slot an LXR setting lives on, or -1 for the choices (waves, modes, filter type), which stay in the
@@ -10472,10 +10485,10 @@ index 00000000..f23cf85f
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 00000000..f9653b30
+index 00000000..191f1a47
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
-@@ -0,0 +1,552 @@
+@@ -0,0 +1,558 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -10644,6 +10657,8 @@ index 00000000..f9653b30
 +		for (const auto& [p, userValue] : deluge::dsp::drum_synth::kDrumSynthEnvelope2) {
 +			setSoundParam(p, getParamFromUserValue(p, userValue));
 +		}
++		// Patch cables can reach the drum controls now
++		sound.setupPatchingForAllParamManagers(currentSong);
 +	}
 +	// Moving to another variant of DXIA or DIIA starts that variant's own preset too
 +	const bool sameVariant = !isXia(engine) || variant == patch.get(Patch::XIA_VARIANT);
@@ -10682,6 +10697,10 @@ index 00000000..f9653b30
 +	deluge::dsp::drum_synth::storeControlsInPatch(currentControls(), source.drumPatch);
 +	sound.killAllVoices();
 +	source.setOscType(soundEditor.editingKitRow() ? OscType::SAMPLE : OscType::SAW);
++	// GIN's EQ frequency sits on the sample start offset
++	setSoundParam(modulation::params::LOCAL_OSC_A_START_OFFSET, 0);
++	// Cables to the drum controls only work on a drum synth
++	sound.setupPatchingForAllParamManagers(currentSong);
 +	setDrumKnobs(sound, Engine::NUM_ENGINES);
 +	soundEditor.markInstrumentAsEdited();
 +}
@@ -10753,7 +10772,7 @@ index 00000000..f9653b30
 +	}
 +};
 +
-+/// A GIN setting kept in the patch as a number, 0-127 (EQ, level). Menu edits only: not a patched param.
++/// A GIN setting kept in the patch as a number, 0-127 (EQ gain, level). Menu edits only: not a patched param.
 +class GinNumber final : public Integer {
 +public:
 +	GinNumber(l10n::String name, Patch::Param param) : Integer(name), param_(param) {}
@@ -11832,7 +11851,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..d5e0dc87 100644
+index 7bbd559f..be332797 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -11989,7 +12008,7 @@ index 7bbd559f..d5e0dc87 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1520,426 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,6 +1520,440 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -12059,7 +12078,7 @@ index 7bbd559f..d5e0dc87 100644
 +PLACE_SDRAM_BSS drum_synth::GinControl ginNoiseDecayMenu{STRING_FOR_GIN_NOISE_DECAY, XiaSlot::GIN_NOISE_DECAY};
 +PLACE_SDRAM_BSS drum_synth::GinControl ginDriveMenu{STRING_FOR_XIA_DRIVE, XiaSlot::GIN_DRIVE};
 +PLACE_SDRAM_BSS drum_synth::GinControl ginDecayMenu{STRING_FOR_GIN_DECAY, XiaSlot::COMMON_DECAY};
-+PLACE_SDRAM_BSS drum_synth::GinNumber ginEqFreqMenu{STRING_FOR_GIN_EQ_FREQ, DrumParam::GIN_EQ_FREQ};
++PLACE_SDRAM_BSS drum_synth::GinControl ginEqFreqMenu{STRING_FOR_GIN_EQ_FREQ, XiaSlot::GIN_EQ_FREQ};
 +PLACE_SDRAM_BSS drum_synth::GinNumber ginEqGainMenu{STRING_FOR_GIN_EQ_GAIN, DrumParam::GIN_EQ_GAIN};
 +PLACE_SDRAM_BSS drum_synth::GinNumber ginLevelMenu{STRING_FOR_GIN_LEVEL, DrumParam::GIN_LEVEL};
 +// Items the current engine doesn't use hide themselves
@@ -12402,6 +12421,20 @@ index 7bbd559f..d5e0dc87 100644
 +	}
 +	return nullptr;
 +}
++
++uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y) {
++	const uint32_t usual = params::patchedParamShortcuts[x][y];
++	if (x < kPadOsc1 || x > kPadMod2) {
++		return usual;
++	}
++	MenuItem* item = drumShortcutFor(sound, x, y);
++	if (item != nullptr && item->getParamKind() == params::Kind::PATCHED) {
++		return item->getParamIndex();
++	}
++	// A choice, or a pad the engine leaves alone: the Deluge's own param, unless that's where another of the engine's
++	// controls lives
++	return (deluge::dsp::drum_synth::drumSlotForParam(usual) >= 0) ? params::kNoParamID : usual;
++}
 +#undef XIA_ENGINE_COLUMNS
 +#undef DRUM_SOUND_COLUMNS
 +#undef DRUM_TRANSIENT_COLUMNS
@@ -12416,7 +12449,7 @@ index 7bbd559f..d5e0dc87 100644
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1477,6 +1948,62 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
+@@ -1477,6 +1962,62 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
  
  // Synth only
  PLACE_SDRAM_BSS SynthModeSelection synthModeMenu{STRING_FOR_SYNTH_MODE};
@@ -12479,7 +12512,7 @@ index 7bbd559f..d5e0dc87 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2045,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2059,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -12491,7 +12524,7 @@ index 7bbd559f..d5e0dc87 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2074,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2088,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -12500,7 +12533,7 @@ index 7bbd559f..d5e0dc87 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2083,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2097,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -12509,7 +12542,7 @@ index 7bbd559f..d5e0dc87 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2237,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2251,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -12519,7 +12552,7 @@ index 7bbd559f..d5e0dc87 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2370,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2384,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -12528,7 +12561,7 @@ index 7bbd559f..d5e0dc87 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2426,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2440,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -12537,7 +12570,7 @@ index 7bbd559f..d5e0dc87 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2448,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2462,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -12545,7 +12578,7 @@ index 7bbd559f..d5e0dc87 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2491,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2505,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -12579,7 +12612,7 @@ index 7bbd559f..d5e0dc87 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2562,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2576,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -12588,7 +12621,7 @@ index 7bbd559f..d5e0dc87 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2586,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2600,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -12598,7 +12631,7 @@ index 7bbd559f..d5e0dc87 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd6..6f761cbf 100644
+index 09efdfd6..24605f6b 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
 @@ -25,6 +25,7 @@
@@ -12618,7 +12651,7 @@ index 09efdfd6..6f761cbf 100644
  extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
  extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
  extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
-@@ -113,7 +116,19 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
+@@ -113,7 +116,24 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
  extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
@@ -12635,6 +12668,11 @@ index 09efdfd6..6f761cbf 100644
 +/// On drum synth sounds, some sound shortcut pads open the engine's settings instead (see menus.cpp). nullptr = the
 +/// normal shortcut.
 +MenuItem* drumShortcutFor(const Sound* sound, int32_t x, int32_t y);
++/// The patched param on a drum synth sound's shortcut pad, for the automation view and patch cable blinks. In the
++/// oscillator and FM columns, the drum synth's own pads: the engine's control there, else the Deluge's own param, or
++/// kNoParamID where that would be another of the engine's controls. Elsewhere (the mod FX pads too, as every sweep
++/// setting also has a pad in those columns), the Deluge's own.
++uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y);
  extern MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight];
  extern MenuItem* paramShortcutsForSongView[kDisplayWidth][kDisplayHeight];
  extern MenuItem* paramShortcutsForKitGlobalFX[kDisplayWidth][kDisplayHeight];
@@ -12725,7 +12763,7 @@ index c7f05939..61dfc609 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3..5d9f01f5 100644
+index d3eae8c3..19d187c7 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -3,6 +3,7 @@
@@ -12829,7 +12867,24 @@ index d3eae8c3..5d9f01f5 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -1012,6 +1073,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
+@@ -963,9 +1024,15 @@ ActionResult SoundEditor::exitCompletely() {
+ 
+ bool SoundEditor::findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout, bool* isSecondLayerParamOut) {
+ 	bool found = false;
++	// A drum synth's controls are on its own pads
++	const Sound* sound = shortcutSound();
++	const bool drumSynth = sound != nullptr && sound->getSynthMode() != SynthMode::FM
++	                       && sound->sources[0].oscType == OscType::DRUM_SYNTH;
+ 	for (int32_t x = 0; x < kDisplayWidth; x++) {
+ 		for (int32_t y = 0; y < kDisplayHeight; y++) {
+-			if (deluge::modulation::params::patchedParamShortcuts[x][y] == paramLookingFor) {
++			const uint32_t param =
++			    drumSynth ? drumShortcutParam(sound, x, y) : deluge::modulation::params::patchedParamShortcuts[x][y];
++			if (param == paramLookingFor) {
+ 				*isSecondLayerParamOut = false;
+ 				*xout = x;
+ 				*yout = y;
+@@ -1012,6 +1079,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
  
  void SoundEditor::setupShortcutsBlinkFromTable(MenuItem const* const currentItem,
                                                 MenuItem const* const items[kDisplayWidth][kDisplayHeight]) {
@@ -12847,7 +12902,7 @@ index d3eae8c3..5d9f01f5 100644
  	for (auto x = 0; x < kDisplayWidth; ++x) {
  		for (auto y = 0; y < kDisplayHeight; ++y) {
  			if (items[x][y] == currentItem) {
-@@ -1090,6 +1162,10 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1090,6 +1168,10 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  			}
  
  			// First, see if there's a shortcut for the actual MenuItem we're currently on
@@ -12858,7 +12913,7 @@ index d3eae8c3..5d9f01f5 100644
  			for (int32_t x = 0; x < kDisplayWidth; x++) {
  				for (int32_t y = 0; y < kDisplayHeight; y++) {
  					if (paramShortcutsForSoundsSecondLayer[x][y] == currentItem) {
-@@ -1097,7 +1173,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1097,7 +1179,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  						goto stopThat;
  					}
  
@@ -12868,7 +12923,7 @@ index d3eae8c3..5d9f01f5 100644
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1499,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1505,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -12877,7 +12932,7 @@ index d3eae8c3..5d9f01f5 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1586,10 +1663,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1586,10 +1669,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -12896,7 +12951,7 @@ index d3eae8c3..5d9f01f5 100644
  
  					// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  					secondLayerShortcutsToggled =
-@@ -1607,6 +1691,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1607,6 +1697,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			}
  		}
@@ -12916,7 +12971,7 @@ index d3eae8c3..5d9f01f5 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1650,6 +1747,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1650,6 +1753,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -12929,7 +12984,7 @@ index d3eae8c3..5d9f01f5 100644
  			if (!setupSuccess) {
  				return ActionResult::DEALT_WITH;
  			}
-@@ -1704,6 +1807,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1704,6 +1813,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -12944,7 +12999,7 @@ index d3eae8c3..5d9f01f5 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2258,7 @@ doMIDIOrCV:
+@@ -2147,6 +2264,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -12970,20 +13025,17 @@ index 85daba70..3631e364 100644
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index 0a42de35..e2c802c3 100644
+index 0a42de35..b3d13141 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
-@@ -110,6 +110,30 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
+@@ -110,6 +110,34 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
  
  using namespace deluge::gui;
  
-+// The patched param on a shortcut pad. On a sample oscillator, the pulse width pad (unused for samples) gives the
-+// sample start offset instead.
++// The patched param on a shortcut pad, or kNoParamID. On a sample oscillator, the pulse width pad (unused for samples)
++// gives the sample start offset instead. On a drum synth, the oscillator and FM columns follow the drum synth's own
++// pads, as in the sound editor.
 +static uint32_t patchedParamForShortcut(Output* output, int32_t x, int32_t y) {
-+	uint32_t paramId = patchedParamShortcuts[x][y];
-+	if (paramId != params::LOCAL_OSC_A_PHASE_WIDTH && paramId != params::LOCAL_OSC_B_PHASE_WIDTH) {
-+		return paramId;
-+	}
 +	Sound* sound = nullptr;
 +	if (output->type == OutputType::SYNTH) {
 +		sound = static_cast<SoundInstrument*>(output);
@@ -12993,6 +13045,13 @@ index 0a42de35..e2c802c3 100644
 +		if (drum && drum->type == DrumType::SOUND) {
 +			sound = static_cast<SoundDrum*>(drum);
 +		}
++	}
++	if (sound && sound->getSynthMode() != SynthMode::FM && sound->sources[0].oscType == OscType::DRUM_SYNTH) {
++		return drumShortcutParam(sound, x, y);
++	}
++	uint32_t paramId = patchedParamShortcuts[x][y];
++	if (paramId != params::LOCAL_OSC_A_PHASE_WIDTH && paramId != params::LOCAL_OSC_B_PHASE_WIDTH) {
++		return paramId;
 +	}
 +	int32_t s = paramId - params::LOCAL_OSC_A_PHASE_WIDTH;
 +	if (sound && sound->getSynthMode() != SynthMode::FM && sound->sources[s].oscType == OscType::SAMPLE) {
@@ -13004,7 +13063,7 @@ index 0a42de35..e2c802c3 100644
  const uint32_t auditionPadActionUIModes[] = {UI_MODE_NOTES_PRESSED,
                                               UI_MODE_AUDITIONING,
                                               UI_MODE_HORIZONTAL_SCROLL,
-@@ -123,8 +147,8 @@ const uint32_t mutePadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITION
+@@ -123,8 +151,8 @@ const uint32_t mutePadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITION
  
  const uint32_t verticalScrollUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITIONING, UI_MODE_RECORD_COUNT_IN, 0};
  
@@ -13015,7 +13074,7 @@ index 0a42de35..e2c802c3 100644
  
  // synth and kit rows FX - sorted in the order that Parameters are scrolled through on the display
  const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutomation> nonGlobalParamsForAutomation{{
-@@ -148,9 +172,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -148,9 +176,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::PATCHED, params::GLOBAL_REVERB_AMOUNT},
@@ -13028,7 +13087,7 @@ index 0a42de35..e2c802c3 100644
      // Sidechain Shape
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_SIDECHAIN_SHAPE},
      // Decimation, Bitcrush, Wavefolder
-@@ -242,6 +268,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -242,6 +272,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::EXPRESSION, Expression::Y_SLIDE_TIMBRE},
      // Mono Expression: Z - Channel Pressure
      {params::Kind::EXPRESSION, Expression::Z_PRESSURE},
@@ -13038,7 +13097,7 @@ index 0a42de35..e2c802c3 100644
  }};
  
  // global FX - sorted in the order that Parameters are scrolled through on the display
-@@ -267,9 +296,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
+@@ -267,9 +300,11 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_REVERB_SEND_AMOUNT},
@@ -13051,29 +13110,43 @@ index 0a42de35..e2c802c3 100644
      // Sidechain Send, Shape
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_SIDECHAIN_VOLUME},
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_SIDECHAIN_SHAPE},
-@@ -784,9 +815,9 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -783,10 +818,10 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+ 			ModelStackWithAutoParam* modelStackWithParam = nullptr;
  
  			if (!onArrangerView && (outputType == OutputType::SYNTH || singleSoundDrum)) {
- 				if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+-				if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
 -					modelStackWithParam =
 -					    getModelStackWithParamForClip(modelStackWithTimelineCounter, clip,
 -					                                  patchedParamShortcuts[xDisplay][yDisplay], params::Kind::PATCHED);
-+					modelStackWithParam = getModelStackWithParamForClip(
-+					    modelStackWithTimelineCounter, clip, patchedParamForShortcut(clip->output, xDisplay, yDisplay),
-+					    params::Kind::PATCHED);
++				if (uint32_t paramID = patchedParamForShortcut(clip->output, xDisplay, yDisplay);
++				    paramID != kNoParamID) {
++					modelStackWithParam = getModelStackWithParamForClip(modelStackWithTimelineCounter, clip, paramID,
++					                                                    params::Kind::PATCHED);
  				}
  
  				else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
-@@ -1909,7 +1940,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1896,7 +1931,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+ 	    && (outputType == OutputType::SYNTH
+ 	        || (outputType == OutputType::KIT && !getAffectEntire() && ((Kit*)output)->selectedDrum
+ 	            && ((Kit*)output)->selectedDrum->type == DrumType::SOUND))
+-	    && ((patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID)
++	    && ((patchedParamForShortcut(output, xDisplay, yDisplay) != kNoParamID)
+ 	        || (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID)
+ 	        || params::isPatchCableShortcut(xDisplay, yDisplay))) {
+ 		// don't allow automation of portamento in kit's
+@@ -1907,9 +1942,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+ 
+ 		// if you are in a synth or a kit instrumentClip and the shortcut is valid, set current selected
  		// ParamID
- 		if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
+-		if (patchedParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
++		if (patchedParamForShortcut(output, xDisplay, yDisplay) != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::PATCHED;
 -			clip->lastSelectedParamID = patchedParamShortcuts[xDisplay][yDisplay];
 +			clip->lastSelectedParamID = patchedParamForShortcut(output, xDisplay, yDisplay);
  		}
  		else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::UNPATCHED_SOUND;
-@@ -2934,7 +2965,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
+@@ -2934,7 +2969,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
  			}
  			else {
  				if ((clip->lastSelectedParamKind == params::Kind::PATCHED
@@ -16242,7 +16315,7 @@ index 00000000..6c4f5585
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index ccc3f332..2468d272 100644
+index ccc3f332..e0827d08 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -16594,7 +16667,50 @@ index ccc3f332..2468d272 100644
  		else {
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
-@@ -1966,6 +2202,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
+@@ -1956,6 +2192,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
+ // require an additional copying(summing) step, 		and we might as well just apply amplitude while that's
+ // happening, which is exactly how it is currently.
+ 
++namespace {
++/// The controls a drum synth voice plays: each control's param as turned, automated or locked, plus every patch cable
++/// that reaches it in this voice (envelopes, LFOs, velocity, random, MPE, ...). The Patcher's final values for these
++/// params are made for the FM operators, so the cables are summed here instead, the same way for every control: a cable
++/// at 50 with its source at full moves a control 64 steps, from the centre to either end.
++deluge::dsp::drum_synth::DrumControls modulatedDrumControls(ParamManagerForTimeline& paramManager,
++                                                            std::span<const int32_t> sourceValues) {
++	using deluge::dsp::drum_synth::DrumControls;
++	DrumControls controls = deluge::dsp::drum_synth::readDrumControls(*paramManager.getPatchedParamSet());
++	PatchCableSet& cables = *paramManager.getPatchCableSet();
++	const Destination* destination = cables.destinations[GLOBALITY_LOCAL];
++	if (destination == nullptr) {
++		return controls;
++	}
++	for (; destination->sources != 0u; destination++) {
++		if (!destination->destinationParamDescriptor.isJustAParam()) {
++			continue; // A cable patched to another cable's depth
++		}
++		const int32_t slot =
++		    deluge::dsp::drum_synth::drumSlotForParam(destination->destinationParamDescriptor.getJustTheParam());
++		if (slot < 0) {
++			continue;
++		}
++		int64_t total = controls.values[slot];
++		for (int32_t c = destination->firstCable; c < destination->endCable; c++) {
++			PatchCable& cable = cables.patchCables[c];
++			const int32_t source = cable.toPolarity(sourceValues[util::to_underlying(cable.from)]);
++			total += int64_t{cable.applyRangeAdjustment(multiply_32x32_rshift32(source, cable.param.getCurrentValue()))}
++			         << 2;
++		}
++		controls.values[slot] = static_cast<int32_t>(std::clamp<int64_t>(total, INT32_MIN, INT32_MAX));
++	}
++	return controls;
++}
++} // namespace
++
+ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManager, int32_t s,
+                               int32_t* __restrict__ oscBuffer, int32_t numSamples, bool stereoBuffer,
+                               int32_t sourceAmplitude, bool* __restrict__ unisonPartBecameInactive,
+@@ -1966,6 +2238,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
  
  	GeneralMemoryAllocator::get().checkStack("Voice::renderBasicSource");
  
@@ -16696,7 +16812,7 @@ index ccc3f332..2468d272 100644
  	// For each unison part
  	for (int32_t u = 0; u < sound.numUnison; u++) {
  
-@@ -2116,6 +2447,11 @@ pitchTooHigh:
+@@ -2116,6 +2483,11 @@ pitchTooHigh:
  
  			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
  
@@ -16708,7 +16824,7 @@ index ccc3f332..2468d272 100644
  			int32_t interpolationBufferSize;
  
  			// If pitch adjustment...
-@@ -2133,6 +2469,12 @@ pitchTooHigh:
+@@ -2133,6 +2505,12 @@ pitchTooHigh:
  				if (!voiceSample->doneFirstRenderYet && !tryToStartMidNote
  				    && portaEnvelopePos == 0xFFFFFFFF) { // No porta
  
@@ -16721,7 +16837,7 @@ index ccc3f332..2468d272 100644
  					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
  					// accurate
  					if (loopingType != LoopType::NONE) {
-@@ -2444,6 +2786,34 @@ dontUseCache: {}
+@@ -2444,6 +2822,33 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -16735,10 +16851,9 @@ index ccc3f332..2468d272 100644
 +				memset(renderBuffer, 0, SSI_TX_BUFFER_NUM_SAMPLES * sizeof(int32_t));
 +			}
 +
-+			unisonParts[u].sources[s].drumVoice.render(
-+			    sound.sources[s].drumPatch,
-+			    deluge::dsp::drum_synth::readDrumControls(*paramManager->getPatchedParamSet()), renderBuffer,
-+			    numSamples, phaseIncrement, sourceAmplitude, amplitudeIncrement);
++			unisonParts[u].sources[s].drumVoice.render(sound.sources[s].drumPatch,
++			                                           modulatedDrumControls(*paramManager, sourceValues), renderBuffer,
++			                                           numSamples, phaseIncrement, sourceAmplitude, amplitudeIncrement);
 +
 +			if (stereoBuffer) {
 +				for (int32_t i = 0; i < numSamples; i++) {
@@ -18428,10 +18543,10 @@ index 9eca346b..8ddedad0 100644
  	void setCVTranspose(uint8_t channel, int32_t semitones, int32_t cents);
 diff --git a/src/deluge/processing/sound/drum_synth_params.h b/src/deluge/processing/sound/drum_synth_params.h
 new file mode 100644
-index 00000000..62078d48
+index 00000000..031dfcaa
 --- /dev/null
 +++ b/src/deluge/processing/sound/drum_synth_params.h
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,150 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -18462,16 +18577,16 @@ index 00000000..62078d48
 +namespace deluge::dsp::drum_synth {
 +
 +/// The Deluge patched params the drum synth controls live on: the FM operators' params, which a drum synth sound (never
-+/// in FM mode) has no other use for, osc 1's pulse width, which the drum synth doesn't have, and the two wavetable
-+/// positions, which only a wavetable oscillator reads. Being patched params, they save with the sound and can be
-+/// automated, parameter locked and put on gold knobs.
++/// in FM mode) has no other use for, osc 1's pulse width, which the drum synth doesn't have, the two wavetable
++/// positions, which only a wavetable oscillator reads, and osc 1's sample start offset. Being patched params, they save
++/// with the sound and can be automated, parameter locked and put on gold knobs.
 +inline constexpr std::array<int32_t, DrumControls::NUM_SLOTS> kDrumControlParams{
 +    modulation::params::LOCAL_MODULATOR_0_VOLUME,       modulation::params::LOCAL_MODULATOR_1_VOLUME,
 +    modulation::params::LOCAL_MODULATOR_0_FEEDBACK,     modulation::params::LOCAL_MODULATOR_1_FEEDBACK,
 +    modulation::params::LOCAL_CARRIER_0_FEEDBACK,       modulation::params::LOCAL_CARRIER_1_FEEDBACK,
 +    modulation::params::LOCAL_MODULATOR_0_PITCH_ADJUST, modulation::params::LOCAL_MODULATOR_1_PITCH_ADJUST,
 +    modulation::params::LOCAL_OSC_A_PHASE_WIDTH,        modulation::params::LOCAL_OSC_A_WAVE_INDEX,
-+    modulation::params::LOCAL_OSC_B_WAVE_INDEX,
++    modulation::params::LOCAL_OSC_B_WAVE_INDEX,         modulation::params::LOCAL_OSC_A_START_OFFSET,
 +};
 +
 +/// Envelope 2 on every drum synth sound: a short blip (attack 0, decay 5, sustain 0, release 0), ready to patch to
@@ -18574,6 +18689,8 @@ index 00000000..62078d48
 +		return STRING_FOR_GIN_TONE_ATTACK;
 +	case DrumControls::COMMON_DECAY:
 +		return STRING_FOR_GIN_DECAY;
++	case DrumControls::GIN_EQ_FREQ:
++		return STRING_FOR_GIN_EQ_FREQ;
 +	default:
 +		return STRING_FOR_GIN_TONE_DECAY;
 +	}
@@ -18581,7 +18698,7 @@ index 00000000..62078d48
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..6d39390b 100644
+index 8dd1ce44..9fa1ce3b 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -18698,7 +18815,7 @@ index 8dd1ce44..6d39390b 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -259,7 +348,23 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
+@@ -259,7 +348,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -18709,12 +18826,23 @@ index 8dd1ce44..6d39390b 100644
 +	    || !paramManager->containsAnyMainParamCollections()) {
 +		return;
 +	}
-+	// Saved before the drive and decay controls existed: their params hold whatever they held, so start them neutral
 +	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-+	patchedParams->params[kDrumControlParams[DrumControls::COMMON_DECAY]].setCurrentValueBasicForSetup(
-+	    DrumControls::fromValue(127));
-+	patchedParams->params[kDrumControlParams[DrumControls::LXR_DRIVE]].setCurrentValueBasicForSetup(
-+	    DrumControls::fromValue(0));
++	const deluge::dsp::drum_synth::Patch& patch = sources[0].drumPatch;
++	// Saved before the drive and decay controls existed: their params hold whatever they held, so start them neutral
++	if (patch.savedBeforeControls()) {
++		patchedParams->params[kDrumControlParams[DrumControls::COMMON_DECAY]].setCurrentValueBasicForSetup(
++		    DrumControls::fromValue(127));
++		patchedParams->params[kDrumControlParams[DrumControls::LXR_DRIVE]].setCurrentValueBasicForSetup(
++		    DrumControls::fromValue(0));
++	}
++	// Saved before GIN's EQ frequency became a control: it's in the patch, and its param (osc 1's sample start offset)
++	// holds whatever it held
++	if (patch.savedBeforeGinEqControl()) {
++		patchedParams->params[kDrumControlParams[DrumControls::GIN_EQ_FREQ]].setCurrentValueBasicForSetup(
++		    deluge::dsp::drum_synth::isGin(patch.engine())
++		        ? DrumControls::fromValue(patch.get(deluge::dsp::drum_synth::Patch::GIN_EQ_FREQ))
++		        : 0);
++	}
 +}
 +
  void Sound::possiblySetupDefaultExpressionPatching(ParamManager* paramManager) {
@@ -18722,7 +18850,7 @@ index 8dd1ce44..6d39390b 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +430,211 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +441,211 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -18934,7 +19062,7 @@ index 8dd1ce44..6d39390b 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +745,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +756,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -18944,7 +19072,7 @@ index 8dd1ce44..6d39390b 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1562,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1573,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -18956,7 +19084,21 @@ index 8dd1ce44..6d39390b 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1514,7 +1832,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1347,6 +1676,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+ 		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
+ 	}
+ 
++	// A drum synth's controls live on params it has no other use for (the FM operators' among them, see
++	// drum_synth_params.h), so anything can patch to them, whatever this synth mode would otherwise allow there
++	if (synthMode != SynthMode::FM && sources[0].oscType == OscType::DRUM_SYNTH
++	    && deluge::dsp::drum_synth::drumSlotForParam(p) >= 0) {
++		return PatchCableAcceptance::ALLOWED;
++	}
++
+ 	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
+ 
+ 	switch (p) {
+@@ -1514,7 +1850,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -18966,7 +19108,7 @@ index 8dd1ce44..6d39390b 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +1965,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +1983,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -18985,7 +19127,7 @@ index 8dd1ce44..6d39390b 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1865,6 +2194,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2212,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -19002,7 +19144,7 @@ index 8dd1ce44..6d39390b 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2266,11 @@ justSwitchOff:
+@@ -1927,6 +2284,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -19014,7 +19156,7 @@ index 8dd1ce44..6d39390b 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2520,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2538,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -19023,7 +19165,7 @@ index 8dd1ce44..6d39390b 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2729,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2747,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -19036,7 +19178,7 @@ index 8dd1ce44..6d39390b 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2496,18 +2846,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2864,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -19067,7 +19209,7 @@ index 8dd1ce44..6d39390b 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2876,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2894,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -19087,7 +19229,7 @@ index 8dd1ce44..6d39390b 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2904,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2922,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -19099,7 +19241,7 @@ index 8dd1ce44..6d39390b 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +2972,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +2990,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -19108,7 +19250,7 @@ index 8dd1ce44..6d39390b 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3258,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3276,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -19144,7 +19286,7 @@ index 8dd1ce44..6d39390b 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3364,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3382,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -19160,7 +19302,7 @@ index 8dd1ce44..6d39390b 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3441,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3459,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -19181,7 +19323,7 @@ index 8dd1ce44..6d39390b 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3499,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3517,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -19274,7 +19416,7 @@ index 8dd1ce44..6d39390b 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3698,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3716,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -19283,7 +19425,7 @@ index 8dd1ce44..6d39390b 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3891,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3909,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -19305,7 +19447,7 @@ index 8dd1ce44..6d39390b 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3925,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3943,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -19316,7 +19458,7 @@ index 8dd1ce44..6d39390b 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4139,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4157,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -19326,7 +19468,7 @@ index 8dd1ce44..6d39390b 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4266,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4284,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -19338,7 +19480,7 @@ index 8dd1ce44..6d39390b 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4360,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4378,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -19353,7 +19495,7 @@ index 8dd1ce44..6d39390b 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4550,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4568,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -19374,7 +19516,7 @@ index 8dd1ce44..6d39390b 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4643,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4661,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -19386,7 +19528,7 @@ index 8dd1ce44..6d39390b 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4662,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4680,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -19396,7 +19538,7 @@ index 8dd1ce44..6d39390b 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4713,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4731,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -19406,7 +19548,7 @@ index 8dd1ce44..6d39390b 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +4975,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +4993,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -19429,7 +19571,7 @@ index 8dd1ce44..6d39390b 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5498,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5516,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -20747,10 +20889,10 @@ index 00000000..d801dfee
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 00000000..d3092459
+index 00000000..5773d63f
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,364 @@
 +---
 +title: Drum Synth
 +---
@@ -20968,7 +21110,7 @@ index 00000000..d3092459
 +| MOD FX RATE | Mod rate |
 +| MOD FX DEPTH | Mod amount |
 +
-+Every engine's continuous settings are Deluge parameters, so they can be parameter locked, automated, MIDI learned and put on gold knobs. They run 0-127, as on the LXR and the Cycles. The choices (waves, transient type, noise filter, osc mode, Punch) are row settings. The full list is in the sound menu's **Drum synth** item.
++Every engine's continuous settings are Deluge parameters, so they can be parameter locked, automated, MIDI learned, put on gold knobs and modulated from the mod matrix. They run 0-127, as on the LXR and the Cycles. The choices (waves, transient type, noise filter, osc mode, Punch) are row settings. The full list is in the sound menu's **Drum synth** item.
 +
 +**Drive and decay.** Every engine has both, on the same pads and gold knobs. DXIA and DIIA use their own. On the LXR voices drive is a soft clipper that gets louder as it goes up and hard clips at the top, and decay is the voice's own fade (127 holds). Both start neutral, so older kits sound the same. The Cyc engines start with drive at 100.
 +
@@ -20999,7 +21141,9 @@ index 00000000..d3092459
 +
 +**Envelope 2.** Every drum synth row starts with envelope 2 as a short blip: attack 0, decay 5, sustain 0, release 0. Patch it to pitch (or osc 1 pitch) for a transient snap.
 +
-+The LXR settings share parameters between engines: each voice's settings are stored with the row and come back when you switch back. The settings can't be modulated from the mod matrix, because the Deluge only allows that for those parameters in FM mode.
++The LXR settings share parameters between engines: each voice's settings are stored with the row and come back when you switch back. **Modulation.** Any mod source can be patched to any of the settings: hold the source's pad with the setting open, as for any Deluge parameter. Each voice gets its own modulation, so velocity, random or an envelope can change every hit. A cable at 50 with its source at full moves a setting 64 steps, from the middle to either end.
++
++**Automation view.** On a drum synth row the OSC1, OSC2, MOD1 and MOD2 columns follow the drum synth's own pads, so each setting is where its shortcut is. Pads holding a choice are blank. The mod FX pads stay mod FX rate and depth (every sweep setting also has a pad in those columns).
 +
 +## DXIA and DIIA
 +
@@ -21076,7 +21220,7 @@ index 00000000..d3092459
 +
 +Cycle through them with **SHIFT + KIT** on a GIN kit (see [Kit presets](#kit-presets)), or put any one sound on a row with **GIN sound** in the Drum synth menu.
 +
-+**Settings.** The gold knobs follow the shared layout: attack / release = **Drive / Decay**, mod rate / depth = the pitch modulation's **Mod rate / Mod amount** (64 is none; above 64 the sweep starts high and falls, below it starts low and rises), Custom 1 = tune, Custom 2 / 3 = **Mix / Noise freq**, as on GIN's own front panel. **Decay** moves the tone and noise decays together: 64 leaves them as the sound has them, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay**, **Noise decay**, both attacks, **Noise reso**, the waves and modes, the EQ and **GIN level** are in the Drum synth menu, the pad editor and on the pads. The continuous ones are parameters (lockable, automatable); the waves, modes, filter type, EQ and level are row settings.
++**Settings.** The gold knobs follow the shared layout: attack / release = **Drive / Decay**, mod rate / depth = the pitch modulation's **Mod rate / Mod amount** (64 is none; above 64 the sweep starts high and falls, below it starts low and rises), Custom 1 = tune, Custom 2 / 3 = **Mix / Noise freq**, as on GIN's own front panel. **Decay** moves the tone and noise decays together: 64 leaves them as the sound has them, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay**, **Noise decay**, both attacks, **Noise reso**, the waves and modes, the EQ and **GIN level** are in the Drum synth menu, the pad editor and on the pads. The continuous ones are parameters (lockable, automatable, modulatable), EQ freq included from v1.14; the waves, modes, filter type, EQ gain and level are row settings.
 +
 +**Differences from GIN on the OP-1.**
 +- The pitch is the note (and row transpose), not a setting: the kits tune each row to its sound.
