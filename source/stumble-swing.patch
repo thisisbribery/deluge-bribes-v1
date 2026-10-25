@@ -21,6 +21,24 @@ index 0c5a8e05..5b4f3f1c 100644
  
  constexpr int32_t SAMPLE_MAX_TRANSPOSE = 24;
  constexpr int32_t SAMPLE_MIN_TRANSPOSE = (-96);
+diff --git a/src/deluge/dsp/CMakeLists.txt b/src/deluge/dsp/CMakeLists.txt
+index 1cbefef8..31b02346 100644
+--- a/src/deluge/dsp/CMakeLists.txt
++++ b/src/deluge/dsp/CMakeLists.txt
+@@ -8,6 +8,13 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
+ 
+ add_library(deluge_dsp STATIC ${deluge_dsp_SOURCES})
+ 
++# Built on their own, so the unity batches of the other files stay as they were (two DX7 files can't share one)
++set_source_files_properties(
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/gin.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/gin_kits.cpp
++  PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
++)
++
+ target_include_directories(deluge_dsp PRIVATE
+   ${CMAKE_CURRENT_LIST_DIR}/..
+   ${SHARED_INCLUDE}
 diff --git a/src/deluge/dsp/delay/delay.cpp b/src/deluge/dsp/delay/delay.cpp
 index a1a160dd..71ab5843 100644
 --- a/src/deluge/dsp/delay/delay.cpp
@@ -1323,10 +1341,10 @@ index 00000000..6294f30f
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 00000000..6b142c90
+index 00000000..22a8b3eb
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1137 @@
+@@ -0,0 +1,1298 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -1350,7 +1368,7 @@ index 00000000..6b142c90
 + * - The snare noise filter is a plain TPT state variable filter with low, high and band pass outputs.
 + *
 + * The TIA and IIA engines are not LXR code: they are in xia.cpp, and only hooked in here. Nor are the Cyc engines,
-+ * which are in cyc.cpp.
++ * which are in cyc.cpp, or GIN, in gin.cpp.
 + */
 +
 +#include "dsp/drum_synth/drum_synth.h"
@@ -1457,6 +1475,12 @@ index 00000000..6b142c90
 +	setXiaPreset(Engine::TIA, 0);
 +	params_[ENGINE] = static_cast<uint8_t>(Engine::DRUM);
 +	params_[CONTROLS_VERSION] = 1;
++	params_[GIN_WAVE] = static_cast<uint8_t>(gin::Wave::SINE);
++	params_[GIN_MOD_MODE] = static_cast<uint8_t>(gin::ModMode::DECAY);
++	params_[GIN_NOISE_ENV] = static_cast<uint8_t>(gin::NoiseEnv::EXP);
++	params_[GIN_EQ_FREQ] = 64;
++	params_[GIN_EQ_GAIN] = 64;
++	params_[GIN_LEVEL] = 102;
 +
 +	switch (preset) {
 +	case Preset::KICK:
@@ -1553,6 +1577,71 @@ index 00000000..6b142c90
 +}
 +
 +namespace {
++/// A GIN setting, 0 to 1, as a knob value with the Cycles' 8.8 resolution
++int32_t ginKnob(float x) {
++	return static_cast<int32_t>(std::clamp(x, 0.f, 1.f) * 0x7F00 + 0.5f);
++}
++/// A byte setting, 0 to 127
++uint8_t ginByte(float x) {
++	return static_cast<uint8_t>(std::clamp(x, 0.f, 1.f) * 127.f + 0.5f);
++}
++} // namespace
++
++void Patch::setGinSound(const gin::KitSound& sound) {
++	params_[ENGINE] = static_cast<uint8_t>(Engine::GIN);
++	params_[GIN_WAVE] = static_cast<uint8_t>(sound.wave);
++	params_[GIN_MOD_MODE] = static_cast<uint8_t>(sound.modMode);
++	params_[NOISE_FILTER_TYPE] = static_cast<uint8_t>(sound.noiseFilter);
++	params_[GIN_NOISE_ENV] = static_cast<uint8_t>(sound.noiseEnv);
++	params_[GIN_EQ_FREQ] = ginByte(sound.eqFreq);
++	// 64 is exactly flat
++	params_[GIN_EQ_GAIN] = (sound.eqGain <= 0.5f) ? static_cast<uint8_t>(sound.eqGain * 128.f + 0.5f)
++	                                              : static_cast<uint8_t>(64 + (sound.eqGain - 0.5f) * 126.f + 0.5f);
++	params_[GIN_LEVEL] = ginByte(sound.level);
++}
++
++DrumControls ginControlsFor(const gin::KitSound& sound) {
++	using S = DrumControls;
++	DrumControls c;
++	c.values[S::GIN_MIX] = S::fromKnob(ginKnob(sound.mix));
++	c.values[S::GIN_NOISE_FREQ] = S::fromKnob(ginKnob(sound.noiseFreq));
++	c.values[S::GIN_MOD_RATE] = S::fromKnob(ginKnob(sound.modRate));
++	const float amount = std::clamp(sound.modAmount, -1.f, 1.f);
++	c.values[S::GIN_MOD_AMOUNT] =
++	    S::fromKnob(0x4000 + static_cast<int32_t>(amount * ((amount < 0.f) ? 0x4000 : 0x3F00)));
++	c.values[S::GIN_DRIVE] = S::fromKnob(ginKnob(sound.drive));
++	c.values[S::GIN_NOISE_DECAY] = S::fromKnob(ginKnob(sound.noiseDecay));
++	c.values[S::GIN_NOISE_RES] = S::fromKnob(ginKnob(sound.noiseQ));
++	c.values[S::GIN_NOISE_ATTACK] = S::fromKnob(ginKnob(sound.noiseAttack));
++	c.values[S::GIN_TONE_ATTACK] = S::fromKnob(ginKnob(sound.toneAttack));
++	c.values[S::COMMON_DECAY] = S::fromValue(64);
++	c.values[S::GIN_TONE_DECAY] = S::fromKnob(ginKnob(sound.toneDecay));
++	return c;
++}
++
++RowSetup rowSetupForGinSound(const gin::KitSound& sound, bool choke) {
++	// Kit rows play at middle C
++	const float semitones = 12.f * log2f(sound.hz / 261.6256f);
++	const int32_t whole = static_cast<int32_t>(std::floor(semitones + 0.5f));
++	const int32_t cents = static_cast<int32_t>(std::floor((semitones - whole) * 100.f + 0.5f));
++	// The envelope opens for the engine's own envelopes, its release fitted to the longer layer heard, as for the
++	// other engines (envelopeReleaseFor())
++	auto attack = [](float x) { return (x <= 0.f) ? 0.f : x * 0.03981072f * powf(10.f, 2.4f * x); };
++	auto decay = [](float x) { return 0.01f * powf(1000.f, x); };
++	float t60 = 0.f;
++	if (sound.mix < 1.f) {
++		t60 = attack(sound.toneAttack) + decay(sound.toneDecay);
++	}
++	if (sound.mix > 0.f) {
++		const float noise = attack(sound.noiseAttack) + decay(sound.noiseDecay);
++		t60 = std::max(t60, (sound.noiseEnv == gin::NoiseEnv::LINEAR) ? noise * (2.f / 3.f) : noise);
++	}
++	RowSetup row{static_cast<int16_t>(whole), 30, -1, choke, 5, 0, 50, envelopeReleaseFor(t60)};
++	row.cents = static_cast<int8_t>(cents);
++	return row;
++}
++
++namespace {
 +/// Knob value that puts Cyc Chord's Shape on a chord shape
 +constexpr int32_t chordShapeKnob(int32_t shape) {
 +	return (shape * 128 + cyc::kNumChordShapes - 1) / cyc::kNumChordShapes;
@@ -1575,6 +1664,9 @@ index 00000000..6b142c90
 +
 +DrumControls DrumControls::defaultsFor(Engine engine) {
 +	// The Model:Cycles' own defaults, except that the engine's decay holds: the Deluge envelope does the shaping
++	if (isGin(engine)) {
++		return ginControlsFor(gin::defaultSound());
++	}
 +	DrumControls c;
 +	if (isCyc(engine)) {
 +		// The Cyc engines start where the originals do, their own amp decay included
@@ -1630,6 +1722,12 @@ index 00000000..6b142c90
 +		return kNumTransientModes - 1;
 +	case XIA_VARIANT:
 +		return 2;
++	case GIN_WAVE:
++		return static_cast<uint8_t>(gin::Wave::NUM_WAVES) - 1;
++	case GIN_MOD_MODE:
++		return static_cast<uint8_t>(gin::ModMode::NUM_MODES) - 1;
++	case GIN_NOISE_ENV:
++		return static_cast<uint8_t>(gin::NoiseEnv::NUM_ENVS) - 1;
 +	case XIA_PUNCH:
 +	case SNAPPY_DECAY:
 +	case CONTROLS_VERSION:
@@ -1669,12 +1767,20 @@ index 00000000..6b142c90
 +	case MOD2_COARSE:
 +	case MOD2_FINE:
 +		return engine == Engine::METAL;
++	case NOISE_FILTER_TYPE:
++		return engine == Engine::SNARE || isGin(engine);
 +	case NOISE_MIX:
 +	case NOISE_PITCH:
-+	case NOISE_FILTER_TYPE:
 +	case NOISE_CUTOFF:
 +	case NOISE_RESONANCE:
 +		return engine == Engine::SNARE;
++	case GIN_WAVE:
++	case GIN_MOD_MODE:
++	case GIN_NOISE_ENV:
++	case GIN_EQ_FREQ:
++	case GIN_EQ_GAIN:
++	case GIN_LEVEL:
++		return isGin(engine);
 +	default:
 +		return isXia(engine);
 +	}
@@ -1865,6 +1971,9 @@ index 00000000..6b142c90
 +	if (isCyc(engine)) {
 +		const auto& d = kCycDefaults[static_cast<size_t>(cycKind(engine))];
 +		return {0, 30, -1, false, 5, 0, 50, cycEnvelopeRelease(engine, d[4], false)};
++	}
++	if (isGin(engine)) {
++		return rowSetupForGinSound(gin::defaultSound(), false);
 +	}
 +	return xiaPresetFor(engine, variant).row;
 +}
@@ -2198,10 +2307,25 @@ index 00000000..6b142c90
 +void Voice::render(const Patch& patch, const DrumControls& controls, int32_t* buffer, int32_t numSamples,
 +                   uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement) {
 +	updateSettings(patch, controls);
++	if (isGin(settings_.engine)) {
++		if (!ginReady_) {
++			xia_.gin.reset();
++			ginReady_ = true;
++			cycReady_ = false;
++			xiaEngine_ = Engine::DRUM;
++		}
++		if (pendingTrigger_) {
++			pendingTrigger_ = false;
++			xia_.gin.trigger();
++		}
++		renderGin(settingsFrom_, controls, buffer, numSamples, basePhaseIncrement, amplitude, amplitudeIncrement);
++		return;
++	}
 +	if (isCyc(settings_.engine)) {
 +		if (!cycReady_) {
 +			xia_.cyc.reset();
 +			cycReady_ = true;
++			ginReady_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
 +		if (pendingTrigger_) {
@@ -2346,6 +2470,7 @@ index 00000000..6b142c90
 +void Voice::startXia(Engine engine) {
 +	xiaEngine_ = engine;
 +	cycReady_ = false;
++	ginReady_ = false;
 +	if (engine == Engine::TIA) {
 +		xia::reset(xia_.tia);
 +	}
@@ -2463,13 +2588,67 @@ index 00000000..6b142c90
 +	xiaFinished_ = xia_.cyc.finished();
 +}
 +
++// GIN -----------------------------------------------------------------------------------------------------------------
++
++void Voice::renderGin(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
++                      int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement) {
++	auto knob = [&](int32_t slot) {
++		return static_cast<float>(std::clamp<int32_t>(DrumControls::toKnob(controls.values[slot]), 0, 0x7F00)) / 0x7F00;
++	};
++	/// A knob as -1 to 1 around its centre
++	auto bipolar = [&](int32_t slot) {
++		const int32_t d = std::clamp<int32_t>(DrumControls::toKnob(controls.values[slot]), 0, 0x7F00) - 0x4000;
++		return static_cast<float>(d) / ((d < 0) ? 0x4000 : 0x3F00);
++	};
++	// The Decay knob moves both decays together, up to 0.6 either way: 63 times longer or shorter
++	const float decayOffset = bipolar(DrumControls::COMMON_DECAY) * 0.6f;
++	const uint8_t eqGain = p[Patch::GIN_EQ_GAIN];
++
++	gin::Settings s;
++	s.wave = static_cast<gin::Wave>(p[Patch::GIN_WAVE]);
++	s.modMode = static_cast<gin::ModMode>(p[Patch::GIN_MOD_MODE]);
++	s.noiseFilter = static_cast<gin::NoiseFilter>(p[Patch::NOISE_FILTER_TYPE]);
++	s.noiseEnv = static_cast<gin::NoiseEnv>(p[Patch::GIN_NOISE_ENV]);
++	s.toneAttack = knob(DrumControls::GIN_TONE_ATTACK);
++	s.toneDecay = std::clamp(knob(DrumControls::GIN_TONE_DECAY) + decayOffset, 0.f, 1.f);
++	s.modRate = knob(DrumControls::GIN_MOD_RATE);
++	s.modAmount = bipolar(DrumControls::GIN_MOD_AMOUNT);
++	s.noiseFreq = knob(DrumControls::GIN_NOISE_FREQ);
++	s.noiseQ = knob(DrumControls::GIN_NOISE_RES);
++	s.noiseAttack = knob(DrumControls::GIN_NOISE_ATTACK);
++	s.burstSpacing = knob(DrumControls::GIN_NOISE_DECAY);
++	s.noiseDecay = std::clamp(s.burstSpacing + decayOffset, 0.f, 1.f);
++	s.mix = knob(DrumControls::GIN_MIX);
++	s.drive = knob(DrumControls::GIN_DRIVE);
++	s.eqFreq = p[Patch::GIN_EQ_FREQ] / 127.f;
++	s.eqGain = (eqGain <= 64) ? eqGain / 128.f : 0.5f + (eqGain - 64) / 126.f;
++	s.level = gin::levelGain(p[Patch::GIN_LEVEL] / 127.f);
++
++	constexpr int32_t kChunk = 64;
++	std::array<int32_t, kChunk> chunk;
++	int32_t* out = buffer;
++	int32_t remaining = numSamples;
++	while (remaining > 0) {
++		const int32_t n = std::min(remaining, kChunk);
++		xia_.gin.render(s, basePhaseIncrement, chunk.data(), n);
++		for (int32_t i = 0; i < n; i++) {
++			amplitude += amplitudeIncrement;
++			// Halved like the Cyc engines, which leaves it q30 like the LXR engines'
++			out[i] += multiply_32x32_rshift32(chunk[i] >> 1, amplitude) << 2;
++		}
++		out += n;
++		remaining -= n;
++	}
++	xiaFinished_ = xia_.gin.finished();
++}
++
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 00000000..e33cc9ce
+index 00000000..768232f4
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,384 @@
+@@ -0,0 +1,426 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -2485,6 +2664,8 @@ index 00000000..e33cc9ce
 +#pragma once
 +
 +#include "dsp/drum_synth/cyc.h"
++#include "dsp/drum_synth/gin.h"
++#include "dsp/drum_synth/gin_kits.h"
 +#include "dsp/drum_synth/xia.h"
 +#include <algorithm>
 +#include <array>
@@ -2494,7 +2675,7 @@ index 00000000..e33cc9ce
 +namespace deluge::dsp::drum_synth {
 +
 +/// The three LXR voice structures, then two engines from the XIA set for the Model:Cycles (see xia.h), then the Cyc
-+/// engines (see cyc.h). New engines go on the end: the number is saved with the sound.
++/// engines (see cyc.h), then GIN (see gin.h). New engines go on the end: the number is saved with the sound.
 +enum class Engine : uint8_t {
 +	DRUM,  ///< Kick and toms: main osc, FM or mixed mod osc, pitch envelope
 +	SNARE, ///< Pitched osc with pitch envelope, plus filtered sample-and-hold noise
@@ -2509,6 +2690,7 @@ index 00000000..e33cc9ce
 +	CYC_CHORD,
 +	VTG_SNR,
 +	CLAP_ENG,
++	GIN, ///< The PO-32 style drum voice from SquareWave Studio's GIN for the OP-1
 +	NUM_ENGINES,
 +};
 +
@@ -2519,7 +2701,12 @@ index 00000000..e33cc9ce
 +
 +/// Whether an engine is one of the Cyc engines
 +constexpr bool isCyc(Engine engine) {
-+	return engine >= Engine::CYC_KIK && engine < Engine::NUM_ENGINES;
++	return engine >= Engine::CYC_KIK && engine <= Engine::CLAP_ENG;
++}
++
++/// Whether an engine is GIN
++constexpr bool isGin(Engine engine) {
++	return engine == Engine::GIN;
 +}
 +
 +/// Whether an engine is one of the three LXR voices
@@ -2558,8 +2745,19 @@ index 00000000..e33cc9ce
 +		CYC_DRIVE = 4,
 +		// Drive and decay for the engines without their own (the LXR voices), and the Cyc engines' decay. Added after
 +		// the LXR settings, on params a drum synth sound has no other use for.
-+		COMMON_DECAY = 9, ///< 127 holds
++		COMMON_DECAY = 9, ///< 127 holds. On GIN, moves both its decays: 64 leaves them as they are.
 +		LXR_DRIVE = 10,
++		// GIN's continuous settings. Its choices (waves, modes, filter type), EQ and level stay in the Patch.
++		GIN_MIX = 0,          ///< Tone against noise: Custom 2
++		GIN_NOISE_FREQ = 1,   ///< Noise filter cutoff: Custom 3
++		GIN_MOD_RATE = 2,     ///< Pitch modulation speed: mod rate knob
++		GIN_MOD_AMOUNT = 3,   ///< Pitch modulation depth, 64 = none: mod depth knob
++		GIN_DRIVE = 4,        ///< Shares the Cyc engines' drive slot
++		GIN_NOISE_DECAY = 5,  ///< Also spaces the bursts of the modulated noise envelope
++		GIN_NOISE_RES = 6,    ///< Noise filter resonance
++		GIN_NOISE_ATTACK = 7, ///< Noise envelope attack
++		GIN_TONE_ATTACK = 8,
++		GIN_TONE_DECAY = 10,
 +		NUM_SLOTS = 11,
 +	};
 +	/// Raw Deluge param values: the whole int32 range, centre 0
@@ -2591,7 +2789,9 @@ index 00000000..e33cc9ce
 +/// Every engine has a drive and a decay, on the same pads and gold knobs, though they live on different slots: the
 +/// XIA engines kept theirs where they were first saved
 +constexpr int32_t driveSlot(Engine engine) {
-+	return isXia(engine) ? DrumControls::DRIVE : isCyc(engine) ? DrumControls::CYC_DRIVE : DrumControls::LXR_DRIVE;
++	return isXia(engine)                      ? DrumControls::DRIVE
++	       : (isCyc(engine) || isGin(engine)) ? DrumControls::CYC_DRIVE
++	                                          : DrumControls::LXR_DRIVE;
 +}
 +constexpr int32_t decaySlot(Engine engine) {
 +	return isXia(engine) ? DrumControls::ENGINE_DECAY : DrumControls::COMMON_DECAY;
@@ -2606,7 +2806,7 @@ index 00000000..e33cc9ce
 +
 +/// The kits SHIFT + KIT makes. Each row of one remembers which it came from (saved with the row), so its audition pad
 +/// can be tinted and the kit can't be swapped for another once rows have been added to it.
-+enum class PresetKit : uint8_t { NONE, LXR, CYCLES, NUM_KITS };
++enum class PresetKit : uint8_t { NONE, LXR, CYCLES, GIN, NUM_KITS };
 +
 +/// How a drum synth row sits in a kit, besides the engine's own settings: the same whether it came from a preset kit
 +/// or from SYNTH MODE, so an engine picked on any row sounds as it does in its kit. Every engine shapes its own hits
@@ -2622,6 +2822,7 @@ index 00000000..e33cc9ce
 +	int8_t sustain = 50;   ///< Envelope 1 sustain and release, as user values
 +	int8_t release = 40;
 +	int8_t engineDecay = -1; ///< The LXR voices' own decay (DrumControls::COMMON_DECAY, 0-127), or -1 to leave it
++	int8_t cents = 0;        ///< Fine tune, for GIN rows tuned to their sound
 +};
 +
 +/// Envelope 1 release (a user value) that lets a sound falling 60 dB in t60 seconds ring out after its note ends: five
@@ -2652,6 +2853,9 @@ index 00000000..e33cc9ce
 +
 +/// Envelope 1 release (a user value, 0 to 50) for a Cyc engine at its own decay knob (see envelopeReleaseFor)
 +int8_t cycEnvelopeRelease(Engine engine, int32_t decayKnob, bool punch);
++
++/// A GIN kit sound's row: tuned to the sound's pitch, with the release fitted to its longer layer's decay
++RowSetup rowSetupForGinSound(const gin::KitSound& sound, bool choke);
 +
 +/// Any engine, as picked in SYNTH MODE (or a preset kit row), with its default settings. The LXR voices as their kit
 +/// rows, DXIA and DIIA as their presets. The Cyc engines play at the note, as the Cycles does at its default tune.
@@ -2706,6 +2910,13 @@ index 00000000..e33cc9ce
 +		SNAPPY_DECAY,     ///< 1 = the Deluge amp envelope's decay and release fall away faster (any engine). On by
 +		                  ///< default.
 +		CONTROLS_VERSION, ///< 1 once the drive and decay controls exist. Sounds saved before have no byte for it.
++		// GIN. Its continuous settings are on Deluge params: see DrumControls. The noise filter is NOISE_FILTER_TYPE.
++		GIN_WAVE,      ///< gin::Wave
++		GIN_MOD_MODE,  ///< gin::ModMode
++		GIN_NOISE_ENV, ///< gin::NoiseEnv
++		GIN_EQ_FREQ,   ///< Peak EQ frequency, 20 Hz to 20 kHz
++		GIN_EQ_GAIN,   ///< Peak EQ gain, 64 = flat, 0 / 127 = 40 dB cut / boost
++		GIN_LEVEL,     ///< GIN's level before its clipper. 102 is about -2 dB.
 +		NUM_PARAMS,
 +	};
 +
@@ -2720,6 +2931,9 @@ index 00000000..e33cc9ce
 +	void setXiaPreset(Engine engine, uint8_t variant);
 +	/// Switch to a Cyc engine. Its continuous settings are on Deluge params: see DrumControls.
 +	void setCycPreset(Engine engine);
++	/// Switch to GIN, with a kit sound's choices, EQ and level. Its continuous settings are on Deluge params: see
++	/// ginControlsFor().
++	void setGinSound(const gin::KitSound& sound);
 +
 +	[[nodiscard]] uint8_t get(Param p) const { return params_[p]; }
 +	void set(Param p, uint8_t value);
@@ -2755,6 +2969,9 @@ index 00000000..e33cc9ce
 +
 +/// The controls a patch starts from: its LXR settings, or an XIA engine's defaults
 +DrumControls controlsFromPatch(const Patch& patch);
++
++/// A GIN kit sound's continuous settings, as controls
++DrumControls ginControlsFor(const gin::KitSound& sound);
 +
 +/// Copy the LXR settings back from the controls into the patch, so switching engine and back keeps them
 +void storeControlsInPatch(const DrumControls& controls, Patch& patch);
@@ -2805,6 +3022,8 @@ index 00000000..e33cc9ce
 +	void renderCyc(Engine engine, const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls,
 +	               int32_t* buffer, int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude,
 +	               int32_t amplitudeIncrement);
++	void renderGin(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
++	               int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
 +
 +	void updateSettings(const Patch& patch, const DrumControls& controls);
 +	void startLxr();
@@ -2836,17 +3055,19 @@ index 00000000..e33cc9ce
 +	uint32_t random_ = 0x12345678;
 +	int32_t samplesUntilTick_ = 0;
 +
-+	// XIA engines render whole blocks; samples left over from the last one wait here. The Cyc engines' state shares the
-+	// memory, as only one engine plays at a time.
++	// XIA engines render whole blocks; samples left over from the last one wait here. The Cyc engines' and GIN's state
++	// share the memory, as only one engine plays at a time.
 +	union {
 +		xia::TiaState tia;
 +		xia::IiaState iia;
 +		cyc::Voice cyc;
++		gin::Voice gin;
 +	} xia_{};
 +	std::array<int32_t, xia::kBlockSize> xiaBlock_{};
 +	int32_t xiaBlockPos_ = xia::kBlockSize;
 +	Engine xiaEngine_ = Engine::DRUM; ///< The XIA engine xia_ holds, or DRUM for none
 +	bool cycReady_ = false;           ///< xia_ holds a Cyc engine's state
++	bool ginReady_ = false;           ///< xia_ holds GIN's state
 +	float lxrLevel_ = 1.f;            ///< The LXR voices' decay
 +	bool xiaTrigger_ = false;
 +	bool xiaFinished_ = false;
@@ -4305,6 +4526,1019 @@ index 00000000..233eb258
 +        0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 +
 +    }};
+diff --git a/src/deluge/dsp/drum_synth/gin.cpp b/src/deluge/dsp/drum_synth/gin.cpp
+new file mode 100644
+index 00000000..6c44c0ad
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/gin.cpp
+@@ -0,0 +1,451 @@
++/*
++ * GIN drum voice. See gin.h for what this is, where it comes from, and the MIT notices of the code it is derived from.
++ *
++ * Deluge port Copyright © 2026 thisisbribery and the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Portions derived from libpo32 (Copyright (c) 2026 Eric Lewis) and the GIN synthesis core (Copyright (c) 2026
++ * SquareWave Studio), both MIT licensed: see gin.h.
++ */
++
++#include "dsp/drum_synth/gin.h"
++#include <algorithm>
++#include <cmath>
++
++namespace deluge::dsp::drum_synth::gin {
++
++namespace {
++
++constexpr float kSampleRate = 44100.f;
++constexpr float kInvSampleRate = 1.f / kSampleRate;
++constexpr float kTwoPi = 6.283185307f;
++constexpr float kPhaseToCycles = 1.f / 4294967296.f;
++
++constexpr float kEnvFloor = 0.001f; ///< Envelopes run from here to 1 and back: 60 dB
++constexpr float kEnvSpan = 1.f / kEnvFloor;
++/// Envelope time for 80 dB rather than 60: where the voice is called finished
++constexpr float kEndScale = 4.f / 3.f;
++constexpr float kOneThird = 1.f / 3.f;
++constexpr float kTwoThirds = 2.f / 3.f;
++
++// libpo32's control maps
++// -----------------------------------------------------------------------------------------------
++
++float attackSeconds(float x) {
++	return (x <= 0.f) ? 0.f : x * 0.03981071706f * std::pow(10.f, 2.4f * x);
++}
++
++float decaySeconds(float x) {
++	return 0.01f * std::pow(1000.f, x);
++}
++
++/// 20 Hz to 20 kHz
++float paramToHz(float x) {
++	return 20.f * std::pow(1000.f, x);
++}
++
++float modHz(float rate, bool sine) {
++	return (sine ? 2000.f : 20000.f) * rate * std::pow(10.f, (sine ? 3.5f : 4.f) * (rate - 1.f));
++}
++
++float dbToGain(float db) {
++	return std::pow(10.f, db * 0.05f);
++}
++
++/// The mix control as a pan between the two layers, each dipping 25 dB as it goes
++float mixOscGain(float mix) {
++	const float pan = mix * 2.f - 1.f;
++	return (pan < 0.f) ? 1.f : (1.f - pan) * dbToGain(-25.f * pan);
++}
++float mixNoiseGain(float mix) {
++	const float pan = mix * 2.f - 1.f;
++	return (pan >= 0.f) ? 1.f : (1.f + pan) * dbToGain(25.f * pan);
++}
++
++// Filters: the RBJ cookbook biquads, as libpo32 designs them
++// -----------------------------------------------------------
++
++using Biquad = Voice::Biquad;
++
++Biquad biquad(float b0, float b1, float b2, float a0, float a1, float a2) {
++	return {b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0};
++}
++
++Biquad noiseFilterFor(NoiseFilter type, float hz, float q) {
++	const float w0 = kTwoPi * hz * kInvSampleRate;
++	const float alpha = std::sin(w0) / (2.f * q);
++	const float c = std::cos(w0);
++	switch (type) {
++	case NoiseFilter::LOW_PASS:
++		return biquad((1.f - c) * 0.5f, 1.f - c, (1.f - c) * 0.5f, 1.f + alpha, -2.f * c, 1.f - alpha);
++	case NoiseFilter::BAND_PASS:
++		return biquad(alpha, 0.f, -alpha, 1.f + alpha, -2.f * c, 1.f - alpha);
++	case NoiseFilter::HIGH_PASS:
++		return biquad((1.f + c) * 0.5f, -(1.f + c), (1.f + c) * 0.5f, 1.f + alpha, -2.f * c, 1.f - alpha);
++	default:
++		return {1.f, 0.f, 0.f, 0.f, 0.f}; // Off: the noise as it is
++	}
++}
++
++Biquad peakFor(float hz, float db) {
++	const float a = std::pow(10.f, db / 40.f);
++	const float w0 = kTwoPi * hz * kInvSampleRate;
++	const float alpha = std::sin(w0) * 0.5f;
++	const float c = std::cos(w0);
++	return biquad(1.f + alpha * a, -2.f * c, 1.f - alpha * a, 1.f + alpha / a, -2.f * c, 1.f - alpha / a);
++}
++
++/// Transposed direct form II
++inline float process(const Biquad& f, float& z1, float& z2, float x) {
++	const float y = f.b0 * x + z1;
++	z1 = f.b1 * x - f.a1 * y + z2;
++	z2 = f.b2 * x - f.a2 * y;
++	return y;
++}
++
++// Per sample helpers
++// ---------------------------------------------------------------------------------------------------
++
++/// sin(2 pi phase / 2^32), to about -100 dB, without a table
++inline float sine(uint32_t phase) {
++	float x = static_cast<float>(static_cast<int32_t>(phase)) * kPhaseToCycles;
++	if (x > 0.25f) {
++		x = 0.5f - x;
++	}
++	else if (x < -0.25f) {
++		x = -0.5f - x;
++	}
++	const float x2 = x * x;
++	return x * (6.283185307f + x2 * (-41.341702f + x2 * (81.605249f + x2 * (-76.705859f + x2 * 42.058693f))));
++}
++
++/// 2^x, to about 1e-7, for the pitch modulation
++inline float exp2Fast(float x) {
++	x = std::clamp(x, -120.f, 120.f);
++	int32_t i = static_cast<int32_t>(x);
++	if (x < static_cast<float>(i)) {
++		i--;
++	}
++	const float f = x - static_cast<float>(i);
++	const float p =
++	    1.f + f * (0.69314718f + f * (0.24022650f + f * (0.05550411f + f * (0.00961813f + f * 0.00133336f))));
++	union {
++		uint32_t u;
++		float f;
++	} scale{static_cast<uint32_t>(i + 127) << 23};
++	return p * scale.f;
++}
++
++/// libpo32's noise: a linear congruential generator, 0 to 1
++inline float randomUnit(uint32_t& state) {
++	state = state * 1103515245u + 12345u;
++	return static_cast<float>(state & 0x7fffffffu) * (1.f / 2147483647.f);
++}
++
++inline float symLimit(float x) {
++	return 0.5f * (std::abs(x + 1.f) - std::abs(x - 1.f));
++}
++
++} // namespace
++
++float levelGain(float level) {
++	if (level < 1.0e-4f) {
++		return 0.f;
++	}
++	const float db = 60.f * level - 49.f - 1.f / level;
++	return (db < -500.f) ? 0.f : dbToGain(db);
++}
++
++float levelForDb(float db) {
++	// 60 L - 49 - 1 / L = db, solved for L
++	const float b = 49.f + db;
++	return std::clamp((b + std::sqrt(b * b + 240.f)) / 120.f, 0.f, 1.f);
++}
++
++void Voice::reset() {
++	prepared_ = false;
++	pendingTrigger_ = false;
++	finished_ = true;
++	start();
++	finished_ = true;
++}
++
++void Voice::start() {
++	n_ = 0;
++	phase_ = 0;
++	rand_ = 123456789u;
++	oscEnv_ = kEnvFloor;
++	oscSynced_ = false;
++	nEnv_ = kEnvFloor;
++	nSynced_ = false;
++	modEnv_ = 1.f;
++	modS_ = 1.f;
++	modC_ = 0.f;
++	modState_ = 0.f;
++	if (prepared_ && preparedFor_.modMode == ModMode::NOISE) {
++		modState_ = randomUnit(rand_) * 2.f - 1.f;
++	}
++	nz1_ = nz2_ = ez1_ = ez2_ = 0.f;
++	finished_ = false;
++}
++
++void Voice::prepare(const Settings& s) {
++	preparedFor_ = s;
++	prepared_ = true;
++
++	oscAtk_ = attackSeconds(s.toneAttack);
++	oscDcy_ = decaySeconds(s.toneDecay);
++	nAtk_ = attackSeconds(s.noiseAttack);
++	nDcy_ = decaySeconds(s.noiseDecay);
++
++	oscAtkCoef_ = (oscAtk_ > 0.f) ? std::pow(kEnvSpan, kInvSampleRate / oscAtk_) : 1.f;
++	oscDcyCoef_ = std::pow(kEnvFloor, kInvSampleRate / oscDcy_);
++	nAtkCoef_ = (nAtk_ > 0.f) ? std::pow(kEnvSpan, kInvSampleRate / nAtk_) : 1.f;
++	nDcyCoef_ = std::pow(kEnvFloor, kInvSampleRate / nDcy_);
++
++	linAtk_ = nAtk_ * kTwoThirds;
++	linDcy_ = nDcy_ * kTwoThirds;
++	invLinAtk_ = (linAtk_ > 0.f) ? 1.f / linAtk_ : 0.f;
++	invLinDcy_ = 1.f / linDcy_;
++
++	// Pitch modulation. The sweep reaches 8 octaves, the LFO and noise 4.
++	const bool decayMod = s.modMode == ModMode::DECAY;
++	const float amount = std::clamp(s.modAmount, -1.f, 1.f);
++	modPitchScale_ = amount * std::abs(amount) * (decayMod ? 8.f : 4.f);
++	const float rate = std::clamp(s.modRate, 0.f, 1.f);
++	const float hz = modHz(rate, s.modMode != ModMode::NOISE);
++	modAlpha_ = std::clamp(1.f - std::exp(-kTwoPi * hz * kInvSampleRate), 0.f, 1.f);
++	// The sweep's rate zero holds its starting pitch
++	modDcyCoef_ = (decayMod && rate > 0.f) ? std::pow(kEnvFloor, kInvSampleRate * 3.f * rate / (1.03f - rate)) : 1.f;
++	rotS_ = std::sin(kTwoPi * hz * kInvSampleRate);
++	rotC_ = std::cos(kTwoPi * hz * kInvSampleRate);
++
++	// The modulated noise envelope's bursts
++	ringPeriod_ = 0.f;
++	ringGain_ = 1.f;
++	if (s.noiseEnv == NoiseEnv::MOD && s.burstSpacing > 1.0e-4f) {
++		ringPeriod_ = (s.burstSpacing * kInvSampleRate) * std::pow(10000.f, s.burstSpacing);
++		if (ringPeriod_ < 1.5e-3f) {
++			ringPeriod_ *= 8.f;
++			ringGain_ = std::sqrt(0.5f / ringPeriod_);
++		}
++		else {
++			ringPeriod_ *= 2.f;
++		}
++	}
++	invRingPeriod_ = (ringPeriod_ > 0.f) ? 1.f / ringPeriod_ : 0.f;
++
++	oscGain_ = mixOscGain(s.mix);
++	noiseGain_ = mixNoiseGain(s.mix);
++
++	const float maxHz = 0.45f * kSampleRate;
++	noiseFilter_ =
++	    noiseFilterFor(s.noiseFilter, std::min(paramToHz(s.noiseFreq), maxHz), 0.1f * std::pow(100000.f, s.noiseQ));
++
++	// A boost takes half its dB off the whole channel
++	const float eqDb = (s.eqGain - 0.5f) * 80.f;
++	level_ = s.level;
++	if (eqDb > 0.f) {
++		level_ *= dbToGain(-0.5f * eqDb);
++	}
++	useEq_ = std::abs(eqDb) > 0.5f;
++	if (useEq_) {
++		eq_ = peakFor(std::min(paramToHz(s.eqFreq), maxHz), eqDb);
++	}
++
++	// Distortion: gentle below a drive of 1, a folding clipper above
++	distDrive_ = 200.f * s.drive * s.drive * s.drive;
++	if (s.drive <= 0.01f || distDrive_ <= 0.f) {
++		distDrive_ = 0.f;
++	}
++	else if (distDrive_ < 1.f) {
++		distGain_ = 1.f - distDrive_ * (1.f / 30.f);
++		distClip_ = (1.f + std::sqrt((distDrive_ + 3.f) / distDrive_)) * kOneThird;
++		distBias_ = (-2.f / 27.f) * distDrive_ - 9.f / 27.f;
++	}
++	else {
++		distGain_ = 0.2f / (distDrive_ - 0.4827586f) + 0.58f;
++		distBias_ = -11.f / 27.f;
++	}
++
++	// Done once each layer that can be heard is 80 dB down
++	float end = 0.f;
++	if (oscGain_ > 0.f) {
++		end = oscAtk_ + oscDcy_ * kEndScale;
++	}
++	if (noiseGain_ > 0.f) {
++		end = std::max(end, (s.noiseEnv == NoiseEnv::LINEAR) ? linAtk_ + linDcy_ : nAtk_ + nDcy_ * kEndScale);
++	}
++	endTime_ = end;
++}
++
++void Voice::render(const Settings& s, uint32_t phaseIncrement, int32_t* out, int32_t numSamples) {
++	if (!prepared_ || !(s == preparedFor_)) {
++		prepare(s);
++	}
++	if (pendingTrigger_) {
++		pendingTrigger_ = false;
++		start();
++	}
++	if (finished_) {
++		std::fill(out, out + numSamples, 0);
++		return;
++	}
++
++	// Keep the sine LFO's rotation on the unit circle: it drifts over a long note otherwise
++	const float r = modS_ * modS_ + modC_ * modC_;
++	if (r > 0.f) {
++		const float norm = 1.f / std::sqrt(r);
++		modS_ *= norm;
++		modC_ *= norm;
++	}
++
++	const float baseStep = static_cast<float>(phaseIncrement);
++	const bool modActive = modPitchScale_ != 0.f;
++	const bool distort = distDrive_ > 0.f;
++	// A layer the mix has turned all the way off isn't rendered: hats and claps are all noise, many kicks all tone.
++	// Its envelope still runs, so it comes in right if the mix moves.
++	const bool toneOn = oscGain_ > 0.f;
++	const bool noiseOn = noiseGain_ > 0.f;
++
++	for (int32_t i = 0; i < numSamples; i++) {
++		const float t = static_cast<float>(n_ + i) * kInvSampleRate;
++
++		// Tone envelope: exponential attack from -60 dB, then exponential decay
++		float oscEnv;
++		if (oscAtk_ > 0.f && t < oscAtk_) {
++			oscEnv = oscEnv_;
++			oscEnv_ *= oscAtkCoef_;
++		}
++		else {
++			if (!oscSynced_) {
++				oscEnv_ = std::pow(kEnvFloor, (t - oscAtk_) / oscDcy_);
++				oscSynced_ = true;
++			}
++			oscEnv = oscEnv_;
++			oscEnv_ *= oscDcyCoef_;
++		}
++
++		float osc = 0.f;
++		if (toneOn) {
++			float modSig;
++			switch (preparedFor_.modMode) {
++			case ModMode::DECAY:
++				modSig = modEnv_;
++				modEnv_ *= modDcyCoef_;
++				break;
++			case ModMode::SINE: {
++				const float ms = modS_ * rotC_ + modC_ * rotS_;
++				const float mc = modC_ * rotC_ - modS_ * rotS_;
++				modSig = modS_;
++				modS_ = ms;
++				modC_ = mc;
++				break;
++			}
++			default: {
++				const float noiseIn = randomUnit(rand_) * 2.f - 1.f;
++				modState_ = modState_ * (1.f - modAlpha_) + noiseIn * modAlpha_;
++				modSig = modState_;
++				break;
++			}
++			}
++
++			const float mult = modActive ? exp2Fast(modSig * modPitchScale_) : 1.f;
++			phase_ += static_cast<uint32_t>(std::min(baseStep * mult, 2147483520.f));
++
++			switch (preparedFor_.wave) {
++			case Wave::SINE:
++				osc = sine(phase_);
++				break;
++			case Wave::TRIANGLE:
++				osc = 2.f * std::abs(2.f * (static_cast<float>(phase_) * kPhaseToCycles) - 1.f) - 1.f;
++				break;
++			default:
++				osc = 2.f * (static_cast<float>(phase_) * kPhaseToCycles) - 1.f;
++				break;
++			}
++			osc *= oscEnv;
++		}
++
++		// Noise envelope
++		float nEnv;
++		switch (preparedFor_.noiseEnv) {
++		case NoiseEnv::MOD:
++			if (t < nAtk_) {
++				nEnv = 1.f;
++			}
++			else {
++				const float dt = t - nAtk_;
++				if (!nSynced_) {
++					nEnv_ = std::pow(kEnvFloor, dt / nDcy_);
++					nSynced_ = true;
++				}
++				const float decay = nEnv_;
++				nEnv_ *= nDcyCoef_;
++				if (ringPeriod_ > 0.f) {
++					// A triangle through each burst period, through cos(pi x): a burst at each end
++					float saw = dt * invRingPeriod_;
++					saw -= static_cast<float>(static_cast<int32_t>(saw));
++					const float tri = 1.f - 2.f * std::abs(saw - 0.5f);
++					const float cosine = sine(static_cast<uint32_t>((0.25f + 0.5f * tri) * 4294967040.f));
++					nEnv = cosine * decay * ringGain_;
++				}
++				else {
++					nEnv = decay;
++				}
++			}
++			break;
++		case NoiseEnv::LINEAR:
++			if (t < linAtk_) {
++				nEnv = t * invLinAtk_;
++			}
++			else if (t < linAtk_ + linDcy_) {
++				nEnv = 1.f - (t - linAtk_) * invLinDcy_;
++			}
++			else {
++				nEnv = 0.f;
++			}
++			break;
++		default:
++			if (nAtk_ > 0.f && t < nAtk_) {
++				nEnv = nEnv_;
++				nEnv_ *= nAtkCoef_;
++			}
++			else {
++				if (!nSynced_) {
++					nEnv_ = std::pow(kEnvFloor, (t - nAtk_) / nDcy_);
++					nSynced_ = true;
++				}
++				nEnv = nEnv_;
++				nEnv_ *= nDcyCoef_;
++			}
++			break;
++		}
++
++		const float noise = noiseOn ? process(noiseFilter_, nz1_, nz2_, randomUnit(rand_) * 2.f - 1.f) * nEnv : 0.f;
++		float x = osc * oscGain_ + noise * noiseGain_;
++
++		if (distort) {
++			if (distDrive_ < 1.f) {
++				float xc = std::clamp(x - kOneThird, -distClip_, distClip_);
++				x = (xc * (distDrive_ * (std::abs(xc) - xc * xc) + 1.f) - distBias_) * distGain_;
++			}
++			else {
++				float xc = symLimit(x * distDrive_ - kOneThird);
++				const float pos = xc * (std::abs(xc) - xc * xc + 1.f) - distBias_;
++				xc = symLimit(-x * distDrive_ - kOneThird);
++				const float neg = xc * (std::abs(xc) - xc * xc + 1.f) - distBias_;
++				x = 0.5f * (pos - neg) * distGain_;
++			}
++		}
++		if (useEq_) {
++			x = process(eq_, ez1_, ez2_, x);
++		}
++		x = std::clamp(x * level_, -1.f, 1.f);
++		out[i] = static_cast<int32_t>(x * 2147483520.f);
++	}
++	n_ += static_cast<uint32_t>(numSamples);
++	finished_ = static_cast<float>(n_) * kInvSampleRate > endTime_;
++}
++
++} // namespace deluge::dsp::drum_synth::gin
+diff --git a/src/deluge/dsp/drum_synth/gin.h b/src/deluge/dsp/drum_synth/gin.h
+new file mode 100644
+index 00000000..d9afab7e
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/gin.h
+@@ -0,0 +1,131 @@
++/*
++ * GIN: the drum synth from SquareWave Studio's GIN for the OP-1, on the Deluge's drum synth. GIN's synthesis core is
++ * built on Eric Lewis's libpo32, a PO-32 style drum voice: one oscillator with a pitch modulator, and a filtered noise
++ * layer with its own envelope, mixed, driven and EQ'd.
++ *
++ * Deluge port Copyright © 2026 thisisbribery and the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Derived from MIT licensed code, whose notices are kept here as that licence asks:
++ *
++ *   libpo32: Copyright (c) 2026 Eric Lewis
++ *   GIN synthesis core: Copyright (c) 2026 SquareWave Studio
++ *
++ *   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
++ *   documentation files (the "Software"), to deal in the Software without restriction, including without limitation
++ *   the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
++ *   permit persons to whom the Software is furnished to do so, subject to the following conditions:
++ *
++ *   The above copyright notice and this permission notice shall be included in all copies or substantial portions of
++ *   the Software.
++ *
++ *   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
++ *   THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ *   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
++ *   TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ *   SOFTWARE.
++ *
++ * Not affiliated with, authorised by or endorsed by SquareWave Studio, Teenage Engineering or Sonic Charge. No
++ * factory kit data from GIN is used: the Deluge's GIN kits (gin_kits.cpp) are our own.
++ *
++ * What changed for the Deluge: the voice renders in float from libpo32's float renderer (GIN's own fixed point path is
++ * for the OP-1's Blackfin), at the note's pitch rather than a pitch parameter, at full velocity (the Deluge's velocity
++ * cable does dynamics), and it follows its settings while it plays
++ * rather than freezing them at the hit, so knobs, automation and modulation move a sounding note. It ends once both
++ * envelopes are 80 dB down, rather than after a fixed length.
++ */
++
++#pragma once
++
++#include <cstdint>
++
++namespace deluge::dsp::drum_synth::gin {
++
++enum class Wave : uint8_t { SINE, TRIANGLE, SAW, NUM_WAVES };
++/// What bends the oscillator's pitch: a decaying sweep, a sine LFO, or filtered noise
++enum class ModMode : uint8_t { DECAY, SINE, NOISE, NUM_MODES };
++/// The noise filter, in the order the Deluge's drum synth noise filter menu lists them
++enum class NoiseFilter : uint8_t { LOW_PASS, HIGH_PASS, BAND_PASS, OFF, NUM_FILTERS };
++/// The noise envelope: exponential, linear, or modulated (a decaying train of bursts, for claps)
++enum class NoiseEnv : uint8_t { EXP, LINEAR, MOD, NUM_ENVS };
++
++/// Every setting, as GIN's own controls: 0 to 1 unless noted
++struct Settings {
++	Wave wave;
++	ModMode modMode;
++	NoiseFilter noiseFilter;
++	NoiseEnv noiseEnv;
++	float toneAttack;
++	float toneDecay; ///< 10 ms to 10 s to fall 60 dB
++	float modRate;
++	float modAmount; ///< -1 to 1: up to 8 octaves either way for the sweep, 4 for the LFO and noise
++	float noiseFreq; ///< 20 Hz to 20 kHz
++	float noiseQ;
++	float noiseAttack;
++	float noiseDecay;
++	float burstSpacing; ///< The modulated noise envelope's burst spacing: GIN ties it to the noise decay setting,
++	                    ///< before the Deluge's Decay knob moves that
++	float mix;          ///< 0 = tone only, 0.5 = both full, 1 = noise only
++	float drive;        ///< GIN's distortion
++	float eqFreq;       ///< Peak EQ, 20 Hz to 20 kHz
++	float eqGain;       ///< -40 to +40 dB, 0.5 = flat
++	float level;        ///< Output gain before the clipper, linear: see levelGain()
++
++	bool operator==(const Settings&) const = default;
++};
++
++/// GIN's Level control, 0 to 1, as a gain: 0.8 is about -2 dB, 1 is +10 dB
++float levelGain(float level);
++/// The Level setting that gives a gain in dB
++float levelForDb(float db);
++
++/// One GIN voice. Allocation free, and trivially constructible so it can share memory with the other engines' state:
++/// call reset() before first use.
++class Voice {
++public:
++	void reset();
++	/// Start a hit on the next render
++	void trigger() { pendingTrigger_ = true; }
++
++	/// Render numSamples into out, replacing what is there, as q31, clipped at full scale. phaseIncrement is the note's
++	/// pitch, 2^32 = one cycle per sample. The sample rate is the Deluge's 44.1 kHz.
++	void render(const Settings& settings, uint32_t phaseIncrement, int32_t* out, int32_t numSamples);
++
++	/// True once both envelopes have died away, so the Deluge voice can be freed
++	[[nodiscard]] bool finished() const { return finished_; }
++
++	struct Biquad {
++		float b0, b1, b2, a1, a2;
++	};
++
++private:
++	void prepare(const Settings& s);
++	void start();
++
++	// What the settings make, worked out again only when they change
++	Settings preparedFor_;
++	bool prepared_;
++	float oscAtk_, oscDcy_, nAtk_, nDcy_; ///< Seconds
++	float oscAtkCoef_, oscDcyCoef_, nAtkCoef_, nDcyCoef_;
++	float linAtk_, linDcy_, invLinAtk_, invLinDcy_;
++	float modPitchScale_; ///< Octaves at full modulation
++	float modDcyCoef_, rotS_, rotC_, modAlpha_;
++	float ringPeriod_, invRingPeriod_, ringGain_;
++	float oscGain_, noiseGain_, level_;
++	float distDrive_, distGain_, distClip_, distBias_;
++	bool useEq_;
++	float endTime_; ///< Seconds after the hit when both envelopes are 80 dB down
++	Biquad noiseFilter_, eq_;
++
++	// Running state
++	uint32_t n_; ///< Samples since the hit
++	uint32_t phase_;
++	uint32_t rand_;
++	float oscEnv_, nEnv_, modEnv_, modS_, modC_, modState_;
++	bool oscSynced_, nSynced_;
++	float nz1_, nz2_, ez1_, ez2_;
++	bool pendingTrigger_;
++	bool finished_;
++};
++
++} // namespace deluge::dsp::drum_synth::gin
+diff --git a/src/deluge/dsp/drum_synth/gin_kits.cpp b/src/deluge/dsp/drum_synth/gin_kits.cpp
+new file mode 100644
+index 00000000..f83ed3a2
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/gin_kits.cpp
+@@ -0,0 +1,349 @@
++/*
++ * The GIN kits. See gin_kits.h.
++ *
++ * Copyright © 2026 thisisbribery and the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * Quick reference for GIN's units, to read and tweak these by:
++ * - toneDecay / noiseDecay: 60 dB in 0.01 x 1000^x s. 0.2 = 40 ms, 0.3 = 80 ms, 0.4 = 160 ms, 0.5 = 320 ms,
++ *   0.6 = 630 ms, 0.7 = 1.3 s
++ * - attacks: x * 0.04 * 10^(2.4x) s. 0.05 = 2.6 ms, 0.1 = 7 ms, 0.2 = 24 ms
++ * - modRate, sweep: the pitch falls 60 dB (in octaves) in (1.03 - x) / 3x s. 0.5 = 350 ms, 0.7 = 160 ms, 0.9 = 50 ms
++ * - modRate, sine LFO: 2000x * 10^(3.5(x - 1)) Hz. 0.5 = 18 Hz, 0.7 = 125 Hz, 0.83 = 420 Hz, 0.9 = 800 Hz. Audio rate
++ *   LFOs are FM: bells, cowbells, metal
++ * - modAmount: x|x| * 96 semitones for the sweep, 48 for the LFO and noise. 0.3 = 9, 0.4 = 15, 0.5 = 24, 0.7 = 47
++ * - noiseFreq / eqFreq: 20 x 1000^x Hz. 0.5 = 630 Hz, 0.6 = 1.3 kHz, 0.7 = 2.5 kHz, 0.8 = 5 kHz, 0.9 = 10 kHz
++ * - noiseQ: 0.1 x 100000^x. 0.17 = 0.7, 0.2 = 1, 0.3 = 3, 0.4 = 10
++ * - mix: 0 = tone, 0.5 = both full, 1 = noise. Each side dips 25 dB as it goes
++ * - drive: 200x^3 into GIN's shaper. Under 0.17 is warmth, 0.3 is crunch, 0.4 and up is fuzz
++ * - modulated noise envelope (claps): bursts about 9 ms apart at noiseDecay 0.5, 5 ms at 0.45
++ */
++
++#include "dsp/drum_synth/gin_kits.h"
++
++namespace deluge::dsp::drum_synth::gin {
++
++namespace {
++constexpr Wave SIN = Wave::SINE;
++constexpr Wave TRI = Wave::TRIANGLE;
++constexpr Wave SAW = Wave::SAW;
++constexpr ModMode DEC = ModMode::DECAY;
++constexpr ModMode LFO = ModMode::SINE;
++constexpr ModMode NSE = ModMode::NOISE;
++constexpr NoiseFilter LP = NoiseFilter::LOW_PASS;
++constexpr NoiseFilter HP = NoiseFilter::HIGH_PASS;
++constexpr NoiseFilter BP = NoiseFilter::BAND_PASS;
++constexpr NoiseFilter OFF = NoiseFilter::OFF;
++constexpr NoiseEnv EXP = NoiseEnv::EXP;
++constexpr NoiseEnv LIN = NoiseEnv::LINEAR;
++constexpr NoiseEnv MOD = NoiseEnv::MOD;
++} // namespace
++
++// clang-format off
++const std::array<Kit, kNumKits> kKits{{
++    {"808", {{
++        // Kick: long round sine, a soft sweep and a breath of noise
++        {.wave = SIN, .hz = 47.f, .toneDecay = 0.64f, .modRate = 0.62f, .modAmount = 0.38f, .noiseFreq = 0.45f,
++         .noiseDecay = 0.1f, .mix = 0.1f, .drive = 0.06f, .level = 0.814f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 185.f, .toneDecay = 0.33f, .modRate = 0.8f, .modAmount = 0.28f,
++         .noiseFreq = 0.74f, .noiseQ = 0.12f, .noiseDecay = 0.43f, .mix = 0.56f, .drive = 0.08f, .level = 0.739f},
++        {.noiseFilter = HP, .noiseFreq = 0.87f, .noiseQ = 0.18f, .noiseDecay = 0.2f, .mix = 1.f, .eqFreq = 0.88f,
++         .eqGain = 0.6f, .level = 0.722f},
++        {.noiseFilter = HP, .noiseFreq = 0.87f, .noiseQ = 0.18f, .noiseDecay = 0.46f, .mix = 1.f, .eqFreq = 0.88f,
++         .eqGain = 0.6f, .level = 0.655f},
++        // Low tom, conga
++        {.wave = SIN, .hz = 95.f, .toneDecay = 0.5f, .modRate = 0.55f, .modAmount = 0.22f, .noiseFreq = 0.5f,
++         .noiseDecay = 0.15f, .mix = 0.15f, .level = 0.778f},
++        {.wave = SIN, .hz = 330.f, .toneDecay = 0.36f, .modRate = 0.85f, .modAmount = 0.2f, .mix = 0.05f,
++         .level = 0.760f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.62f, .noiseQ = 0.28f, .noiseDecay = 0.47f, .mix = 1.f,
++         .level = 0.640f},
++        // Cowbell: a triangle frequency modulated at 420 Hz, and a peak in the upper mids
++        {.wave = TRI, .modMode = LFO, .hz = 560.f, .toneDecay = 0.38f, .modRate = 0.83f, .modAmount = 0.18f,
++         .eqFreq = 0.72f, .eqGain = 0.6f, .level = 0.745f},
++    }}},
++    {"909", {{
++        {.wave = SIN, .noiseFilter = HP, .hz = 52.f, .toneDecay = 0.52f, .modRate = 0.72f, .modAmount = 0.5f,
++         .noiseFreq = 0.78f, .noiseDecay = 0.08f, .mix = 0.28f, .drive = 0.16f, .eqFreq = 0.3f, .eqGain = 0.56f,
++         .level = 0.782f},
++        {.wave = TRI, .hz = 205.f, .toneDecay = 0.28f, .modRate = 0.82f, .modAmount = 0.34f, .noiseFreq = 0.86f,
++         .noiseQ = 0.15f, .noiseDecay = 0.42f, .mix = 0.62f, .drive = 0.14f, .level = 0.824f},
++        {.noiseFilter = HP, .noiseFreq = 0.9f, .noiseQ = 0.25f, .noiseDecay = 0.17f, .mix = 1.f, .eqFreq = 0.9f,
++         .eqGain = 0.58f, .level = 0.689f},
++        {.noiseFilter = HP, .noiseFreq = 0.9f, .noiseQ = 0.25f, .noiseDecay = 0.5f, .mix = 1.f, .eqFreq = 0.9f,
++         .eqGain = 0.58f, .level = 0.586f},
++        // Low and high toms
++        {.wave = SIN, .hz = 110.f, .toneDecay = 0.45f, .modRate = 0.6f, .modAmount = 0.26f, .noiseFreq = 0.55f,
++         .noiseDecay = 0.2f, .mix = 0.22f, .level = 0.778f},
++        {.wave = SIN, .hz = 180.f, .toneDecay = 0.4f, .modRate = 0.62f, .modAmount = 0.24f, .noiseFreq = 0.6f,
++         .noiseDecay = 0.18f, .mix = 0.2f, .level = 0.762f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.66f, .noiseQ = 0.25f, .noiseDecay = 0.5f, .mix = 1.f,
++         .level = 0.655f},
++        // Rim shot
++        {.wave = TRI, .noiseFilter = BP, .hz = 1700.f, .toneDecay = 0.1f, .modRate = 0.9f, .modAmount = 0.2f,
++         .noiseFreq = 0.78f, .noiseQ = 0.5f, .noiseDecay = 0.08f, .mix = 0.35f, .level = 0.761f},
++    }}},
++    {"ELEC", {{
++        // Electro: zapped kick, saw snare, FM hats, zap tom, blip, laser
++        {.wave = SIN, .hz = 55.f, .toneDecay = 0.48f, .modRate = 0.82f, .modAmount = 0.62f, .drive = 0.2f,
++         .level = 0.851f},
++        {.wave = SAW, .noiseFilter = BP, .hz = 160.f, .toneDecay = 0.25f, .modRate = 0.85f, .modAmount = 0.45f,
++         .noiseFreq = 0.7f, .noiseQ = 0.25f, .noiseDecay = 0.35f, .mix = 0.6f, .drive = 0.2f, .level = 0.852f},
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 3200.f, .toneDecay = 0.18f, .modRate = 0.9f,
++         .modAmount = 0.6f, .noiseFreq = 0.9f, .noiseDecay = 0.15f, .mix = 0.7f, .level = 0.786f},
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 3200.f, .toneDecay = 0.4f, .modRate = 0.9f,
++         .modAmount = 0.6f, .noiseFreq = 0.9f, .noiseDecay = 0.4f, .mix = 0.7f, .level = 0.710f},
++        {.wave = SIN, .hz = 140.f, .toneDecay = 0.4f, .modRate = 0.75f, .modAmount = 0.7f, .level = 0.773f},
++        {.wave = SIN, .hz = 900.f, .toneDecay = 0.2f, .modRate = 0.9f, .modAmount = -0.5f, .level = 0.746f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.7f, .noiseQ = 0.2f, .noiseDecay = 0.46f, .mix = 1.f,
++         .drive = 0.15f, .level = 0.727f},
++        {.wave = SAW, .hz = 400.f, .toneDecay = 0.45f, .modRate = 0.5f, .modAmount = 0.75f, .drive = 0.18f,
++         .level = 0.732f},
++    }}},
++    {"MINI", {{
++        // Minimal: short and clicky
++        {.wave = SIN, .noiseFilter = HP, .hz = 60.f, .toneDecay = 0.35f, .modRate = 0.88f, .modAmount = 0.5f,
++         .noiseFreq = 0.85f, .noiseDecay = 0.05f, .mix = 0.3f, .level = 0.813f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 240.f, .toneDecay = 0.2f, .modRate = 0.9f, .modAmount = 0.3f,
++         .noiseFreq = 0.8f, .noiseQ = 0.3f, .noiseDecay = 0.3f, .mix = 0.55f, .level = 0.700f},
++        {.noiseFilter = HP, .noiseFreq = 0.93f, .noiseQ = 0.3f, .noiseDecay = 0.12f, .mix = 1.f, .level = 0.671f},
++        {.noiseFilter = BP, .noiseFreq = 0.88f, .noiseQ = 0.28f, .noiseDecay = 0.32f, .mix = 1.f, .level = 0.797f},
++        // Woodblock, click
++        {.wave = TRI, .noiseFilter = BP, .hz = 800.f, .toneDecay = 0.12f, .modRate = 0.95f, .modAmount = 0.25f,
++         .noiseFreq = 0.8f, .noiseQ = 0.4f, .noiseDecay = 0.05f, .mix = 0.3f, .level = 0.788f},
++        {.wave = SIN, .hz = 1200.f, .toneDecay = 0.08f, .level = 0.733f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.72f, .noiseQ = 0.35f, .noiseDecay = 0.42f, .mix = 1.f,
++         .level = 0.673f},
++        // Bleep
++        {.wave = SIN, .modMode = LFO, .hz = 1600.f, .toneDecay = 0.22f, .modRate = 0.5f, .modAmount = 0.12f,
++         .level = 0.694f},
++    }}},
++    {"INDU", {{
++        // Industrial: everything driven
++        {.wave = SIN, .hz = 50.f, .toneDecay = 0.55f, .modRate = 0.7f, .modAmount = 0.48f, .noiseFreq = 0.5f,
++         .noiseDecay = 0.2f, .mix = 0.25f, .drive = 0.38f, .level = 0.885f},
++        {.wave = SAW, .noiseFilter = BP, .hz = 150.f, .toneDecay = 0.3f, .modRate = 0.8f, .modAmount = 0.4f,
++         .noiseFreq = 0.65f, .noiseQ = 0.4f, .noiseDecay = 0.45f, .mix = 0.6f, .drive = 0.4f, .level = 0.861f},
++        {.noiseFilter = HP, .noiseFreq = 0.82f, .noiseQ = 0.35f, .noiseDecay = 0.18f, .mix = 1.f, .drive = 0.3f,
++         .level = 0.758f},
++        {.noiseFilter = BP, .noiseFreq = 0.8f, .noiseQ = 0.32f, .noiseDecay = 0.45f, .mix = 1.f, .drive = 0.35f,
++         .level = 0.745f},
++        // Metal hit, pipe
++        {.wave = TRI, .modMode = LFO, .hz = 230.f, .toneDecay = 0.42f, .modRate = 0.88f, .modAmount = 0.55f,
++         .drive = 0.3f, .level = 0.839f},
++        {.wave = SIN, .modMode = LFO, .noiseFilter = BP, .hz = 420.f, .toneDecay = 0.5f, .modRate = 0.86f,
++         .modAmount = 0.35f, .noiseFreq = 0.7f, .noiseQ = 0.45f, .noiseDecay = 0.2f, .mix = 0.3f, .level = 0.758f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.6f, .noiseQ = 0.4f, .noiseDecay = 0.5f, .mix = 1.f,
++         .drive = 0.32f, .level = 0.841f},
++        // Noise-bent saw
++        {.wave = SAW, .modMode = NSE, .hz = 80.f, .toneDecay = 0.4f, .modRate = 0.75f, .modAmount = 0.6f,
++         .drive = 0.35f, .level = 0.810f},
++    }}},
++    {"DUST", {{
++        // Lo-fi: the tops rolled off with the EQ
++        {.wave = SIN, .hz = 54.f, .toneDecay = 0.5f, .modRate = 0.6f, .modAmount = 0.35f, .noiseFreq = 0.4f,
++         .noiseDecay = 0.25f, .mix = 0.3f, .drive = 0.12f, .eqFreq = 0.75f, .eqGain = 0.3f, .level = 0.811f},
++        {.wave = TRI, .hz = 190.f, .toneDecay = 0.32f, .modRate = 0.75f, .modAmount = 0.25f, .noiseFreq = 0.66f,
++         .noiseQ = 0.2f, .noiseDecay = 0.4f, .mix = 0.55f, .drive = 0.14f, .eqFreq = 0.85f, .eqGain = 0.32f,
++         .level = 0.830f},
++        {.noiseFilter = BP, .noiseFreq = 0.8f, .noiseQ = 0.35f, .noiseDecay = 0.2f, .mix = 1.f, .level = 0.875f},
++        {.noiseFilter = BP, .noiseEnv = LIN, .noiseFreq = 0.78f, .noiseQ = 0.35f, .noiseDecay = 0.42f, .mix = 1.f,
++         .level = 0.838f},
++        // Dusty tom, shaker
++        {.wave = SIN, .hz = 100.f, .toneDecay = 0.48f, .modRate = 0.5f, .modAmount = 0.2f, .noiseFreq = 0.45f,
++         .mix = 0.3f, .level = 0.780f},
++        {.noiseFilter = HP, .noiseEnv = LIN, .noiseFreq = 0.8f, .noiseQ = 0.2f, .noiseAttack = 0.12f,
++         .noiseDecay = 0.3f, .mix = 1.f, .level = 0.719f},
++        {.noiseEnv = MOD, .noiseFreq = 0.62f, .noiseQ = 0.3f, .noiseDecay = 0.5f, .mix = 1.f, .level = 0.562f},
++        // Rim tick
++        {.wave = TRI, .noiseFilter = HP, .hz = 1300.f, .toneDecay = 0.12f, .noiseFreq = 0.85f, .noiseDecay = 0.1f,
++         .mix = 0.5f, .level = 0.717f},
++    }}},
++    {"RUMB", {{
++        // Techno rumble: a kick with a long low noise tail
++        {.wave = SIN, .hz = 45.f, .toneDecay = 0.7f, .modRate = 0.75f, .modAmount = 0.45f, .noiseFreq = 0.3f,
++         .noiseQ = 0.3f, .noiseDecay = 0.6f, .mix = 0.3f, .drive = 0.24f, .level = 0.869f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 175.f, .toneDecay = 0.3f, .modRate = 0.8f, .modAmount = 0.3f,
++         .noiseFreq = 0.76f, .noiseQ = 0.15f, .noiseDecay = 0.38f, .mix = 0.6f, .drive = 0.1f, .level = 0.752f},
++        {.noiseFilter = HP, .noiseFreq = 0.9f, .noiseQ = 0.2f, .noiseDecay = 0.18f, .mix = 1.f, .level = 0.727f},
++        // Ride: FM saw over long noise
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 4000.f, .toneDecay = 0.6f, .modRate = 0.92f,
++         .modAmount = 0.5f, .noiseFreq = 0.88f, .noiseDecay = 0.6f, .mix = 0.65f, .level = 0.646f},
++        // Deep perc, tick
++        {.wave = SIN, .hz = 75.f, .toneDecay = 0.55f, .modRate = 0.4f, .modAmount = 0.15f, .noiseFreq = 0.4f,
++         .noiseDecay = 0.4f, .mix = 0.25f, .drive = 0.2f, .level = 0.811f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 2200.f, .toneDecay = 0.08f, .noiseFreq = 0.88f, .noiseDecay = 0.06f,
++         .mix = 0.4f, .level = 0.748f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.58f, .noiseQ = 0.22f, .noiseDecay = 0.52f, .mix = 1.f,
++         .level = 0.639f},
++        // Sub boom
++        {.wave = SIN, .hz = 38.f, .toneDecay = 0.78f, .modRate = 0.3f, .modAmount = 0.25f, .level = 0.790f},
++    }}},
++    {"ZAP", {{
++        // Zaps: fast deep sweeps everywhere
++        {.wave = SIN, .hz = 58.f, .toneDecay = 0.42f, .modRate = 0.9f, .modAmount = 0.75f, .drive = 0.1f,
++         .level = 0.808f},
++        {.wave = TRI, .noiseFilter = BP, .hz = 220.f, .toneDecay = 0.25f, .modRate = 0.92f, .modAmount = 0.55f,
++         .noiseFreq = 0.74f, .noiseQ = 0.3f, .noiseDecay = 0.32f, .mix = 0.55f, .level = 0.841f},
++        {.wave = SAW, .modMode = NSE, .noiseFilter = HP, .hz = 6000.f, .toneDecay = 0.15f, .modRate = 0.8f,
++         .modAmount = 0.4f, .noiseFreq = 0.9f, .noiseDecay = 0.12f, .mix = 0.6f, .level = 0.736f},
++        {.wave = SAW, .modMode = NSE, .noiseFilter = HP, .hz = 6000.f, .toneDecay = 0.38f, .modRate = 0.8f,
++         .modAmount = 0.4f, .noiseFreq = 0.9f, .noiseDecay = 0.36f, .mix = 0.6f, .level = 0.672f},
++        // Pew down, pew up
++        {.wave = SIN, .hz = 600.f, .toneDecay = 0.3f, .modRate = 0.7f, .modAmount = 0.6f, .level = 0.745f},
++        {.wave = SIN, .hz = 300.f, .toneDecay = 0.3f, .modRate = 0.75f, .modAmount = -0.5f, .level = 0.758f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.68f, .noiseQ = 0.4f, .noiseDecay = 0.46f, .mix = 1.f,
++         .level = 0.793f},
++        // Wobble blip
++        {.wave = SIN, .modMode = LFO, .hz = 500.f, .toneDecay = 0.45f, .modRate = 0.45f, .modAmount = 0.35f,
++         .level = 0.741f},
++    }}},
++    {"BOOM", {{
++        // Trap: a long tuned 808 and crisp tops
++        {.wave = SIN, .noiseFilter = HP, .hz = 41.f, .toneDecay = 0.82f, .modRate = 0.65f, .modAmount = 0.32f,
++         .noiseFreq = 0.8f, .noiseDecay = 0.06f, .mix = 0.18f, .drive = 0.2f, .level = 0.851f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 210.f, .toneDecay = 0.24f, .modRate = 0.85f, .modAmount = 0.3f,
++         .noiseFreq = 0.82f, .noiseQ = 0.12f, .noiseDecay = 0.38f, .mix = 0.68f, .drive = 0.08f, .eqFreq = 0.82f,
++         .eqGain = 0.58f, .level = 0.829f},
++        {.noiseFilter = HP, .noiseFreq = 0.92f, .noiseQ = 0.15f, .noiseDecay = 0.12f, .mix = 1.f, .level = 0.768f},
++        {.noiseFilter = HP, .noiseFreq = 0.9f, .noiseQ = 0.15f, .noiseDecay = 0.38f, .mix = 1.f, .level = 0.699f},
++        // Snap, low perc
++        {.wave = TRI, .noiseFilter = BP, .hz = 1900.f, .toneDecay = 0.12f, .noiseFreq = 0.78f, .noiseQ = 0.4f,
++         .noiseDecay = 0.15f, .mix = 0.55f, .level = 0.847f},
++        {.wave = SIN, .hz = 160.f, .toneDecay = 0.38f, .modRate = 0.7f, .modAmount = 0.3f, .level = 0.762f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.64f, .noiseQ = 0.25f, .noiseDecay = 0.5f, .mix = 1.f,
++         .level = 0.671f},
++        // 808 tom
++        {.wave = SIN, .hz = 82.f, .toneDecay = 0.62f, .modRate = 0.6f, .modAmount = 0.3f, .level = 0.774f},
++    }}},
++    {"TITE", {{
++        // Tight and woody, nearer a real kit
++        {.wave = SIN, .hz = 62.f, .toneDecay = 0.38f, .modRate = 0.82f, .modAmount = 0.38f, .noiseFreq = 0.62f,
++         .noiseQ = 0.2f, .noiseDecay = 0.1f, .mix = 0.32f, .eqFreq = 0.55f, .eqGain = 0.56f, .level = 0.855f},
++        {.wave = TRI, .hz = 230.f, .toneDecay = 0.26f, .modRate = 0.85f, .modAmount = 0.2f, .noiseFreq = 0.84f,
++         .noiseQ = 0.12f, .noiseDecay = 0.38f, .mix = 0.6f, .drive = 0.06f, .level = 0.837f},
++        {.noiseFilter = BP, .noiseFreq = 0.86f, .noiseQ = 0.35f, .noiseDecay = 0.15f, .mix = 1.f, .level = 0.900f},
++        {.noiseFilter = HP, .noiseFreq = 0.84f, .noiseQ = 0.3f, .noiseDecay = 0.36f, .mix = 1.f, .level = 0.606f},
++        // Low and high toms
++        {.wave = SIN, .hz = 120.f, .toneDecay = 0.48f, .modRate = 0.7f, .modAmount = 0.15f, .noiseFreq = 0.55f,
++         .noiseDecay = 0.2f, .mix = 0.3f, .level = 0.779f},
++        {.wave = SIN, .hz = 190.f, .toneDecay = 0.44f, .modRate = 0.7f, .modAmount = 0.15f, .noiseFreq = 0.6f,
++         .noiseDecay = 0.2f, .mix = 0.3f, .level = 0.763f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.64f, .noiseQ = 0.2f, .noiseDecay = 0.48f, .mix = 1.f,
++         .level = 0.596f},
++        // Side stick
++        {.wave = TRI, .noiseFilter = BP, .hz = 1100.f, .toneDecay = 0.14f, .modRate = 0.9f, .modAmount = 0.15f,
++         .noiseFreq = 0.72f, .noiseQ = 0.35f, .noiseDecay = 0.1f, .mix = 0.45f, .level = 0.749f},
++    }}},
++    {"METL", {{
++        // Metallic: audio rate LFOs (FM) on most sounds
++        {.wave = SIN, .noiseFilter = BP, .hz = 50.f, .toneDecay = 0.5f, .modRate = 0.7f, .modAmount = 0.45f,
++         .noiseFreq = 0.6f, .noiseQ = 0.3f, .noiseDecay = 0.15f, .mix = 0.2f, .drive = 0.12f, .level = 0.809f},
++        {.wave = TRI, .modMode = LFO, .noiseFilter = HP, .hz = 260.f, .toneDecay = 0.3f, .modRate = 0.86f,
++         .modAmount = 0.45f, .noiseFreq = 0.78f, .noiseDecay = 0.4f, .mix = 0.55f, .level = 0.760f},
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 3500.f, .toneDecay = 0.2f, .modRate = 0.95f,
++         .modAmount = 0.75f, .noiseFreq = 0.9f, .noiseQ = 0.4f, .noiseDecay = 0.16f, .mix = 0.55f, .level = 0.586f},
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 3500.f, .toneDecay = 0.48f, .modRate = 0.95f,
++         .modAmount = 0.75f, .noiseFreq = 0.9f, .noiseQ = 0.4f, .noiseDecay = 0.45f, .mix = 0.55f, .level = 0.511f},
++        // Bell, low gong
++        {.wave = SIN, .modMode = LFO, .hz = 700.f, .toneDecay = 0.6f, .modRate = 0.89f, .modAmount = 0.6f,
++         .level = 0.739f},
++        {.wave = TRI, .modMode = LFO, .hz = 140.f, .toneDecay = 0.65f, .modRate = 0.82f, .modAmount = 0.5f,
++         .level = 0.742f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.7f, .noiseQ = 0.34f, .noiseDecay = 0.48f, .mix = 1.f,
++         .level = 0.705f},
++        // Cowbell
++        {.wave = TRI, .modMode = LFO, .hz = 600.f, .toneDecay = 0.4f, .modRate = 0.84f, .modAmount = 0.22f,
++         .eqFreq = 0.7f, .eqGain = 0.6f, .level = 0.751f},
++    }}},
++    {"DUB", {{
++        // Dub: deep and round, with a long syndrum
++        {.wave = SIN, .hz = 44.f, .toneDecay = 0.66f, .modRate = 0.5f, .modAmount = 0.3f, .drive = 0.04f,
++         .eqFreq = 0.2f, .eqGain = 0.56f, .level = 0.798f},
++        {.wave = TRI, .noiseFilter = BP, .hz = 300.f, .toneDecay = 0.3f, .modRate = 0.9f, .modAmount = 0.2f,
++         .noiseFreq = 0.68f, .noiseQ = 0.35f, .noiseDecay = 0.5f, .mix = 0.5f, .eqFreq = 0.9f, .eqGain = 0.35f,
++         .level = 0.806f},
++        {.noiseFilter = BP, .noiseFreq = 0.82f, .noiseQ = 0.4f, .noiseDecay = 0.15f, .mix = 1.f, .level = 0.937f},
++        {.noiseFilter = BP, .noiseEnv = LIN, .noiseFreq = 0.8f, .noiseQ = 0.4f, .noiseDecay = 0.5f, .mix = 1.f,
++         .level = 0.802f},
++        // Syndrum, bongo
++        {.wave = SIN, .hz = 150.f, .toneDecay = 0.55f, .modRate = 0.4f, .modAmount = 0.4f, .level = 0.773f},
++        {.wave = SIN, .hz = 380.f, .toneDecay = 0.3f, .modRate = 0.85f, .modAmount = 0.18f, .level = 0.762f},
++        {.noiseEnv = MOD, .noiseFreq = 0.6f, .noiseQ = 0.25f, .noiseDecay = 0.52f, .mix = 1.f, .level = 0.590f},
++        // Long falling syndrum
++        {.wave = SIN, .hz = 260.f, .toneDecay = 0.6f, .modRate = 0.3f, .modAmount = 0.5f, .level = 0.740f},
++    }}},
++    {"BLIP", {{
++        // Glitch: bleeps and broken noise
++        {.wave = SIN, .noiseFilter = HP, .hz = 65.f, .toneDecay = 0.3f, .modRate = 0.95f, .modAmount = 0.7f,
++         .noiseFreq = 0.9f, .noiseDecay = 0.04f, .mix = 0.3f, .level = 0.812f},
++        {.wave = SAW, .modMode = NSE, .noiseFilter = BP, .hz = 320.f, .toneDecay = 0.22f, .modRate = 0.6f,
++         .modAmount = 0.5f, .noiseFreq = 0.75f, .noiseQ = 0.4f, .noiseDecay = 0.25f, .mix = 0.55f, .level = 0.837f},
++        {.noiseFilter = HP, .noiseFreq = 0.95f, .noiseQ = 0.6f, .noiseDecay = 0.08f, .mix = 1.f, .level = 0.613f},
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 5000.f, .toneDecay = 0.3f, .modRate = 0.97f,
++         .modAmount = 0.8f, .noiseFreq = 0.9f, .noiseDecay = 0.3f, .mix = 0.3f, .level = 0.634f},
++        {.wave = SIN, .modMode = LFO, .hz = 1046.5f, .toneDecay = 0.18f, .modRate = 0.62f, .modAmount = 0.3f,
++         .level = 0.728f},
++        {.wave = SIN, .hz = 2093.f, .toneDecay = 0.1f, .level = 0.712f},
++        {.noiseFilter = HP, .noiseEnv = MOD, .noiseFreq = 0.76f, .noiseQ = 0.3f, .noiseDecay = 0.45f, .mix = 1.f,
++         .drive = 0.2f, .level = 0.811f},
++        {.wave = TRI, .modMode = NSE, .hz = 440.f, .toneDecay = 0.35f, .modRate = 0.9f, .modAmount = 0.5f,
++         .level = 0.744f},
++    }}},
++    {"BRKS", {{
++        // Breaks: crunchy, like a sampled break
++        {.wave = SIN, .hz = 58.f, .toneDecay = 0.44f, .modRate = 0.78f, .modAmount = 0.4f, .noiseFreq = 0.65f,
++         .noiseQ = 0.3f, .noiseDecay = 0.15f, .mix = 0.35f, .drive = 0.3f, .level = 0.880f},
++        {.wave = TRI, .noiseFilter = BP, .hz = 195.f, .toneDecay = 0.3f, .modRate = 0.8f, .modAmount = 0.3f,
++         .noiseFreq = 0.72f, .noiseQ = 0.25f, .noiseDecay = 0.42f, .mix = 0.62f, .drive = 0.3f, .level = 0.855f},
++        {.noiseFilter = HP, .noiseFreq = 0.84f, .noiseQ = 0.3f, .noiseDecay = 0.18f, .mix = 1.f, .drive = 0.25f,
++         .level = 0.750f},
++        {.noiseFilter = HP, .noiseFreq = 0.82f, .noiseQ = 0.3f, .noiseDecay = 0.42f, .mix = 1.f, .drive = 0.25f,
++         .level = 0.734f},
++        // Tom, ghost snare
++        {.wave = SIN, .hz = 130.f, .toneDecay = 0.42f, .modRate = 0.6f, .modAmount = 0.2f, .noiseFreq = 0.5f,
++         .mix = 0.3f, .drive = 0.25f, .level = 0.831f},
++        {.wave = TRI, .noiseFilter = HP, .hz = 240.f, .toneDecay = 0.18f, .noiseFreq = 0.8f, .noiseDecay = 0.25f,
++         .mix = 0.6f, .drive = 0.2f, .level = 0.794f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.66f, .noiseQ = 0.3f, .noiseDecay = 0.5f, .mix = 1.f,
++         .drive = 0.3f, .level = 0.839f},
++        // Crash
++        {.wave = SAW, .modMode = LFO, .noiseFilter = HP, .hz = 3800.f, .toneDecay = 0.7f, .modRate = 0.93f,
++         .modAmount = 0.55f, .noiseFreq = 0.8f, .noiseQ = 0.2f, .noiseDecay = 0.75f, .mix = 0.7f, .drive = 0.15f,
++         .level = 0.647f},
++    }}},
++    {"PERC", {{
++        // Hand percussion: frame drum, slap, shakers, congas, claps, clave
++        {.wave = SIN, .hz = 70.f, .toneDecay = 0.45f, .modRate = 0.75f, .modAmount = 0.2f, .noiseFreq = 0.5f,
++         .noiseQ = 0.2f, .noiseDecay = 0.2f, .mix = 0.3f, .level = 0.826f},
++        {.wave = TRI, .noiseFilter = BP, .hz = 330.f, .toneDecay = 0.22f, .modRate = 0.9f, .modAmount = 0.25f,
++         .noiseFreq = 0.74f, .noiseQ = 0.4f, .noiseDecay = 0.25f, .mix = 0.5f, .level = 0.797f},
++        {.noiseFilter = HP, .noiseEnv = LIN, .noiseFreq = 0.82f, .noiseQ = 0.25f, .noiseAttack = 0.12f,
++         .noiseDecay = 0.26f, .mix = 1.f, .level = 0.635f},
++        {.noiseFilter = HP, .noiseEnv = LIN, .noiseFreq = 0.85f, .noiseQ = 0.3f, .noiseAttack = 0.2f,
++         .noiseDecay = 0.4f, .mix = 1.f, .level = 0.564f},
++        {.wave = SIN, .hz = 220.f, .toneDecay = 0.4f, .modRate = 0.85f, .modAmount = 0.18f, .level = 0.777f},
++        {.wave = SIN, .hz = 330.f, .toneDecay = 0.36f, .modRate = 0.85f, .modAmount = 0.2f, .level = 0.760f},
++        {.noiseFilter = BP, .noiseEnv = MOD, .noiseFreq = 0.62f, .noiseQ = 0.2f, .noiseDecay = 0.5f, .mix = 1.f,
++         .level = 0.632f},
++        {.wave = SIN, .hz = 2400.f, .toneDecay = 0.15f, .level = 0.711f},
++    }}},
++    {"CHIP", {{
++        // 8-bit: triangle kick, raw noise, saw blips
++        {.wave = TRI, .hz = 55.f, .toneDecay = 0.4f, .modRate = 0.85f, .modAmount = 0.6f, .level = 0.817f},
++        {.wave = TRI, .noiseFilter = OFF, .noiseEnv = LIN, .hz = 180.f, .toneDecay = 0.2f, .modRate = 0.9f,
++         .modAmount = 0.5f, .noiseDecay = 0.38f, .mix = 0.6f, .level = 0.753f},
++        {.noiseFilter = HP, .noiseEnv = LIN, .noiseFreq = 0.95f, .noiseDecay = 0.15f, .mix = 1.f, .level = 0.782f},
++        {.noiseFilter = HP, .noiseEnv = LIN, .noiseFreq = 0.95f, .noiseDecay = 0.42f, .mix = 1.f, .level = 0.751f},
++        {.wave = SAW, .hz = 220.f, .toneDecay = 0.3f, .modRate = 0.8f, .modAmount = 0.6f, .level = 0.734f},
++        {.wave = SAW, .modMode = LFO, .hz = 880.f, .toneDecay = 0.3f, .modRate = 0.55f, .modAmount = 0.5f,
++         .level = 0.714f},
++        {.noiseFilter = HP, .noiseEnv = MOD, .noiseFreq = 0.7f, .noiseDecay = 0.46f, .mix = 1.f, .level = 0.463f},
++        // Coin
++        {.wave = SIN, .modMode = LFO, .hz = 1318.5f, .toneDecay = 0.35f, .modRate = 0.35f, .modAmount = 0.1f,
++         .level = 0.692f},
++    }}},
++}};
++// clang-format on
++
++} // namespace deluge::dsp::drum_synth::gin
+diff --git a/src/deluge/dsp/drum_synth/gin_kits.h b/src/deluge/dsp/drum_synth/gin_kits.h
+new file mode 100644
+index 00000000..b1fd5cb2
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/gin_kits.h
+@@ -0,0 +1,58 @@
++/*
++ * The GIN kits: sixteen eight-sound kits for the GIN engine (gin.h), made for the Deluge. These are our own sounds, not
++ * GIN's factory kits.
++ *
++ * Copyright © 2026 thisisbribery and the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "dsp/drum_synth/gin.h"
++#include <array>
++#include <cstdint>
++
++namespace deluge::dsp::drum_synth::gin {
++
++/// One sound of a kit, in GIN's own units (0 to 1 unless noted), plus where it sits in the kit
++struct KitSound {
++	Wave wave = Wave::SINE;
++	ModMode modMode = ModMode::DECAY;
++	NoiseFilter noiseFilter = NoiseFilter::LOW_PASS;
++	NoiseEnv noiseEnv = NoiseEnv::EXP;
++	float hz = 261.6256f; ///< The tone's pitch: set by the row's transpose, as the kit rows play at middle C
++	float toneAttack = 0.f;
++	float toneDecay = 0.4f;
++	float modRate = 0.5f;
++	float modAmount = 0.f; ///< -1 to 1
++	float noiseFreq = 0.7f;
++	float noiseQ = 0.1f;
++	float noiseAttack = 0.f;
++	float noiseDecay = 0.3f;
++	float mix = 0.f;
++	float drive = 0.f;
++	float eqFreq = 0.5f;
++	float eqGain = 0.5f;
++	float level = 0.8f; ///< GIN's Level, before its clipper: 0.8 is about -2 dB (see levelGain())
++};
++
++inline constexpr int32_t kNumKitSounds = 8;
++inline constexpr int32_t kNumKits = 16;
++
++/// Rows, bottom first: kick, snare, hat 1 (closed), hat 2 (open), perc 1, perc 2, clap, other. The hats choke each
++/// other.
++enum KitRow : uint8_t { KICK, SNARE, HAT1, HAT2, PERC1, PERC2, CLAP, OTHER };
++
++struct Kit {
++	char const* name;
++	std::array<KitSound, kNumKitSounds> sounds;
++};
++
++extern const std::array<Kit, kNumKits> kKits;
++
++/// The sound a GIN row starts on when picked in SYNTH MODE: the first kit's kick
++inline const KitSound& defaultSound() {
++	return kKits[0].sounds[KICK];
++}
++
++} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/xia.cpp b/src/deluge/dsp/drum_synth/xia.cpp
 new file mode 100644
 index 00000000..eed64c28
@@ -6798,10 +8032,10 @@ index adbcbc90..25b0e108 100644
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
-index 00000000..e938710a
+index 00000000..b225dc27
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.cpp
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,303 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -6832,6 +8066,8 @@ index 00000000..e938710a
 +#include "model/instrument/kit.h"
 +#include "model/song/song.h"
 +#include "processing/sound/sound_drum.h"
++#include <algorithm>
++#include <cstdlib>
 +#include <cstring>
 +#include <strings.h>
 +
@@ -6861,6 +8097,7 @@ index 00000000..e938710a
 +	originals_.fill(nullptr);
 +
 +	// Open on the preset the kit is on now, or on Current if it's on none of them
++	numBuiltIn_ = std::min(preset_kit::numBuiltInKits(kit), kMaxBuiltIn);
 +	hasCurrent_ = false;
 +	home_ = findHome();
 +	if (home_ < 0) {
@@ -6872,7 +8109,10 @@ index 00000000..e938710a
 +	if (hasCurrent_) {
 +		options_[o++] = l10n::get(STRING_FOR_KIT_PRESET_CURRENT);
 +	}
-+	options_[o++] = l10n::get(STRING_FOR_KIT_PRESET_DEFAULT);
++	for (int32_t i = 0; i < numBuiltIn_; i++) {
++		options_[o++] = (kit == preset_kit::PresetKit::GIN) ? preset_kit::builtInKitName(kit, i)
++		                                                    : l10n::get(STRING_FOR_KIT_PRESET_DEFAULT);
++	}
 +	for (int32_t i = 0; i < numPresets_; i++) {
 +		options_[o++] = labels_[i].data();
 +	}
@@ -6885,8 +8125,10 @@ index 00000000..e938710a
 +int32_t KitPresets::findHome() {
 +	Kit* kit = getCurrentKit();
 +	char const* name = kit->presetName.get();
-+	if (!strcmp(name, "*")) {
-+		return defaultOption();
++	// A built in kit: "*" for the first (Default), "*2" on for GIN's others
++	if (name[0] == '*') {
++		const int32_t index = (name[1] != 0) ? atoi(name + 1) - 1 : 0;
++		return defaultOption() + std::clamp<int32_t>(index, 0, numBuiltIn_ - 1);
 +	}
 +	// A kit loaded straight from a preset file is named after it
 +	if (!*name) {
@@ -6958,10 +8200,11 @@ index 00000000..e938710a
 +	// Read the whole preset before touching the kit, so a file that won't load leaves it as it was
 +	int32_t count = 0;
 +	Error error = Error::NONE;
-+	if (option == defaultOption()) {
++	if (option >= defaultOption() && option < firstPresetOption()) {
 +		const auto rows = preset_kit::rowsFor(kit_);
 +		for (; count < static_cast<int32_t>(rows.size()) && count < kMaxRows; count++) {
-+			loaded_[count] = preset_kit::makeDrum(rows[count], kit_, loadedParamManagers_[count]);
++			loaded_[count] =
++			    preset_kit::makeDrum(rows[count], kit_, loadedParamManagers_[count], option - defaultOption());
 +			if (loaded_[count] == nullptr) {
 +				error = Error::INSUFFICIENT_RAM;
 +				break;
@@ -7046,6 +8289,11 @@ index 00000000..e938710a
 +	if (currentOption == defaultOption()) {
 +		kit->presetName.set("*");
 +	}
++	else if (currentOption > defaultOption() && currentOption < firstPresetOption()) {
++		char builtIn[8];
++		snprintf(builtIn, sizeof(builtIn), "*%d", static_cast<int>(currentOption - defaultOption() + 1));
++		kit->presetName.set(builtIn);
++	}
 +	else if (currentOption >= firstPresetOption()) {
 +		kit->presetName.set(labels_[currentOption - firstPresetOption()].data());
 +	}
@@ -7057,7 +8305,7 @@ index 00000000..e938710a
 +}
 +
 +ActionResult KitPresets::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
-+	// BACK puts the kit back as it was and goes up to the Kit / LXR / Cycles menu
++	// BACK puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu
 +	if (b == deluge::hid::button::BACK) {
 +		if (on) {
 +			if (inCardRoutine) {
@@ -7093,10 +8341,10 @@ index 00000000..e938710a
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/kit_presets.h b/src/deluge/gui/context_menu/kit_presets.h
 new file mode 100644
-index 00000000..67543127
+index 00000000..b2bf7085
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.h
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,92 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -7125,11 +8373,11 @@ index 00000000..67543127
 +
 +namespace deluge::gui::context_menu {
 +
-+/// Shown by SHIFT + KIT on a preset kit (LXR or Cycles): its presets, the kit files in KITS/LXR or KITS/CYCLES. It
-+/// opens on the preset the kit has now. Turning SELECT plays each one on the kit's preset rows straight away, pattern
-+/// running; the other rows and the pattern stay. SELECT or KIT keeps the one showing. BACK puts the kit back as it was
-+/// and goes up to the Kit / LXR / Cycles menu. The list: Default (as SHIFT + KIT makes it), then the presets in name
-+/// order, with Current first if the kit isn't on any of them.
++/// Shown by SHIFT + KIT on a preset kit (LXR, Cycles or GIN): its presets, the kit files in KITS/LXR, KITS/CYCLES or
++/// KITS/GIN. It opens on the preset the kit has now. Turning SELECT plays each one on the kit's preset rows straight
++/// away, pattern running; the other rows and the pattern stay. SELECT or KIT keeps the one showing. BACK puts the kit
++/// back as it was and goes up to the Kit / LXR / Cycles / GIN menu. The list: Default (as SHIFT + KIT makes it), or on
++/// GIN its sixteen built in kits, then the presets in name order, with Current first if the kit isn't on any of them.
 +class KitPresets final : public ContextMenu {
 +public:
 +	KitPresets() = default;
@@ -7150,9 +8398,11 @@ index 00000000..67543127
 +	static constexpr int32_t kMaxPresets = 48;
 +	static constexpr int32_t kMaxNameLength = 64;
 +	static constexpr int32_t kMaxRows = 16;
++	static constexpr int32_t kMaxBuiltIn = 16;
 +
++	/// The first kit built into the firmware: Default, or GIN's first
 +	[[nodiscard]] int32_t defaultOption() const { return hasCurrent_ ? 1 : 0; }
-+	[[nodiscard]] int32_t firstPresetOption() const { return defaultOption() + 1; }
++	[[nodiscard]] int32_t firstPresetOption() const { return defaultOption() + numBuiltIn_; }
 +	[[nodiscard]] int32_t numOptions() const { return firstPresetOption() + numPresets_; }
 +	void readPresetList();
 +	/// The option the kit is on now: its last kept preset, or a preset with the kit's name, or Default for a kit as
@@ -7169,9 +8419,10 @@ index 00000000..67543127
 +	std::array<std::array<char, kMaxNameLength>, kMaxPresets> fileNames_{}; ///< With the .XML
 +	std::array<std::array<char, kMaxNameLength>, kMaxPresets> labels_{};    ///< Without
 +	int32_t numPresets_ = 0;
++	int32_t numBuiltIn_ = 1; ///< Kits in the firmware: Default, or GIN's sixteen
 +	bool hasCurrent_ = false;
 +	int32_t home_ = 0;
-+	std::array<char const*, kMaxPresets + 2> options_{};
++	std::array<char const*, kMaxPresets + kMaxBuiltIn + 1> options_{};
 +
 +	/// The clip's NoteRows that are preset rows, bottom first
 +	std::array<int32_t, kMaxRows> rows_{};
@@ -7188,10 +8439,10 @@ index 00000000..67543127
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
-index 00000000..bbb74053
+index 00000000..bff634c5
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/new_kit_type.cpp
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,90 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -7230,13 +8481,13 @@ index 00000000..bbb74053
 +std::span<char const*> NewKitType::getOptions() {
 +	using enum l10n::String;
 +	static char const* options[] = {l10n::get(STRING_FOR_SAMPLE_KIT), l10n::get(STRING_FOR_LXR_KIT),
-+	                                l10n::get(STRING_FOR_CYCLES_KIT)};
-+	return {options, 3};
++	                                l10n::get(STRING_FOR_CYCLES_KIT), l10n::get(STRING_FOR_GIN_KIT)};
++	return {options, 4};
 +}
 +
 +bool NewKitType::setupFor(dsp::drum_synth::PresetKit kit) {
 +	using dsp::drum_synth::PresetKit;
-+	currentOption = (kit == PresetKit::LXR) ? 1 : (kit == PresetKit::CYCLES) ? 2 : 0;
++	currentOption = (kit == PresetKit::LXR) ? 1 : (kit == PresetKit::CYCLES) ? 2 : (kit == PresetKit::GIN) ? 3 : 0;
 +	scrollPos = currentOption;
 +	return true;
 +}
@@ -7244,7 +8495,10 @@ index 00000000..bbb74053
 +bool NewKitType::acceptCurrentOption() {
 +	using dsp::drum_synth::PresetKit;
 +	const int32_t option = currentOption;
-+	const PresetKit chosen = (option == 1) ? PresetKit::LXR : (option == 2) ? PresetKit::CYCLES : PresetKit::NONE;
++	const PresetKit chosen = (option == 1)   ? PresetKit::LXR
++	                         : (option == 2) ? PresetKit::CYCLES
++	                         : (option == 3) ? PresetKit::GIN
++	                                         : PresetKit::NONE;
 +	const PresetKit current =
 +	    (getCurrentOutputType() == OutputType::KIT) ? preset_kit::typeOf(getCurrentKit()) : PresetKit::NONE;
 +
@@ -7268,6 +8522,7 @@ index 00000000..bbb74053
 +	switch (chosen) {
 +	case PresetKit::LXR:
 +	case PresetKit::CYCLES:
++	case PresetKit::GIN:
 +		instrumentClipView.createNewDrumSynthKit(chosen);
 +		break;
 +	default:
@@ -7328,7 +8583,7 @@ index 00000000..9872e726
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..f0875370 100644
+index 38cab4d8..a4614e88 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -7360,7 +8615,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -543,6 +551,101 @@
+@@ -543,6 +551,122 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -7420,6 +8675,7 @@ index 38cab4d8..f0875370 100644
 +    "STRING_FOR_DRUM_ENGINE_CYC_CHORD": "Cyc Chord",
 +    "STRING_FOR_DRUM_ENGINE_VTG_SNR": "Vtg Snr",
 +    "STRING_FOR_DRUM_ENGINE_CLAP_ENG": "clap eng",
++    "STRING_FOR_DRUM_ENGINE_GIN": "GIN",
 +    "STRING_FOR_CYC_COLOR": "Color",
 +    "STRING_FOR_CYC_SHAPE": "Shape",
 +    "STRING_FOR_CYC_SWEEP": "Sweep",
@@ -7432,6 +8688,26 @@ index 38cab4d8..f0875370 100644
 +    "STRING_FOR_CYC_BALANCE": "Balance",
 +    "STRING_FOR_CYC_SPACING_CRUNCH": "Spacing crunch",
 +    "STRING_FOR_CYC_BODY_ENVELOPE": "Body envelope",
++    "STRING_FOR_GIN_MIX": "Mix",
++    "STRING_FOR_GIN_NOISE_FREQ": "Noise freq",
++    "STRING_FOR_GIN_MOD_RATE": "Mod rate",
++    "STRING_FOR_GIN_MOD_AMOUNT": "Mod amount",
++    "STRING_FOR_GIN_NOISE_DECAY": "Noise decay",
++    "STRING_FOR_GIN_NOISE_RES": "Noise reso",
++    "STRING_FOR_GIN_NOISE_ATTACK": "Noise attack",
++    "STRING_FOR_GIN_TONE_ATTACK": "Tone attack",
++    "STRING_FOR_GIN_TONE_DECAY": "Tone decay",
++    "STRING_FOR_GIN_DECAY": "Decay",
++    "STRING_FOR_GIN_WAVE": "Tone wave",
++    "STRING_FOR_GIN_MOD_MODE": "Mod mode",
++    "STRING_FOR_GIN_NOISE_ENV": "Noise env",
++    "STRING_FOR_GIN_EQ_FREQ": "EQ freq",
++    "STRING_FOR_GIN_EQ_GAIN": "EQ gain",
++    "STRING_FOR_GIN_LEVEL": "GIN level",
++    "STRING_FOR_GIN_ENV_EXP": "Exp",
++    "STRING_FOR_GIN_ENV_MOD": "Mod",
++    "STRING_FOR_GIN_SOUND": "GIN sound",
++    "STRING_FOR_GIN_SOUND_LOADED": "Sound loaded",
 +    "STRING_FOR_CYC_AMP_DECAY": "Amp decay",
 +    "STRING_FOR_NEW_KIT_TYPE": "New kit",
 +    "STRING_FOR_SAMPLE_KIT": "Kit",
@@ -7462,7 +8738,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -568,6 +671,8 @@
+@@ -568,6 +692,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -7471,7 +8747,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -624,6 +729,13 @@
+@@ -624,6 +750,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -7485,7 +8761,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -705,6 +817,11 @@
+@@ -705,6 +838,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -7497,7 +8773,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -847,6 +964,26 @@
+@@ -847,6 +985,28 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -7517,6 +8793,8 @@ index 38cab4d8..f0875370 100644
 +    "STRING_FOR_LXR_KIT": "LXR",
 +    "STRING_FOR_CYCLES_KIT": "Cycles",
 +    "STRING_FOR_NEW_CYCLES_KIT_CREATED": "New Cycles kit created",
++    "STRING_FOR_GIN_KIT": "GIN",
++    "STRING_FOR_NEW_GIN_KIT_CREATED": "New GIN kit created",
 +    "STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS": "Can't change: rows added",
 +    "STRING_FOR_KIT_PRESETS": "Kit presets",
 +    "STRING_FOR_KIT_PRESET_CURRENT": "Current",
@@ -7525,7 +8803,7 @@ index 38cab4d8..f0875370 100644
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..12dbe266 100644
+index 1f87aacf..53fd70ef 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -7557,7 +8835,7 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -556,6 +564,101 @@ PLACE_SDRAM_DATA Language english{
+@@ -556,6 +564,122 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -7617,6 +8895,7 @@ index 1f87aacf..12dbe266 100644
 +        {STRING_FOR_DRUM_ENGINE_CYC_CHORD, "Cyc Chord"},
 +        {STRING_FOR_DRUM_ENGINE_VTG_SNR, "Vtg Snr"},
 +        {STRING_FOR_DRUM_ENGINE_CLAP_ENG, "clap eng"},
++        {STRING_FOR_DRUM_ENGINE_GIN, "GIN"},
 +        {STRING_FOR_CYC_COLOR, "Color"},
 +        {STRING_FOR_CYC_SHAPE, "Shape"},
 +        {STRING_FOR_CYC_SWEEP, "Sweep"},
@@ -7629,6 +8908,26 @@ index 1f87aacf..12dbe266 100644
 +        {STRING_FOR_CYC_BALANCE, "Balance"},
 +        {STRING_FOR_CYC_SPACING_CRUNCH, "Spacing crunch"},
 +        {STRING_FOR_CYC_BODY_ENVELOPE, "Body envelope"},
++        {STRING_FOR_GIN_MIX, "Mix"},
++        {STRING_FOR_GIN_NOISE_FREQ, "Noise freq"},
++        {STRING_FOR_GIN_MOD_RATE, "Mod rate"},
++        {STRING_FOR_GIN_MOD_AMOUNT, "Mod amount"},
++        {STRING_FOR_GIN_NOISE_DECAY, "Noise decay"},
++        {STRING_FOR_GIN_NOISE_RES, "Noise reso"},
++        {STRING_FOR_GIN_NOISE_ATTACK, "Noise attack"},
++        {STRING_FOR_GIN_TONE_ATTACK, "Tone attack"},
++        {STRING_FOR_GIN_TONE_DECAY, "Tone decay"},
++        {STRING_FOR_GIN_DECAY, "Decay"},
++        {STRING_FOR_GIN_WAVE, "Tone wave"},
++        {STRING_FOR_GIN_MOD_MODE, "Mod mode"},
++        {STRING_FOR_GIN_NOISE_ENV, "Noise env"},
++        {STRING_FOR_GIN_EQ_FREQ, "EQ freq"},
++        {STRING_FOR_GIN_EQ_GAIN, "EQ gain"},
++        {STRING_FOR_GIN_LEVEL, "GIN level"},
++        {STRING_FOR_GIN_ENV_EXP, "Exp"},
++        {STRING_FOR_GIN_ENV_MOD, "Mod"},
++        {STRING_FOR_GIN_SOUND, "GIN sound"},
++        {STRING_FOR_GIN_SOUND_LOADED, "Sound loaded"},
 +        {STRING_FOR_CYC_AMP_DECAY, "Amp decay"},
 +        {STRING_FOR_NEW_KIT_TYPE, "New kit"},
 +        {STRING_FOR_SAMPLE_KIT, "Kit"},
@@ -7659,7 +8958,7 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -581,6 +684,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -581,6 +705,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -7668,7 +8967,7 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -637,6 +742,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -637,6 +763,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -7682,7 +8981,7 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -718,6 +830,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +851,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -7694,7 +8993,7 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -860,6 +977,26 @@ PLACE_SDRAM_DATA Language english{
+@@ -860,6 +998,28 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -7714,6 +9013,8 @@ index 1f87aacf..12dbe266 100644
 +        {STRING_FOR_LXR_KIT, "LXR"},
 +        {STRING_FOR_CYCLES_KIT, "Cycles"},
 +        {STRING_FOR_NEW_CYCLES_KIT_CREATED, "New Cycles kit created"},
++        {STRING_FOR_GIN_KIT, "GIN"},
++        {STRING_FOR_NEW_GIN_KIT_CREATED, "New GIN kit created"},
 +        {STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS, "Can't change: rows added"},
 +        {STRING_FOR_KIT_PRESETS, "Kit presets"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "Current"},
@@ -7722,10 +9023,10 @@ index 1f87aacf..12dbe266 100644
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..e05127ef 100644
+index 1af382d5..908da692 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
-@@ -323,6 +323,33 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -323,6 +323,35 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
          {STRING_FOR_SWING_AMOUNT, "SWIA"},
          {STRING_FOR_SWING_INTERVAL, "SWII"},
@@ -7752,6 +9053,8 @@ index 1af382d5..e05127ef 100644
 +        {STRING_FOR_LXR_KIT, "LXR"},
 +        {STRING_FOR_CYCLES_KIT, "CYCL"},
 +        {STRING_FOR_NEW_CYCLES_KIT_CREATED, "CYCL"},
++        {STRING_FOR_GIN_KIT, "GIN"},
++        {STRING_FOR_NEW_GIN_KIT_CREATED, "GIN"},
 +        {STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS, "CANT"},
 +        {STRING_FOR_KIT_PRESETS, "PRST"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "CURR"},
@@ -7759,7 +9062,7 @@ index 1af382d5..e05127ef 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +469,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +471,8 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
@@ -7768,7 +9071,7 @@ index 1af382d5..e05127ef 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -450,6 +479,101 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -450,6 +481,122 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -7828,6 +9131,7 @@ index 1af382d5..e05127ef 100644
 +        {STRING_FOR_DRUM_ENGINE_CYC_CHORD, "CHRD"},
 +        {STRING_FOR_DRUM_ENGINE_VTG_SNR, "VSNR"},
 +        {STRING_FOR_DRUM_ENGINE_CLAP_ENG, "CLAP"},
++        {STRING_FOR_DRUM_ENGINE_GIN, "GIN"},
 +        {STRING_FOR_CYC_COLOR, "COLR"},
 +        {STRING_FOR_CYC_SHAPE, "SHPE"},
 +        {STRING_FOR_CYC_SWEEP, "SWEP"},
@@ -7840,6 +9144,26 @@ index 1af382d5..e05127ef 100644
 +        {STRING_FOR_CYC_BALANCE, "BAL"},
 +        {STRING_FOR_CYC_SPACING_CRUNCH, "SPCR"},
 +        {STRING_FOR_CYC_BODY_ENVELOPE, "BENV"},
++        {STRING_FOR_GIN_MIX, "MIX"},
++        {STRING_FOR_GIN_NOISE_FREQ, "NFRQ"},
++        {STRING_FOR_GIN_MOD_RATE, "MRAT"},
++        {STRING_FOR_GIN_MOD_AMOUNT, "MAMT"},
++        {STRING_FOR_GIN_NOISE_DECAY, "NDCY"},
++        {STRING_FOR_GIN_NOISE_RES, "NRES"},
++        {STRING_FOR_GIN_NOISE_ATTACK, "NATK"},
++        {STRING_FOR_GIN_TONE_ATTACK, "TATK"},
++        {STRING_FOR_GIN_TONE_DECAY, "TDCY"},
++        {STRING_FOR_GIN_DECAY, "DCY"},
++        {STRING_FOR_GIN_WAVE, "WAVE"},
++        {STRING_FOR_GIN_MOD_MODE, "MMOD"},
++        {STRING_FOR_GIN_NOISE_ENV, "NENV"},
++        {STRING_FOR_GIN_EQ_FREQ, "EQFR"},
++        {STRING_FOR_GIN_EQ_GAIN, "EQGN"},
++        {STRING_FOR_GIN_LEVEL, "GLVL"},
++        {STRING_FOR_GIN_ENV_EXP, "EXP"},
++        {STRING_FOR_GIN_ENV_MOD, "MOD"},
++        {STRING_FOR_GIN_SOUND, "GSND"},
++        {STRING_FOR_GIN_SOUND_LOADED, "DONE"},
 +        {STRING_FOR_CYC_AMP_DECAY, "DEC"},
 +        {STRING_FOR_NEW_KIT_TYPE, "NEW"},
 +        {STRING_FOR_SAMPLE_KIT, "KIT"},
@@ -7870,7 +9194,7 @@ index 1af382d5..e05127ef 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -459,6 +583,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -459,6 +606,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -7885,10 +9209,10 @@ index 1af382d5..e05127ef 100644
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..58eaf448 100644
+index 8328945b..fa788d45 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
-@@ -334,6 +334,33 @@
+@@ -334,6 +334,35 @@
          "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
          "STRING_FOR_SWING_AMOUNT": "SWIA",
          "STRING_FOR_SWING_INTERVAL": "SWII",
@@ -7915,6 +9239,8 @@ index 8328945b..58eaf448 100644
 +        "STRING_FOR_LXR_KIT": "LXR",
 +        "STRING_FOR_CYCLES_KIT": "CYCL",
 +        "STRING_FOR_NEW_CYCLES_KIT_CREATED": "CYCL",
++        "STRING_FOR_GIN_KIT": "GIN",
++        "STRING_FOR_NEW_GIN_KIT_CREATED": "GIN",
 +        "STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS": "CANT",
 +        "STRING_FOR_KIT_PRESETS": "PRST",
 +        "STRING_FOR_KIT_PRESET_CURRENT": "CURR",
@@ -7922,7 +9248,7 @@ index 8328945b..58eaf448 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +484,8 @@
+@@ -457,6 +486,8 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
@@ -7931,7 +9257,7 @@ index 8328945b..58eaf448 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -466,6 +495,101 @@
+@@ -466,6 +497,122 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -7991,6 +9317,7 @@ index 8328945b..58eaf448 100644
 +        "STRING_FOR_DRUM_ENGINE_CYC_CHORD": "CHRD",
 +        "STRING_FOR_DRUM_ENGINE_VTG_SNR": "VSNR",
 +        "STRING_FOR_DRUM_ENGINE_CLAP_ENG": "CLAP",
++        "STRING_FOR_DRUM_ENGINE_GIN": "GIN",
 +        "STRING_FOR_CYC_COLOR": "COLR",
 +        "STRING_FOR_CYC_SHAPE": "SHPE",
 +        "STRING_FOR_CYC_SWEEP": "SWEP",
@@ -8003,6 +9330,26 @@ index 8328945b..58eaf448 100644
 +        "STRING_FOR_CYC_BALANCE": "BAL",
 +        "STRING_FOR_CYC_SPACING_CRUNCH": "SPCR",
 +        "STRING_FOR_CYC_BODY_ENVELOPE": "BENV",
++        "STRING_FOR_GIN_MIX": "MIX",
++        "STRING_FOR_GIN_NOISE_FREQ": "NFRQ",
++        "STRING_FOR_GIN_MOD_RATE": "MRAT",
++        "STRING_FOR_GIN_MOD_AMOUNT": "MAMT",
++        "STRING_FOR_GIN_NOISE_DECAY": "NDCY",
++        "STRING_FOR_GIN_NOISE_RES": "NRES",
++        "STRING_FOR_GIN_NOISE_ATTACK": "NATK",
++        "STRING_FOR_GIN_TONE_ATTACK": "TATK",
++        "STRING_FOR_GIN_TONE_DECAY": "TDCY",
++        "STRING_FOR_GIN_DECAY": "DCY",
++        "STRING_FOR_GIN_WAVE": "WAVE",
++        "STRING_FOR_GIN_MOD_MODE": "MMOD",
++        "STRING_FOR_GIN_NOISE_ENV": "NENV",
++        "STRING_FOR_GIN_EQ_FREQ": "EQFR",
++        "STRING_FOR_GIN_EQ_GAIN": "EQGN",
++        "STRING_FOR_GIN_LEVEL": "GLVL",
++        "STRING_FOR_GIN_ENV_EXP": "EXP",
++        "STRING_FOR_GIN_ENV_MOD": "MOD",
++        "STRING_FOR_GIN_SOUND": "GSND",
++        "STRING_FOR_GIN_SOUND_LOADED": "DONE",
 +        "STRING_FOR_CYC_AMP_DECAY": "DEC",
 +        "STRING_FOR_NEW_KIT_TYPE": "NEW",
 +        "STRING_FOR_SAMPLE_KIT": "KIT",
@@ -8033,7 +9380,7 @@ index 8328945b..58eaf448 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -479,6 +603,20 @@
+@@ -479,6 +626,20 @@
  
          "STRING_FOR_WAVEFOLD": "FOLD",
  
@@ -8055,7 +9402,7 @@ index 8328945b..58eaf448 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..5f96069a 100644
+index 49b15e92..02f626fc 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -8076,7 +9423,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -586,6 +590,101 @@ enum class String : size_t {
+@@ -586,6 +590,122 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -8136,6 +9483,7 @@ index 49b15e92..5f96069a 100644
 +	STRING_FOR_DRUM_ENGINE_CYC_CHORD,
 +	STRING_FOR_DRUM_ENGINE_VTG_SNR,
 +	STRING_FOR_DRUM_ENGINE_CLAP_ENG,
++	STRING_FOR_DRUM_ENGINE_GIN,
 +	STRING_FOR_CYC_COLOR,
 +	STRING_FOR_CYC_SHAPE,
 +	STRING_FOR_CYC_SWEEP,
@@ -8148,6 +9496,26 @@ index 49b15e92..5f96069a 100644
 +	STRING_FOR_CYC_BALANCE,
 +	STRING_FOR_CYC_SPACING_CRUNCH,
 +	STRING_FOR_CYC_BODY_ENVELOPE,
++	STRING_FOR_GIN_MIX,
++	STRING_FOR_GIN_NOISE_FREQ,
++	STRING_FOR_GIN_MOD_RATE,
++	STRING_FOR_GIN_MOD_AMOUNT,
++	STRING_FOR_GIN_NOISE_DECAY,
++	STRING_FOR_GIN_NOISE_RES,
++	STRING_FOR_GIN_NOISE_ATTACK,
++	STRING_FOR_GIN_TONE_ATTACK,
++	STRING_FOR_GIN_TONE_DECAY,
++	STRING_FOR_GIN_DECAY,
++	STRING_FOR_GIN_WAVE,
++	STRING_FOR_GIN_MOD_MODE,
++	STRING_FOR_GIN_NOISE_ENV,
++	STRING_FOR_GIN_EQ_FREQ,
++	STRING_FOR_GIN_EQ_GAIN,
++	STRING_FOR_GIN_LEVEL,
++	STRING_FOR_GIN_ENV_EXP,
++	STRING_FOR_GIN_ENV_MOD,
++	STRING_FOR_GIN_SOUND,
++	STRING_FOR_GIN_SOUND_LOADED,
 +	STRING_FOR_CYC_AMP_DECAY,
 +	STRING_FOR_NEW_KIT_TYPE,
 +	STRING_FOR_SAMPLE_KIT,
@@ -8178,7 +9546,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -615,6 +714,8 @@ enum class String : size_t {
+@@ -615,6 +735,8 @@ enum class String : size_t {
  	STRING_FOR_START_POINT,
  	STRING_FOR_START_POINT_SHORT,
  	STRING_FOR_END_POINT,
@@ -8187,7 +9555,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -683,6 +784,13 @@ enum class String : size_t {
+@@ -683,6 +805,13 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -8201,7 +9569,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -715,6 +823,10 @@ enum class String : size_t {
+@@ -715,6 +844,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -8212,7 +9580,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -772,6 +884,11 @@ enum class String : size_t {
+@@ -772,6 +905,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -8224,7 +9592,7 @@ index 49b15e92..5f96069a 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -923,6 +1040,26 @@ enum class String : size_t {
+@@ -923,6 +1061,28 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -8244,6 +9612,8 @@ index 49b15e92..5f96069a 100644
 +	STRING_FOR_LXR_KIT,
 +	STRING_FOR_CYCLES_KIT,
 +	STRING_FOR_NEW_CYCLES_KIT_CREATED,
++	STRING_FOR_GIN_KIT,
++	STRING_FOR_NEW_GIN_KIT_CREATED,
 +	STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS,
 +	STRING_FOR_KIT_PRESETS,
 +	STRING_FOR_KIT_PRESET_CURRENT,
@@ -8620,10 +9990,10 @@ index 00000000..466e7dab
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 00000000..06fa1cfa
+index 00000000..0057a946
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,372 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -8743,8 +10113,11 @@ index 00000000..06fa1cfa
 +		return {};
 +	}
 +	const Engine engine = sound->sources[0].drumPatch.engine();
++	if (deluge::dsp::drum_synth::isGin(engine)) {
++		return layouts_[6];
++	}
 +	if (deluge::dsp::drum_synth::isCyc(engine)) {
-+		return layouts_.back();
++		return layouts_[5];
 +	}
 +	return layouts_[util::to_underlying(engine)];
 +}
@@ -8771,6 +10144,8 @@ index 00000000..06fa1cfa
 +		return l10n::getView(deluge::dsp::drum_synth::cycEngineName(engine));
 +	}
 +	switch (engine) {
++	case Engine::GIN:
++		return l10n::getView(STRING_FOR_DRUM_ENGINE_GIN);
 +	case Engine::SNARE:
 +		return l10n::getView(STRING_FOR_DRUM_ENGINE_SNARE);
 +	case Engine::METAL:
@@ -8993,7 +10368,7 @@ index 00000000..06fa1cfa
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.h b/src/deluge/gui/menu_item/drum_synth/editor.h
 new file mode 100644
-index 00000000..1d592a99
+index 00000000..f23cf85f
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.h
 @@ -0,0 +1,98 @@
@@ -9053,8 +10428,8 @@ index 00000000..1d592a99
 +	using Layout = std::span<const Column>;
 +
 +	Editor(l10n::String name, Layout drumLayout, Layout snareLayout, Layout metalLayout, Layout tiaLayout,
-+	       Layout iiaLayout, Layout cycLayout, MenuItem* fullMenu)
-+	    : MenuItem(name), layouts_{drumLayout, snareLayout, metalLayout, tiaLayout, iiaLayout, cycLayout},
++	       Layout iiaLayout, Layout cycLayout, Layout ginLayout, MenuItem* fullMenu)
++	    : MenuItem(name), layouts_{drumLayout, snareLayout, metalLayout, tiaLayout, iiaLayout, cycLayout, ginLayout},
 +	      fullMenu_(fullMenu) {}
 +
 +	void beginSession(MenuItem* navigatedBackwardFrom) override;
@@ -9086,8 +10461,8 @@ index 00000000..1d592a99
 +	static int32_t padHigh(const Column& column);
 +	void changed();
 +
-+	/// LXR drum, snare and metal, TIA, IIA, then one shared by all the Cyc engines
-+	std::array<Layout, 6> layouts_;
++	/// LXR drum, snare and metal, TIA, IIA, one shared by all the Cyc engines, then GIN
++	std::array<Layout, 7> layouts_;
 +	MenuItem* fullMenu_;
 +	int32_t selectedColumn_ = 0;
 +};
@@ -9097,10 +10472,10 @@ index 00000000..1d592a99
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 00000000..dd4151c4
+index 00000000..f9653b30
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
-@@ -0,0 +1,437 @@
+@@ -0,0 +1,552 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -9209,7 +10584,7 @@ index 00000000..dd4151c4
 +	sound.killAllVoices();
 +	sound.polyphonic = row.choke ? PolyphonyMode::CHOKE : PolyphonyMode::AUTO;
 +	sound.sources[0].transpose = row.transpose;
-+	sound.sources[0].setCents(0);
++	sound.sources[0].setCents(row.cents);
 +
 +	auto user = [](int32_t p, int32_t value) { setSoundParam(p, getParamFromUserValue(p, value)); };
 +	user(params::LOCAL_ENV_0_ATTACK, 0);
@@ -9252,6 +10627,7 @@ index 00000000..dd4151c4
 +/// their settings. fresh: start the engine from its defaults even if it's already playing.
 +inline void setDrumEngine(Engine engine, uint8_t variant = 0, bool fresh = false) {
 +	using deluge::dsp::drum_synth::isCyc;
++	using deluge::dsp::drum_synth::isGin;
 +	using deluge::dsp::drum_synth::isXia;
 +	Sound& sound = *soundEditor.currentSound;
 +	Source& source = sound.sources[0];
@@ -9282,6 +10658,9 @@ index 00000000..dd4151c4
 +	}
 +	else if (isCyc(engine)) {
 +		patch.setCycPreset(engine);
++	}
++	else if (isGin(engine)) {
++		patch.setGinSound(deluge::dsp::drum_synth::gin::defaultSound());
 +	}
 +	else {
 +		patch.setPreset(deluge::dsp::drum_synth::presetForLxrEngine(engine));
@@ -9360,6 +10739,35 @@ index 00000000..dd4151c4
 +		return cycKnobName((sound != nullptr) ? sound->sources[0].drumPatch.engine() : Engine::CYC_KIK, slot_);
 +	}
 +	DrumControls::Slot slot_;
++};
++
++/// A continuous setting of GIN
++class GinControl final : public Control {
++public:
++	using Control::Control;
++
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		const auto* sound = static_cast<Sound*>(modControllable);
++		return sound->sources[0].oscType == OscType::DRUM_SYNTH
++		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch.engine());
++	}
++};
++
++/// A GIN setting kept in the patch as a number, 0-127 (EQ, level). Menu edits only: not a patched param.
++class GinNumber final : public Integer {
++public:
++	GinNumber(l10n::String name, Patch::Param param) : Integer(name), param_(param) {}
++
++	[[nodiscard]] int32_t getMaxValue() const override { return 127; }
++	[[nodiscard]] int32_t getMinValue() const override { return 0; }
++	void readCurrentValue() override { setValue(currentPatch().get(param_)); }
++	void writeCurrentValue() override { currentPatch().set(param_, getValue()); }
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return usedBySound(modControllable, param_);
++	}
++
++private:
++	Patch::Param param_;
 +};
 +
 +/// The LXR voices' drive and decay, which they share with every other engine's on the same pads and gold knobs
@@ -9449,6 +10857,88 @@ index 00000000..dd4151c4
 +		using enum l10n::String;
 +		return {l10n::getView(STRING_FOR_LPF), l10n::getView(STRING_FOR_HPF),
 +		        l10n::getView(STRING_FOR_DRUM_FILTER_BAND), l10n::getView(STRING_FOR_OFF)};
++	}
++};
++
++/// GIN's oscillator wave
++class GinWave final : public Choice {
++public:
++	explicit GinWave(l10n::String name) : Choice(name, Patch::GIN_WAVE) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_SINE), l10n::getView(STRING_FOR_TRIANGLE), l10n::getView(STRING_FOR_SAW)};
++	}
++};
++
++/// What bends GIN's pitch: a decaying sweep, a sine LFO (FM at audio rates), or filtered noise
++class GinModMode final : public Choice {
++public:
++	explicit GinModMode(l10n::String name) : Choice(name, Patch::GIN_MOD_MODE) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_GIN_DECAY), l10n::getView(STRING_FOR_SINE), l10n::getView(STRING_FOR_NOISE)};
++	}
++};
++
++/// GIN's noise envelope: exponential, linear, or modulated (bursts, for claps)
++class GinNoiseEnv final : public Choice {
++public:
++	explicit GinNoiseEnv(l10n::String name) : Choice(name, Patch::GIN_NOISE_ENV) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_GIN_ENV_EXP), l10n::getView(STRING_FOR_LINEAR),
++		        l10n::getView(STRING_FOR_GIN_ENV_MOD)};
++	}
++};
++
++/// Puts any sound of the GIN kits on this row, tuned and set up as in its kit
++class GinSoundSelect final : public Selection {
++public:
++	using Selection::Selection;
++
++	void readCurrentValue() override { setValue(0); }
++	void writeCurrentValue() override {}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		const auto* sound = static_cast<Sound*>(modControllable);
++		return sound->sources[0].oscType == OscType::DRUM_SYNTH
++		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch.engine());
++	}
++	MenuItem* selectButtonPress() override {
++		namespace gin = deluge::dsp::drum_synth::gin;
++		const int32_t choice = std::clamp<int32_t>(getValue(), 0, gin::kNumKits * gin::kNumKitSounds - 1);
++		const int32_t row = choice % gin::kNumKitSounds;
++		const gin::KitSound& sound = gin::kKits[choice / gin::kNumKitSounds].sounds[row];
++		applyRowSetup(deluge::dsp::drum_synth::rowSetupForGinSound(sound, row == gin::HAT1 || row == gin::HAT2));
++		currentPatch().setGinSound(sound);
++		setControls(deluge::dsp::drum_synth::ginControlsFor(sound));
++		setDrumKnobs(*soundEditor.currentSound, Engine::GIN);
++		soundEditor.markInstrumentAsEdited();
++		display->displayPopup(l10n::get(l10n::String::STRING_FOR_GIN_SOUND_LOADED));
++		return nullptr; // Back up to the drum synth menu
++	}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		namespace gin = deluge::dsp::drum_synth::gin;
++		// "808 KICK" and so on: kit, then row
++		static constexpr std::array<char const*, gin::kNumKitSounds> kRows{"KICK",  "SNR",   "HAT1", "HAT2",
++		                                                                   "PERC1", "PERC2", "CLAP", "OTHER"};
++		static std::array<std::array<char, 12>, gin::kNumKits * gin::kNumKitSounds> names{};
++		deluge::vector<std::string_view> options;
++		for (int32_t i = 0; i < gin::kNumKits * gin::kNumKitSounds; i++) {
++			if (names[i][0] == 0) {
++				snprintf(names[i].data(), names[i].size(), "%s %s", gin::kKits[i / gin::kNumKitSounds].name,
++				         kRows[i % gin::kNumKitSounds]);
++			}
++			options.emplace_back(names[i].data());
++		}
++		return options;
 +	}
 +};
 +
@@ -10064,7 +11554,7 @@ index 00000000..bb20e681
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/synth_mode.h b/src/deluge/gui/menu_item/synth_mode.h
-index 02acbd45..34a34a9d 100644
+index 02acbd45..279293c3 100644
 --- a/src/deluge/gui/menu_item/synth_mode.h
 +++ b/src/deluge/gui/menu_item/synth_mode.h
 @@ -16,6 +16,7 @@
@@ -10075,7 +11565,7 @@ index 02acbd45..34a34a9d 100644
  #include "gui/menu_item/selection.h"
  #include "gui/ui/sound_editor.h"
  #include "gui/views/view.h"
-@@ -25,24 +26,139 @@
+@@ -25,24 +26,140 @@
  #include "processing/sound/sound_drum.h"
  
  namespace deluge::gui::menu_item {
@@ -10178,7 +11668,7 @@ index 02acbd45..34a34a9d 100644
 +		if (!kitRow) {
 +			list.push_back({K::TB303, ::SynthMode::TB303, Engine::DRUM, 0, STRING_FOR_TB303});
 +		}
-+		static constexpr std::array<Entry, 17> kDrumEngines{{
++		static constexpr std::array<Entry, 18> kDrumEngines{{
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::DRUM, 0, STRING_FOR_DRUM_ENGINE_DRUM},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::SNARE, 0, STRING_FOR_DRUM_ENGINE_SNARE},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::METAL, 0, STRING_FOR_DRUM_ENGINE_METAL},
@@ -10196,6 +11686,7 @@ index 02acbd45..34a34a9d 100644
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::CYC_CHORD, 0, STRING_FOR_DRUM_ENGINE_CYC_CHORD},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::VTG_SNR, 0, STRING_FOR_DRUM_ENGINE_VTG_SNR},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::CLAP_ENG, 0, STRING_FOR_DRUM_ENGINE_CLAP_ENG},
++		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::GIN, 0, STRING_FOR_DRUM_ENGINE_GIN},
 +		}};
 +		for (const Entry& e : kDrumEngines) {
 +			list.push_back(e);
@@ -10219,7 +11710,7 @@ index 02acbd45..34a34a9d 100644
  					if (soundDrum->sources[0].oscType <= kLastRingmoddableOscType
  					    && soundDrum->sources[1].oscType <= kLastRingmoddableOscType) {
  						soundDrum->setSynthMode(current_value, currentSong);
-@@ -51,25 +167,15 @@ public:
+@@ -51,25 +168,15 @@ public:
  			}
  		}
  		// Or, the normal case of just one sound
@@ -10341,7 +11832,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..32611793 100644
+index 7bbd559f..d5e0dc87 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -10498,7 +11989,7 @@ index 7bbd559f..32611793 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1520,360 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,6 +1520,426 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -10553,6 +12044,24 @@ index 7bbd559f..32611793 100644
 +PLACE_SDRAM_BSS drum_synth::LxrCommonControl lxrDriveMenu{STRING_FOR_XIA_DRIVE, XiaSlot::LXR_DRIVE};
 +PLACE_SDRAM_BSS drum_synth::LxrCommonControl lxrDecayMenu{STRING_FOR_XIA_DECAY, XiaSlot::COMMON_DECAY};
 +PLACE_SDRAM_BSS drum_synth::SnappyDecay drumSnappyDecayMenu{STRING_FOR_DRUM_SNAPPY_DECAY};
++PLACE_SDRAM_BSS drum_synth::GinSoundSelect ginSoundMenu{STRING_FOR_GIN_SOUND};
++PLACE_SDRAM_BSS drum_synth::GinWave ginWaveMenu{STRING_FOR_GIN_WAVE};
++PLACE_SDRAM_BSS drum_synth::GinControl ginToneAttackMenu{STRING_FOR_GIN_TONE_ATTACK, XiaSlot::GIN_TONE_ATTACK};
++PLACE_SDRAM_BSS drum_synth::GinControl ginToneDecayMenu{STRING_FOR_GIN_TONE_DECAY, XiaSlot::GIN_TONE_DECAY};
++PLACE_SDRAM_BSS drum_synth::GinModMode ginModModeMenu{STRING_FOR_GIN_MOD_MODE};
++PLACE_SDRAM_BSS drum_synth::GinControl ginModRateMenu{STRING_FOR_GIN_MOD_RATE, XiaSlot::GIN_MOD_RATE};
++PLACE_SDRAM_BSS drum_synth::GinControl ginModAmountMenu{STRING_FOR_GIN_MOD_AMOUNT, XiaSlot::GIN_MOD_AMOUNT};
++PLACE_SDRAM_BSS drum_synth::GinControl ginMixMenu{STRING_FOR_GIN_MIX, XiaSlot::GIN_MIX};
++PLACE_SDRAM_BSS drum_synth::GinControl ginNoiseFreqMenu{STRING_FOR_GIN_NOISE_FREQ, XiaSlot::GIN_NOISE_FREQ};
++PLACE_SDRAM_BSS drum_synth::GinControl ginNoiseResMenu{STRING_FOR_GIN_NOISE_RES, XiaSlot::GIN_NOISE_RES};
++PLACE_SDRAM_BSS drum_synth::GinNoiseEnv ginNoiseEnvMenu{STRING_FOR_GIN_NOISE_ENV};
++PLACE_SDRAM_BSS drum_synth::GinControl ginNoiseAttackMenu{STRING_FOR_GIN_NOISE_ATTACK, XiaSlot::GIN_NOISE_ATTACK};
++PLACE_SDRAM_BSS drum_synth::GinControl ginNoiseDecayMenu{STRING_FOR_GIN_NOISE_DECAY, XiaSlot::GIN_NOISE_DECAY};
++PLACE_SDRAM_BSS drum_synth::GinControl ginDriveMenu{STRING_FOR_XIA_DRIVE, XiaSlot::GIN_DRIVE};
++PLACE_SDRAM_BSS drum_synth::GinControl ginDecayMenu{STRING_FOR_GIN_DECAY, XiaSlot::COMMON_DECAY};
++PLACE_SDRAM_BSS drum_synth::GinNumber ginEqFreqMenu{STRING_FOR_GIN_EQ_FREQ, DrumParam::GIN_EQ_FREQ};
++PLACE_SDRAM_BSS drum_synth::GinNumber ginEqGainMenu{STRING_FOR_GIN_EQ_GAIN, DrumParam::GIN_EQ_GAIN};
++PLACE_SDRAM_BSS drum_synth::GinNumber ginLevelMenu{STRING_FOR_GIN_LEVEL, DrumParam::GIN_LEVEL};
 +// Items the current engine doesn't use hide themselves
 +PLACE_SDRAM_BSS menu_item::Submenu drumSynthMenu{
 +    STRING_FOR_DRUM_SYNTH,
@@ -10571,7 +12080,13 @@ index 7bbd559f..32611793 100644
 +        &cycMacro2Menu,          &cycMacro3Menu,       &cycMacro4Menu,
 +        &cycDecayMenu,           &cycDriveMenu,        &lxrDriveMenu,
 +        &lxrDecayMenu,           &xiaDriveMenu,        &xiaDecayMenu,
-+        &xiaPunchMenu,           &drumSnappyDecayMenu,
++        &xiaPunchMenu,           &ginSoundMenu,        &ginWaveMenu,
++        &ginToneAttackMenu,      &ginToneDecayMenu,    &ginModModeMenu,
++        &ginModRateMenu,         &ginModAmountMenu,    &ginMixMenu,
++        &ginNoiseFreqMenu,       &ginNoiseResMenu,     &ginNoiseEnvMenu,
++        &ginNoiseAttackMenu,     &ginNoiseDecayMenu,   &ginDriveMenu,
++        &ginDecayMenu,           &ginEqFreqMenu,       &ginEqGainMenu,
++        &ginLevelMenu,           &drumSnappyDecayMenu,
 +    },
 +};
 +
@@ -10676,6 +12191,25 @@ index 7bbd559f..32611793 100644
 +    {&source0TransposeMenu, DrumKind::NUMBER, DrumGroup::SOUND, -2400, 2400, 100, 100},
 +    {&lpfFreqMenu, DrumKind::NUMBER, DrumGroup::SOUND},
 +    {&hpfFreqMenu, DrumKind::NUMBER, DrumGroup::SOUND},
++}};
++// GIN: the tone, its pitch modulation, the noise layer, then drive, decay and tuning
++PLACE_SDRAM_DATA std::array<DrumColumn, 16> drumEditorGinLayout{{
++    {&ginWaveMenu, DrumKind::CHOICE, DrumGroup::OSC},
++    {&ginToneAttackMenu, DrumKind::NUMBER, DrumGroup::OSC},
++    {&ginToneDecayMenu, DrumKind::NUMBER, DrumGroup::OSC},
++    {&ginModModeMenu, DrumKind::CHOICE, DrumGroup::PITCH},
++    {&ginModRateMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ginModAmountMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ginMixMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&drumNoiseFilterMenu, DrumKind::CHOICE, DrumGroup::NOISE},
++    {&ginNoiseFreqMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&ginNoiseResMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&ginNoiseEnvMenu, DrumKind::CHOICE, DrumGroup::NOISE},
++    {&ginNoiseAttackMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&ginNoiseDecayMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&ginDriveMenu, DrumKind::NUMBER, DrumGroup::TRANSIENT},
++    {&ginDecayMenu, DrumKind::NUMBER, DrumGroup::XIA_ENVELOPE},
++    {&source0TransposeMenu, DrumKind::NUMBER, DrumGroup::SOUND, -2400, 2400, 100, 100},
 +}};
 +
 +// Drum synth shortcut pads. One layout for every drum engine, read the way the grid is printed. Only the four
@@ -10821,6 +12355,29 @@ index 7bbd559f..32611793 100644
 +    {DrumEngine::CLAP_ENG, kPadOsc2, LEVEL, &cycMacro2Menu},      // Balance: tail against claps
 +    {DrumEngine::CLAP_ENG, kPadOsc2, TRANSPOSE, &cycMacro3Menu},  // Spacing crunch: gap between claps
 +    {DrumEngine::CLAP_ENG, kPadOsc2, WAVE_INDEX, &cycMacro4Menu}, // Body envelope: tail decay
++
++    // GIN: OSC1 the tone, OSC2 the noise layer, MOD1 the EQ and the tone's own decay, MOD2 the pitch modulation. No
++    // drive switch, so OSC1 FEEDBACK is the drive amount, as on the LXR voices. OSC1 WAVE INDEX moves both decays.
++    {DrumEngine::GIN, kPadOsc1, FEEDBACK, &ginDriveMenu},
++    {DrumEngine::GIN, kPadOsc1, WAVE_INDEX, &ginDecayMenu},
++    {DrumEngine::GIN, kPadOsc1, PULSE_WIDTH, &ginWaveMenu},
++    {DrumEngine::GIN, kPadOsc1, RETRIGGER, &ginToneAttackMenu},
++    {DrumEngine::GIN, kPadOsc1, LEVEL, &ginLevelMenu},
++    {DrumEngine::GIN, kPadOsc1, NOISE, &ginMixMenu},
++    {DrumEngine::GIN, kPadOsc2, LEVEL, &ginMixMenu},
++    {DrumEngine::GIN, kPadOsc2, TRANSPOSE, &ginNoiseFreqMenu},
++    {DrumEngine::GIN, kPadOsc2, TYPE, &drumNoiseFilterMenu},
++    {DrumEngine::GIN, kPadOsc2, PULSE_WIDTH, &ginNoiseEnvMenu},
++    {DrumEngine::GIN, kPadOsc2, RETRIGGER, &ginNoiseAttackMenu},
++    {DrumEngine::GIN, kPadOsc2, FEEDBACK, &ginNoiseResMenu},
++    {DrumEngine::GIN, kPadOsc2, WAVE_INDEX, &ginNoiseDecayMenu},
++    {DrumEngine::GIN, kPadMod1, LEVEL, &ginEqGainMenu},
++    {DrumEngine::GIN, kPadMod1, TRANSPOSE, &ginEqFreqMenu},
++    {DrumEngine::GIN, kPadMod1, WAVE_INDEX, &ginToneDecayMenu},
++    {DrumEngine::GIN, kPadMod2, LEVEL, &ginModAmountMenu},
++    {DrumEngine::GIN, kPadMod2, TYPE, &ginModModeMenu},
++    {DrumEngine::GIN, kPadMod2, WAVE_INDEX, &ginModRateMenu},
++    SWEEP_PADS(DrumEngine::GIN, &ginModRateMenu, &ginModAmountMenu),
 +};
 +#undef LXR_COMMON_PADS
 +#undef LXR_PITCH_PADS
@@ -10853,13 +12410,13 @@ index 7bbd559f..32611793 100644
 +namespace deluge::gui::menu_item::drum_synth {
 +PLACE_SDRAM_BSS Editor drumSynthEditor{STRING_FOR_DRUM_SYNTH, drumEditorDrumLayout, drumEditorSnareLayout,
 +                                       drumEditorMetalLayout, drumEditorTiaLayout,  drumEditorIiaLayout,
-+                                       drumEditorCycLayout,   &drumSynthMenu};
++                                       drumEditorCycLayout,   drumEditorGinLayout,  &drumSynthMenu};
 +} // namespace deluge::gui::menu_item::drum_synth
 +
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1477,6 +1882,62 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
+@@ -1477,6 +1948,62 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
  
  // Synth only
  PLACE_SDRAM_BSS SynthModeSelection synthModeMenu{STRING_FOR_SYNTH_MODE};
@@ -10922,7 +12479,7 @@ index 7bbd559f..32611793 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +1979,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2045,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -10934,7 +12491,7 @@ index 7bbd559f..32611793 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2008,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2074,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -10943,7 +12500,7 @@ index 7bbd559f..32611793 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2017,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2083,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -10952,7 +12509,7 @@ index 7bbd559f..32611793 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2171,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2237,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -10962,7 +12519,7 @@ index 7bbd559f..32611793 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2304,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2370,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -10971,7 +12528,7 @@ index 7bbd559f..32611793 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2360,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2426,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -10980,7 +12537,7 @@ index 7bbd559f..32611793 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2382,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2448,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -10988,7 +12545,7 @@ index 7bbd559f..32611793 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2425,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2491,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -11022,7 +12579,7 @@ index 7bbd559f..32611793 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2496,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2562,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -11031,7 +12588,7 @@ index 7bbd559f..32611793 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2520,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2586,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -11526,7 +13083,7 @@ index 0a42de35..e2c802c3 100644
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 4f8f5ec2..cb01cf6e 100644
+index 4f8f5ec2..9743e018 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -20,12 +20,15 @@
@@ -11800,7 +13357,7 @@ index 4f8f5ec2..cb01cf6e 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1755,6 +1907,132 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1755,6 +1907,137 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -11852,8 +13409,8 @@ index 4f8f5ec2..cb01cf6e 100644
 +
 +namespace {
 +/// The soft tint on a preset kit row's audition pad: blue for the Cyc engines, orange for the LXR voices, green for
-+/// DXIA and DIIA, by the engine the row plays now. A preset row put back on a sample keeps its kit's colour. Rows added
-+/// to the kit any other way aren't tinted (returns false).
++/// DXIA and DIIA, pink for GIN, by the engine the row plays now. A preset row put back on a sample keeps its kit's
++/// colour. Rows added to the kit any other way aren't tinted (returns false).
 +bool presetRowTint(Drum* drum, RGB* tint) {
 +	using deluge::dsp::drum_synth::PresetKit;
 +	if (drum == nullptr || drum->type != DrumType::SOUND) {
@@ -11866,14 +13423,18 @@ index 4f8f5ec2..cb01cf6e 100644
 +	constexpr RGB kBlue{0, 60, 255};
 +	constexpr RGB kOrange{255, 70, 0};
 +	constexpr RGB kGreen{0, 255, 40};
++	constexpr RGB kPink{255, 0, 120};
 +	if (soundDrum->sources[0].oscType == OscType::DRUM_SYNTH) {
 +		const auto engine = soundDrum->sources[0].drumPatch.engine();
 +		*tint = deluge::dsp::drum_synth::isCyc(engine)   ? kBlue
 +		        : deluge::dsp::drum_synth::isXia(engine) ? kGreen
++		        : deluge::dsp::drum_synth::isGin(engine) ? kPink
 +		                                                 : kOrange;
 +	}
 +	else {
-+		*tint = (soundDrum->presetKit == PresetKit::CYCLES) ? kBlue : kOrange;
++		*tint = (soundDrum->presetKit == PresetKit::CYCLES) ? kBlue
++		        : (soundDrum->presetKit == PresetKit::GIN)  ? kPink
++		                                                    : kOrange;
 +	}
 +	return true;
 +}
@@ -11923,9 +13484,10 @@ index 4f8f5ec2..cb01cf6e 100644
 +	if (firstDrum != nullptr) {
 +		setSelectedDrum(firstDrum, true);
 +	}
-+	display->consoleText(deluge::l10n::get((type == PresetKit::CYCLES)
-+	                                           ? deluge::l10n::String::STRING_FOR_NEW_CYCLES_KIT_CREATED
-+	                                           : deluge::l10n::String::STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED));
++	display->consoleText(
++	    deluge::l10n::get((type == PresetKit::CYCLES) ? deluge::l10n::String::STRING_FOR_NEW_CYCLES_KIT_CREATED
++	                      : (type == PresetKit::GIN)  ? deluge::l10n::String::STRING_FOR_NEW_GIN_KIT_CREATED
++	                                                  : deluge::l10n::String::STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED));
 +	uiNeedsRendering(this);
 +	return true;
 +}
@@ -11933,7 +13495,7 @@ index 4f8f5ec2..cb01cf6e 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1774,6 +2052,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1774,6 +2057,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -11955,7 +13517,7 @@ index 4f8f5ec2..cb01cf6e 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2585,9 +2878,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2585,9 +2883,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -11974,7 +13536,7 @@ index 4f8f5ec2..cb01cf6e 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -4935,6 +5237,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4935,6 +5242,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -12000,7 +13562,7 @@ index 4f8f5ec2..cb01cf6e 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5398,6 +5719,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5398,6 +5724,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -12012,7 +13574,7 @@ index 4f8f5ec2..cb01cf6e 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -6283,6 +6609,11 @@ drawNormally:
+@@ -6283,6 +6614,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -12024,7 +13586,7 @@ index 4f8f5ec2..cb01cf6e 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6393,6 +6724,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6393,6 +6729,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -12032,7 +13594,7 @@ index 4f8f5ec2..cb01cf6e 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6408,6 +6740,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6408,6 +6745,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -12046,7 +13608,7 @@ index 4f8f5ec2..cb01cf6e 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -7548,6 +7887,16 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7548,6 +7892,16 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -12063,7 +13625,7 @@ index 4f8f5ec2..cb01cf6e 100644
  	if (!image) {
  		return true;
  	}
-@@ -7607,6 +7956,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7607,6 +7961,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -12073,7 +13635,7 @@ index 4f8f5ec2..cb01cf6e 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7655,6 +8007,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7655,6 +8012,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -12086,7 +13648,7 @@ index 4f8f5ec2..cb01cf6e 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8376,3 +8734,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8376,3 +8739,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -13487,10 +15049,10 @@ index 7614919a..9d72101f 100644
  	Drum* getPrevDrum(Drum* fromSoundSource);
 diff --git a/src/deluge/model/instrument/preset_kit.cpp b/src/deluge/model/instrument/preset_kit.cpp
 new file mode 100644
-index 00000000..f5166a06
+index 00000000..8deb0093
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.cpp
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,252 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -13520,6 +15082,7 @@ index 00000000..f5166a06
 +#include "processing/sound/sound_drum.h"
 +#include "storage/storage_manager.h"
 +#include "util/d_string.h"
++#include <algorithm>
 +#include <array>
 +
 +namespace deluge::preset_kit {
@@ -13546,17 +15109,50 @@ index 00000000..f5166a06
 +    {Preset::KICK, Engine::CYC_PERC, "PERC"},
 +    {Preset::KICK, Engine::CYC_CHORD, "CHORD"},
 +}};
++// GIN's eight: the hats choke each other
++constexpr std::array<Row, dsp::drum_synth::gin::kNumKitSounds> kGinRows{{
++    {Preset::KICK, Engine::GIN, "KICK", dsp::drum_synth::gin::KICK},
++    {Preset::KICK, Engine::GIN, "SNR", dsp::drum_synth::gin::SNARE},
++    {Preset::KICK, Engine::GIN, "HAT1", dsp::drum_synth::gin::HAT1},
++    {Preset::KICK, Engine::GIN, "HAT2", dsp::drum_synth::gin::HAT2},
++    {Preset::KICK, Engine::GIN, "PERC1", dsp::drum_synth::gin::PERC1},
++    {Preset::KICK, Engine::GIN, "PERC2", dsp::drum_synth::gin::PERC2},
++    {Preset::KICK, Engine::GIN, "CLAP", dsp::drum_synth::gin::CLAP},
++    {Preset::KICK, Engine::GIN, "OTHER", dsp::drum_synth::gin::OTHER},
++}};
 +} // namespace
 +
 +std::span<const Row> rowsFor(PresetKit kit) {
-+	return (kit == PresetKit::CYCLES) ? std::span<const Row>{kCyclesRows} : std::span<const Row>{kLxrRows};
++	switch (kit) {
++	case PresetKit::CYCLES:
++		return kCyclesRows;
++	case PresetKit::GIN:
++		return kGinRows;
++	default:
++		return kLxrRows;
++	}
 +}
 +
 +char const* folderFor(PresetKit kit) {
-+	return (kit == PresetKit::CYCLES) ? "KITS/CYCLES" : "KITS/LXR";
++	switch (kit) {
++	case PresetKit::CYCLES:
++		return "KITS/CYCLES";
++	case PresetKit::GIN:
++		return "KITS/GIN";
++	default:
++		return "KITS/LXR";
++	}
 +}
 +
-+SoundDrum* makeDrum(const Row& row, PresetKit kit, ParamManagerForTimeline& paramManager) {
++int32_t numBuiltInKits(PresetKit kit) {
++	return (kit == PresetKit::GIN) ? dsp::drum_synth::gin::kNumKits : 1;
++}
++
++char const* builtInKitName(PresetKit kit, int32_t index) {
++	return dsp::drum_synth::gin::kKits[std::clamp<int32_t>(index, 0, dsp::drum_synth::gin::kNumKits - 1)].name;
++}
++
++SoundDrum* makeDrum(const Row& row, PresetKit kit, ParamManagerForTimeline& paramManager, int32_t builtInKit) {
 +	void* memory = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(SoundDrum));
 +	if (memory == nullptr) {
 +		return nullptr;
@@ -13567,7 +15163,16 @@ index 00000000..f5166a06
 +	}
 +	Sound::initParams(&paramManager);
 +	auto* drum = new (memory) SoundDrum();
-+	drum->setupAsDrumSynth(&paramManager, row.preset, row.cycEngine);
++	if (row.ginRow >= 0) {
++		const auto& kitSounds =
++		    dsp::drum_synth::gin::kKits[std::clamp<int32_t>(builtInKit, 0, dsp::drum_synth::gin::kNumKits - 1)].sounds;
++		const bool hat = row.ginRow == dsp::drum_synth::gin::HAT1 || row.ginRow == dsp::drum_synth::gin::HAT2;
++		drum->setupAsDrumSynth(&paramManager, row.preset, row.cycEngine, &kitSounds[row.ginRow], hat);
++		// The kit's balance is in each sound's GIN level; the row volume stays where the Deluge starts it
++	}
++	else {
++		drum->setupAsDrumSynth(&paramManager, row.preset, row.cycEngine);
++	}
 +	drum->presetKit = kit;
 +	drum->drumName = row.name;
 +	return drum;
@@ -13702,10 +15307,10 @@ index 00000000..f5166a06
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/preset_kit.h b/src/deluge/model/instrument/preset_kit.h
 new file mode 100644
-index 00000000..021c6600
+index 00000000..b48b6058
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.h
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,82 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -13735,9 +15340,10 @@ index 00000000..021c6600
 +class ParamManagerForTimeline;
 +class SoundDrum;
 +
-+/// The preset kits SHIFT + KIT makes (LXR, Cycles), and their presets: ordinary kit files saved into KITS/LXR or
-+/// KITS/CYCLES. A preset only replaces the sounds of a kit's preset rows, in order from the bottom, so the pattern and
-+/// any rows added to the kit stay as they are.
++/// The preset kits SHIFT + KIT makes (LXR, Cycles, GIN), and their presets: ordinary kit files saved into KITS/LXR,
++/// KITS/CYCLES or KITS/GIN. GIN also has sixteen kits built in (see dsp/drum_synth/gin_kits.h). A preset only replaces
++/// the sounds of a kit's preset rows, in order from the bottom, so the pattern and any rows added to the kit stay as
++/// they are.
 +namespace deluge::preset_kit {
 +
 +using dsp::drum_synth::PresetKit;
@@ -13747,6 +15353,7 @@ index 00000000..021c6600
 +	dsp::drum_synth::Preset preset;
 +	dsp::drum_synth::Engine cycEngine; ///< NUM_ENGINES for an LXR voice
 +	char const* name;
++	int8_t ginRow = -1; ///< On a GIN kit, which of its kit sounds the row plays
 +};
 +
 +/// The rows a preset kit starts with, bottom row first
@@ -13755,8 +15362,16 @@ index 00000000..021c6600
 +/// Where a preset kit's presets are saved on the card
 +char const* folderFor(PresetKit kit);
 +
-+/// A new sound for a preset kit row, with its param manager set up in paramManager. nullptr if out of RAM.
-+SoundDrum* makeDrum(const Row& row, PresetKit kit, ParamManagerForTimeline& paramManager);
++/// The number of kits built into the firmware for a preset kit: GIN's sixteen, or for the others just the one SHIFT +
++/// KIT makes
++int32_t numBuiltInKits(PresetKit kit);
++
++/// The name of a built in kit
++char const* builtInKitName(PresetKit kit, int32_t index);
++
++/// A new sound for a preset kit row, with its param manager set up in paramManager. nullptr if out of RAM. builtInKit:
++/// which built in kit a GIN row takes its sound from.
++SoundDrum* makeDrum(const Row& row, PresetKit kit, ParamManagerForTimeline& paramManager, int32_t builtInKit = 0);
 +
 +/// The preset kit a kit was made as, from its rows, or NONE
 +PresetKit typeOf(Kit* kit);
@@ -16813,10 +18428,10 @@ index 9eca346b..8ddedad0 100644
  	void setCVTranspose(uint8_t channel, int32_t semitones, int32_t cents);
 diff --git a/src/deluge/processing/sound/drum_synth_params.h b/src/deluge/processing/sound/drum_synth_params.h
 new file mode 100644
-index 00000000..dad16774
+index 00000000..62078d48
 --- /dev/null
 +++ b/src/deluge/processing/sound/drum_synth_params.h
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,148 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -16935,9 +18550,38 @@ index 00000000..dad16774
 +	}
 +}
 +
++/// What GIN calls the setting on a control slot
++inline deluge::l10n::String ginKnobName(int32_t slot) {
++	using enum deluge::l10n::String;
++	switch (slot) {
++	case DrumControls::GIN_MIX:
++		return STRING_FOR_GIN_MIX;
++	case DrumControls::GIN_NOISE_FREQ:
++		return STRING_FOR_GIN_NOISE_FREQ;
++	case DrumControls::GIN_MOD_RATE:
++		return STRING_FOR_GIN_MOD_RATE;
++	case DrumControls::GIN_MOD_AMOUNT:
++		return STRING_FOR_GIN_MOD_AMOUNT;
++	case DrumControls::GIN_DRIVE:
++		return STRING_FOR_XIA_DRIVE;
++	case DrumControls::GIN_NOISE_DECAY:
++		return STRING_FOR_GIN_NOISE_DECAY;
++	case DrumControls::GIN_NOISE_RES:
++		return STRING_FOR_GIN_NOISE_RES;
++	case DrumControls::GIN_NOISE_ATTACK:
++		return STRING_FOR_GIN_NOISE_ATTACK;
++	case DrumControls::GIN_TONE_ATTACK:
++		return STRING_FOR_GIN_TONE_ATTACK;
++	case DrumControls::COMMON_DECAY:
++		return STRING_FOR_GIN_DECAY;
++	default:
++		return STRING_FOR_GIN_TONE_DECAY;
++	}
++}
++
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..55672a63 100644
+index 8dd1ce44..6d39390b 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -16964,23 +18608,32 @@ index 8dd1ce44..55672a63 100644
  	patchedParams->params[params::LOCAL_NOISE_VOLUME].setCurrentValueBasicForSetup(-2147483648);
  	patchedParams->params[params::GLOBAL_MOD_FX_DEPTH].setCurrentValueBasicForSetup(0);
  	patchedParams->params[params::GLOBAL_MOD_FX_RATE].setCurrentValueBasicForSetup(0);
-@@ -221,6 +227,78 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
+@@ -221,6 +227,89 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
  	doneReadingFromFile();
  }
  
 +void Sound::setupAsDrumSynth(ParamManagerForTimeline* paramManager, deluge::dsp::drum_synth::Preset preset,
-+                             deluge::dsp::drum_synth::Engine cycEngine) {
++                             deluge::dsp::drum_synth::Engine cycEngine,
++                             const deluge::dsp::drum_synth::gin::KitSound* ginSound, bool ginChoke) {
 +	using deluge::dsp::drum_synth::Preset;
++	const bool gin = ginSound != nullptr || deluge::dsp::drum_synth::isGin(cycEngine);
 +	const bool cyc = deluge::dsp::drum_synth::isCyc(cycEngine);
++	const deluge::dsp::drum_synth::gin::KitSound& ginKitSound =
++	    (ginSound != nullptr) ? *ginSound : deluge::dsp::drum_synth::gin::defaultSound();
 +
 +	const deluge::dsp::drum_synth::RowSetup row =
-+	    cyc ? deluge::dsp::drum_synth::rowSetupForEngine(cycEngine) : deluge::dsp::drum_synth::rowSetupFor(preset);
++	    gin   ? deluge::dsp::drum_synth::rowSetupForGinSound(ginKitSound, ginChoke)
++	    : cyc ? deluge::dsp::drum_synth::rowSetupForEngine(cycEngine)
++	          : deluge::dsp::drum_synth::rowSetupFor(preset);
 +
 +	polyphonic = row.choke ? PolyphonyMode::CHOKE : PolyphonyMode::AUTO;
 +	lpfMode = FilterMode::TRANSISTOR_24DB;
 +
 +	sources[0].oscType = OscType::DRUM_SYNTH;
-+	if (cyc) {
++	if (gin) {
++		sources[0].drumPatch.setGinSound(ginKitSound);
++	}
++	else if (cyc) {
 +		sources[0].drumPatch.setCycPreset(cycEngine);
 +	}
 +	else {
@@ -16989,6 +18642,7 @@ index 8dd1ce44..55672a63 100644
 +	sources[0].drumPatch.set(deluge::dsp::drum_synth::Patch::SNAPPY_DECAY,
 +	                         deluge::dsp::drum_synth::snappyByDefault(sources[0].drumPatch.engine()) ? 1 : 0);
 +	sources[0].transpose = row.transpose;
++	sources[0].setCents(row.cents);
 +	sources[1].oscType = OscType::SINE;
 +
 +	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
@@ -17011,7 +18665,8 @@ index 8dd1ce44..55672a63 100644
 +	}
 +
 +	// The engine's continuous settings live on Deluge params
-+	const auto controls = deluge::dsp::drum_synth::controlsFromPatch(sources[0].drumPatch);
++	const auto controls = gin ? deluge::dsp::drum_synth::ginControlsFor(ginKitSound)
++	                          : deluge::dsp::drum_synth::controlsFromPatch(sources[0].drumPatch);
 +	for (int32_t i = 0; i < deluge::dsp::drum_synth::DrumControls::NUM_SLOTS; i++) {
 +		patchedParams->params[deluge::dsp::drum_synth::kDrumControlParams[i]].setCurrentValueBasicForSetup(
 +		    controls.values[i]);
@@ -17043,7 +18698,7 @@ index 8dd1ce44..55672a63 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -259,7 +337,23 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
+@@ -259,7 +348,23 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -17067,7 +18722,7 @@ index 8dd1ce44..55672a63 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +419,203 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +430,211 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -17117,6 +18772,11 @@ index 8dd1ce44..55672a63 100644
 +		break;
 +	case Engine::IIA:
 +		layout = {DrumControls::IIA_SHAPE, DrumControls::IIA_STRIKE, DrumControls::IIA_WEIGHT, DrumControls::IIA_ALLOY};
++		break;
++	case Engine::GIN:
++		// The pitch modulation, then the tone / noise mix and the noise filter, as on GIN's own front panel
++		layout = {DrumControls::GIN_MOD_RATE, DrumControls::GIN_MOD_AMOUNT, DrumControls::GIN_MIX,
++		          DrumControls::GIN_NOISE_FREQ};
 +		break;
 +	default:
 +		// The Cyc engines: Sweep / Contour, Color / Shape
@@ -17187,6 +18847,9 @@ index 8dd1ce44..55672a63 100644
 +	}
 +
 +	const auto engine = sources[0].drumPatch.engine();
++	if (deluge::dsp::drum_synth::isGin(engine)) {
++		return deluge::l10n::get(deluge::dsp::drum_synth::ginKnobName(slot));
++	}
 +	if (deluge::dsp::drum_synth::isCyc(engine)) {
 +		return (slot <= DrumControls::CYC_DRIVE || slot == DrumControls::COMMON_DECAY)
 +		           ? deluge::l10n::get(deluge::dsp::drum_synth::cycKnobName(engine, slot))
@@ -17271,7 +18934,7 @@ index 8dd1ce44..55672a63 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +726,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +745,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -17281,7 +18944,7 @@ index 8dd1ce44..55672a63 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1543,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1562,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -17293,7 +18956,7 @@ index 8dd1ce44..55672a63 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1514,7 +1813,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1832,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -17303,7 +18966,7 @@ index 8dd1ce44..55672a63 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +1946,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +1965,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -17322,7 +18985,7 @@ index 8dd1ce44..55672a63 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1865,6 +2175,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2194,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -17339,7 +19002,7 @@ index 8dd1ce44..55672a63 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2247,11 @@ justSwitchOff:
+@@ -1927,6 +2266,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -17351,7 +19014,7 @@ index 8dd1ce44..55672a63 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2501,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2520,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -17360,7 +19023,7 @@ index 8dd1ce44..55672a63 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2710,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2729,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -17373,7 +19036,7 @@ index 8dd1ce44..55672a63 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2496,18 +2827,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2846,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -17404,7 +19067,7 @@ index 8dd1ce44..55672a63 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2857,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2876,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -17424,7 +19087,7 @@ index 8dd1ce44..55672a63 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2885,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2904,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -17436,7 +19099,7 @@ index 8dd1ce44..55672a63 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +2953,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +2972,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -17445,7 +19108,7 @@ index 8dd1ce44..55672a63 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3239,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3258,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -17481,7 +19144,7 @@ index 8dd1ce44..55672a63 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3345,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3364,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -17497,7 +19160,7 @@ index 8dd1ce44..55672a63 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3422,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3441,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -17518,7 +19181,7 @@ index 8dd1ce44..55672a63 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3480,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3499,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -17611,7 +19274,7 @@ index 8dd1ce44..55672a63 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3679,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3698,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -17620,7 +19283,7 @@ index 8dd1ce44..55672a63 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3872,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3891,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -17642,7 +19305,7 @@ index 8dd1ce44..55672a63 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3906,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3925,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -17653,7 +19316,7 @@ index 8dd1ce44..55672a63 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4120,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4139,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -17663,7 +19326,7 @@ index 8dd1ce44..55672a63 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4247,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4266,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -17675,7 +19338,7 @@ index 8dd1ce44..55672a63 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4341,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4360,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -17690,7 +19353,7 @@ index 8dd1ce44..55672a63 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4531,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4550,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -17711,7 +19374,7 @@ index 8dd1ce44..55672a63 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4624,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4643,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -17723,7 +19386,7 @@ index 8dd1ce44..55672a63 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4643,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4662,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -17733,7 +19396,7 @@ index 8dd1ce44..55672a63 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4694,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4713,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -17743,7 +19406,7 @@ index 8dd1ce44..55672a63 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +4956,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +4975,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -17766,7 +19429,7 @@ index 8dd1ce44..55672a63 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5479,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5498,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -17777,7 +19440,7 @@ index 8dd1ce44..55672a63 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 9d2550b6..84daaab6 100644
+index 9d2550b6..8fc6891b 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
 @@ -18,6 +18,7 @@
@@ -17824,13 +19487,15 @@ index 9d2550b6..84daaab6 100644
  	bool setModFXType(ModFXType newType) final;
  
  	void patchedParamPresetValueChanged(uint8_t p, ModelStackWithSoundFlags* modelStack, int32_t oldValue,
-@@ -237,6 +260,17 @@ public:
+@@ -237,6 +260,19 @@ public:
  
  	virtual bool isDrum() { return false; }
  	void setupAsSample(ParamManagerForTimeline* paramManager);
-+	/// A kit row on an LXR voice from preset, or, given a Cyc engine, on that engine at the note as the Cycles plays it
++	/// A kit row on an LXR voice from preset, or, given a Cyc engine, on that engine at the note as the Cycles plays
++	/// it, or given a GIN kit sound (or Engine::GIN for the default one), on GIN tuned to that sound
 +	void setupAsDrumSynth(ParamManagerForTimeline* paramManager, deluge::dsp::drum_synth::Preset preset,
-+	                      deluge::dsp::drum_synth::Engine cycEngine = deluge::dsp::drum_synth::Engine::NUM_ENGINES);
++	                      deluge::dsp::drum_synth::Engine cycEngine = deluge::dsp::drum_synth::Engine::NUM_ENGINES,
++	                      const deluge::dsp::drum_synth::gin::KitSound* ginSound = nullptr, bool ginChoke = false);
 +	/// The gold knobs every drum synth engine shares, laid out like the Cycles': attack / release = drive / decay, mod
 +	/// rate / depth = the sweep's speed and depth, Custom 2 / Custom 3 = two voicing settings. Any other engine value
 +	/// puts the Deluge's defaults back.
@@ -17842,7 +19507,7 @@ index 9d2550b6..84daaab6 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
-@@ -290,20 +324,36 @@ public:
+@@ -290,20 +326,36 @@ public:
  	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
  	virtual ArpeggiatorBase* getArp() = 0;
  	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
@@ -17884,7 +19549,7 @@ index 9d2550b6..84daaab6 100644
  
  	/// @brief Get the number of active voices
  	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
-@@ -366,6 +416,12 @@ private:
+@@ -366,6 +418,12 @@ private:
  	// we're constantly cycling between a minimum and maximum number of voices.
  	deluge::fast_vector<ActiveVoice> voices_;
  
@@ -19082,25 +20747,25 @@ index 00000000..d801dfee
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 00000000..074abb58
+index 00000000..d3092459
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,293 @@
+@@ -0,0 +1,362 @@
 +---
 +title: Drum Synth
 +---
 +
 +The drum synth is an oscillator type for synthesised drums. It is a port of the drum voices from the open source LXR-02 firmware by Erica Synths, adapted to run inside a Deluge sound. The Deluge's own envelopes, filters, FX, mod matrix, automation and parameter locks all work on top of it.
 +
-+It has sixteen engines and variants, all chosen in **SYNTH MODE**. The first three are ported from the LXR-02:
++It has seventeen engines and variants, all chosen in **SYNTH MODE**. The first three are ported from the LXR-02:
 +
 +- **Kick / tom**: a main oscillator with a pitch envelope, plus a mod oscillator that either frequency modulates it or is mixed with it.
 +- **Snare**: a pitched oscillator with a pitch envelope, plus sample-and-hold noise through its own low, high or band pass filter.
 +- **Cymbal / hat**: a main oscillator frequency modulated by two more oscillators, one of them usually noise.
 +
-+**DXIA** and **DIIA** (three variants each) come from the XIA engine set made for the Elektron Model:Cycles. See [DXIA and DIIA](#dxia-and-diia). The eight **Cyc engines** are modelled on the Model:Cycles machines. See [Cyc engines](#cyc-engines).
++**DXIA** and **DIIA** (three variants each) come from the XIA engine set made for the Elektron Model:Cycles. See [DXIA and DIIA](#dxia-and-diia). The eight **Cyc engines** are modelled on the Model:Cycles machines. See [Cyc engines](#cyc-engines). **GIN** is the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen built in eight-sound kits. See [GIN](#gin).
 +
-+Every engine also has a **transient**: a pitch "snap", a start-phase "offset" click, or one of twelve short click samples.
++Every LXR voice also has a **transient**: a pitch "snap", a start-phase "offset" click, or one of twelve short click samples.
 +
 +## Making a drum synth kit
 +
@@ -19109,22 +20774,23 @@ index 00000000..074abb58
 +   - **Kit**: a normal, sample based kit.
 +   - **LXR**: seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows are in choke mode, so an open hat is cut off by the next closed hat.
 +   - **Cycles**: the Model:Cycles' usual six tracks as Cyc engine rows, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**. They play at the note, as the Cycles does at its default tune.
++   - **GIN**: eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2** (choked by HAT1), **PERC1**, **PERC2**, **CLAP** and **OTHER**, playing GIN's first built in kit (808). Each row is tuned to its sound.
 +
-+The rows a preset kit makes have softly coloured audition pads, by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA (brighter on the selected row). You can add more rows above or below them: tap an empty audition pad and a new row appears there with **SYNTH MODE** open, so you can turn it into any engine, **Sample** or FM straight away (or hold the empty pad and press **LOAD** for a sample, **SYNTH** for a synth preset, **MIDI** or **CV**, as on any kit). Added rows aren't coloured. On a preset kit, **SHIFT + KIT** opens its [Kit presets](#kit-presets); **BACK** from there goes up to the Kit / LXR / Cycles menu, where its own type goes back into its presets. Once a preset kit has rows added, that menu won't swap it for another kit, which would leave the added rows without their sounds: the screen shows **CANT**. Without added rows, swapping keeps the pattern on the rows the new kit fills.
++The rows a preset kit makes have softly coloured audition pads, by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN (brighter on the selected row). You can add more rows above or below them: tap an empty audition pad and a new row appears there with **SYNTH MODE** open, so you can turn it into any engine, **Sample** or FM straight away (or hold the empty pad and press **LOAD** for a sample, **SYNTH** for a synth preset, **MIDI** or **CV**, as on any kit). Added rows aren't coloured. On a preset kit, **SHIFT + KIT** opens its [Kit presets](#kit-presets); **BACK** from there goes up to the Kit / LXR / Cycles / GIN menu, where its own type goes back into its presets. Once a preset kit has rows added, that menu won't swap it for another kit, which would leave the added rows without their sounds: the screen shows **CANT**. Without added rows, swapping keeps the pattern on the rows the new kit fills.
 +
 +Every other engine (Vtg Snr, clap eng, DXIA, DIIA) is a **SYNTH MODE** choice. You can turn any row of any kit, or any synth, into a drum synth: press the **SYNTH MODE** shortcut and choose an engine. That way sampled and synthesised drums can share a kit. See [Choosing an engine](#choosing-an-engine).
 +
 +## Kit presets
 +
-+A preset kit (LXR or Cycles) can swap all its preset rows' sounds at once for a saved preset, with the pattern still playing.
++A preset kit (LXR, Cycles or GIN) can swap all its preset rows' sounds at once for a saved preset, with the pattern still playing.
 +
 +1. On a preset kit, press **SHIFT + KIT**. The **Kit presets** (**PRST**) list opens instead of the New kit menu.
 +2. Turn **SELECT**. Each preset plays on the kit's preset rows straight away; the pattern, its notes and any rows you added stay as they are. The audition pads still play the rows.
-+3. Press **SELECT** (or **KIT**) to keep the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles menu, where you can swap to the other preset kit (if no rows have been added) or go back into the presets.
++3. Press **SELECT** (or **KIT**) to keep the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu, where you can swap to the other preset kit (if no rows have been added) or go back into the presets.
 +
-+The list is **Default** (the rows as SHIFT + KIT first makes them) then the presets in name order. It opens on the one the kit is on, so you carry on from there: the last preset kept (saved with the kit), or the preset a kit loaded from the presets folder is named after. A kit on none of them gets **Current** at the top.
++The list is **Default** (the rows as SHIFT + KIT first makes them) then the presets in name order. On a GIN kit, **Default** is replaced by GIN's sixteen built in kits (see [GIN](#gin)), so they can be cycled through with nothing on the card; the one you keep is remembered like a preset. It opens on the one the kit is on, so you carry on from there: the last preset kept (saved with the kit), or the preset a kit loaded from the presets folder is named after. A kit on none of them gets **Current** at the top.
 +
-+**Making presets.** A preset is an ordinary kit file in **KITS/CYCLES** (Cycles kits) or **KITS/LXR** (LXR kits). LXR-02 kits (.SND files) convert with `lxr_to_deluge.py`, Model:Cycles kits with `cycles_to_deluge.py`. Set up a preset kit's rows the way you like, then save the kit into that folder. The folder is made the first time you open the Kit presets list, so it's there to save into. Only the preset rows are read back, bottom first: rows you added to the kit you saved from are ignored. A kit file made by hand with no preset rows gives its sound rows, bottom first. If a preset has fewer rows than the kit, the rest keep their sounds.
++**Making presets.** A preset is an ordinary kit file in **KITS/CYCLES** (Cycles kits), **KITS/LXR** (LXR kits) or **KITS/GIN** (GIN kits). LXR-02 kits (.SND files) convert with `lxr_to_deluge.py`, Model:Cycles kits with `cycles_to_deluge.py`. Set up a preset kit's rows the way you like, then save the kit into that folder. The folder is made the first time you open the Kit presets list, so it's there to save into. Only the preset rows are read back, bottom first: rows you added to the kit you saved from are ignored. A kit file made by hand with no preset rows gives its sound rows, bottom first. If a preset has fewer rows than the kit, the rest keep their sounds.
 +
 +Swapping sounds clears the undo history.
 +
@@ -19199,10 +20865,11 @@ index 00000000..074abb58
 +| DXIA | DXIA L, DXIA B, DXIA C |
 +| DIIA | DIIA G, DIIA I, DIIA H |
 +| Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
++| GIN | GIN (starts on the 808 kit's kick; **GIN sound** in the Drum synth menu loads any of the 128 kit sounds) |
 +
 +Choose **Sample** to put a kit row back on its sample.
 +
-+Each engine you pick starts from its defaults, set up as its kit row is, so what you hear while choosing is what the kit plays: the transpose, both envelopes, filters (open, with the high pass on for the cymbal), osc 2 and noise off, and the tune centred, whatever the row was before. FX are left alone. A row that wasn't a drum synth also gets envelope 2 as a short blip for patching to pitch.
++Each engine you pick starts from its defaults, set up as its kit row is, so what you hear while choosing is what the kit plays: the transpose, both envelopes, filters (open, with the high pass on for the cymbal), osc 2 and noise off, and the tune centred, whatever the row was before. GIN is tuned to its sound, and like every engine its own envelopes shape the hit inside an open Deluge envelope with the release fitted to its decay. FX are left alone. A row that wasn't a drum synth also gets envelope 2 as a short blip for patching to pitch.
 +
 +Every drum engine shapes its hits with its own decay: the LXR voices' Decay, DXIA and DIIA's engine decay, the Cyc engines' amp decay. The Deluge envelope around it is the same on every drum row: attack 0, sustain full, and a release long enough for the engine's decay to ring out after the note ends (40, up to 50 for the longest decays). So one tap plays the whole hit, whatever the note length, and gated sounds follow the note. Snappy decay starts off. Envelope 2's decay is 5 unless a preset sets it.
 +
@@ -19277,6 +20944,30 @@ index 00000000..074abb58
 +| MOD FX RATE | Sweep | Sweep | Sweep | Sweep | Sweep | Sweep | Pitch sweep | Spacing crunch |
 +| MOD FX DEPTH | Contour | Contour | Contour | Contour | Contour | Contour | Mod envelope | Body envelope |
 +
++| Pad | GIN |
++|---|---|
++| OSC1 LEVEL | GIN level |
++| OSC1 PULSE WIDTH | Tone wave |
++| OSC1 RETRIGGER | Tone attack |
++| OSC1 FEEDBACK | Drive |
++| OSC1 WAVE INDEX | Decay (both decays) |
++| OSC1 NOISE | Mix |
++| OSC2 LEVEL | Mix |
++| OSC2 TRANSPOSE | Noise freq |
++| OSC2 TYPE | Noise filter |
++| OSC2 PULSE WIDTH | Noise env |
++| OSC2 RETRIGGER | Noise attack |
++| OSC2 FEEDBACK | Noise reso |
++| OSC2 WAVE INDEX | Noise decay |
++| MOD1 LEVEL | EQ gain |
++| MOD1 TRANSPOSE | EQ freq |
++| MOD1 WAVE INDEX | Tone decay |
++| MOD2 LEVEL | Mod amount |
++| MOD2 TYPE | Mod mode |
++| MOD2 WAVE INDEX | Mod rate |
++| MOD FX RATE | Mod rate |
++| MOD FX DEPTH | Mod amount |
++
 +Every engine's continuous settings are Deluge parameters, so they can be parameter locked, automated, MIDI learned and put on gold knobs. They run 0-127, as on the LXR and the Cycles. The choices (waves, transient type, noise filter, osc mode, Punch) are row settings. The full list is in the sound menu's **Drum synth** item.
 +
 +**Drive and decay.** Every engine has both, on the same pads and gold knobs. DXIA and DIIA use their own. On the LXR voices drive is a soft clipper that gets louder as it goes up and hard clips at the top, and decay is the voice's own fade (127 holds). Both start neutral, so older kits sound the same. The Cyc engines start with drive at 100.
@@ -19298,6 +20989,7 @@ index 00000000..074abb58
 +| DXIA | Blendex 2 | Blendex 3 | Blendex 1 | Freq 1 |
 +| DIIA | Shape | Strike | Weight | Alloy |
 +| Cyc engines | Sweep (Pitch sweep, Spacing crunch) | Contour (Mod envelope, Body envelope) | Color (Inharm, Body char) | Shape (Freq complex, Balance) |
++| GIN | Mod rate | Mod amount | Mix | Noise freq |
 +
 +**303.** A synth in the 303 synth mode follows the same layout: attack / release = **Drive / Amp decay**, mod rate / mod depth = the filter envelope's **Decay / Env mod**, Custom 1's portamento knob = **Slide time**, Custom 2 / Custom 3 = **Accent / Saw-square**. Cutoff and resonance stay on the filter knobs. Its pads match too: OSC1 RETRIGGER accent, PULSE WIDTH saw-square (a morph), FEEDBACK drive, WAVE INDEX amp decay, MOD FX RATE / DEPTH decay / env mod. Drive is the drum engines' soft clipper (0 is clean); amp decay runs from 60 ms through Open303's own 1230 ms at the centre to holding at the top. 303s saved before keep their sound.
 +
@@ -19353,6 +21045,46 @@ index 00000000..074abb58
 +- They run natively at 44.1 kHz, so pitch and decay times are exact.
 +- No machine-wide gate: notes end with the Deluge envelope.
 +
++## GIN
++
++**GIN** is the drum voice from SquareWave Studio's GIN for the original OP-1, which builds on Eric Lewis's libpo32, a PO-32 style drum synth. One voice is a tone and a noise layer:
++
++- **Tone**: a sine, triangle or saw, with its own attack and decay, and a pitch modulator: a decaying **sweep**, a **sine** LFO (at audio rates it frequency modulates the tone, for bells, cowbells and metal), or filtered **noise**.
++- **Noise**: white noise through a low, high or band pass filter (or none), with its own attack and decay, and an envelope that is exponential, linear or **modulated**: a decaying train of bursts, for claps.
++- **Mix** pans between the two (0 tone only, 64 both, 127 noise only), then GIN's **drive**, a peak **EQ** and its **level**, before a clipper.
++
++Its sixteen built in kits are new for the Deluge (GIN's own factory kits aren't included). Each has eight sounds, on the rows KICK, SNR, HAT1, HAT2, PERC1, PERC2, CLAP and OTHER:
++
++| Kit | Style | Other |
++|---|---|---|
++| 808 | Classic analogue | Cowbell |
++| 909 | Punchy, driven kick | Rim shot |
++| ELEC | Electro: zaps, FM hats | Laser |
++| MINI | Minimal, short and clicky | Bleep |
++| INDU | Industrial, everything driven | Noise-bent saw |
++| DUST | Lo-fi, tops rolled off | Rim tick |
++| RUMB | Techno rumble, long low noise tail, FM ride | Sub boom |
++| ZAP | Fast deep sweeps, pews | Wobble blip |
++| BOOM | Trap: long tuned 808, crisp tops | 808 tom |
++| TITE | Tight and woody | Side stick |
++| METL | Metallic: FM bells and gongs | Cowbell |
++| DUB | Deep and round, syndrums | Falling syndrum |
++| BLIP | Glitch: bleeps and broken noise | Noise-bent triangle |
++| BRKS | Breakbeat crunch | Crash |
++| PERC | Hand percussion: frame drum, shakers, congas | Clave |
++| CHIP | 8-bit: triangle kick, raw noise | Coin |
++
++Cycle through them with **SHIFT + KIT** on a GIN kit (see [Kit presets](#kit-presets)), or put any one sound on a row with **GIN sound** in the Drum synth menu.
++
++**Settings.** The gold knobs follow the shared layout: attack / release = **Drive / Decay**, mod rate / depth = the pitch modulation's **Mod rate / Mod amount** (64 is none; above 64 the sweep starts high and falls, below it starts low and rises), Custom 1 = tune, Custom 2 / 3 = **Mix / Noise freq**, as on GIN's own front panel. **Decay** moves the tone and noise decays together: 64 leaves them as the sound has them, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay**, **Noise decay**, both attacks, **Noise reso**, the waves and modes, the EQ and **GIN level** are in the Drum synth menu, the pad editor and on the pads. The continuous ones are parameters (lockable, automatable); the waves, modes, filter type, EQ and level are row settings.
++
++**Differences from GIN on the OP-1.**
++- The pitch is the note (and row transpose), not a setting: the kits tune each row to its sound.
++- Velocity sets level through the Deluge's usual velocity patch, not GIN's per-layer velocity settings.
++- There's no A / B morph: parameter locks and automation do that job.
++- Settings follow the knobs while a hit plays, where GIN fixes them at the hit.
++- A hit ends once both layers are 80 dB down.
++
 +## CPU load
 +
 +**SHIFT + SELECT > CPU load** shows the audio engine's load while you play:
@@ -19376,6 +21108,8 @@ index 00000000..074abb58
 +DXIA and DIIA are the TIA and IIA engines of the XIA engine set for the Model:Cycles, released as open source by their author and distributed here under the GPL-3.0 with the rest of the firmware.
 +
 +
-+The Cyc engines (cyc.cpp) are original code, GPL-3.0-or-later. Elektron, Model:Cycles and Syntakt are trademarks of Elektron Music Machines; these engines are not affiliated with or endorsed by Elektron.
++The Cyc engines (cyc.cpp) are original code, GPL-3.0-or-later.
++
++GIN (gin.cpp) is derived from the MIT licensed GIN synthesis core by SquareWave Studio and libpo32 by Eric Lewis; their copyright and licence notices are kept in gin.h, and the Deluge port is GPL-3.0-or-later. The kits (gin_kits.cpp) are original. Not affiliated with or endorsed by SquareWave Studio, Teenage Engineering or Sonic Charge; OP-1 and PO-32 are trademarks of Teenage Engineering. Elektron, Model:Cycles and Syntakt are trademarks of Elektron Music Machines; these engines are not affiliated with or endorsed by Elektron.
 +
 +The drum synth code is licensed GPL-3.0-only, with the additional terms in the LXR firmware's NOTICE.md: it is marked as a modified version, and no rights to the Erica Synths or LXR trademarks are granted.

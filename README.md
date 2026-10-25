@@ -1,4 +1,4 @@
-# BRIBELUGE: Deluge Bribes FW v1.12
+# BRIBELUGE: Deluge Bribes FW v1.13
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -7,7 +7,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
+6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
 7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
 8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
@@ -19,15 +19,15 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.12.bin`](firmware/deluge-bribes-v1.12.bin)
+[`firmware/deluge-bribes-v1.13.bin`](firmware/deluge-bribes-v1.13.bin)
 
-SHA-256: `e739639ceb549f89348cd89b8d2f86059816796302fbda25afdd2876c35933b7`
+SHA-256: `ed604be1bddb9b006ee8149034bd1307c6b6d1d35c908f4a20028b2054ba298f`
 
-Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card.
+Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
 ## Install
 
-1. Copy `deluge-bribes-v1.12.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.13.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -53,13 +53,13 @@ To go back, install an official firmware file the same way.
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
-| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices) or **Cycles** (the six Cyc engines) |
-| **SHIFT + KIT on an LXR or Cycles kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
-| **Tap an empty audition pad on an LXR or Cycles kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
+| **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
+| **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
 | **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
 | **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
 | **Mod rate / Mod depth gold knobs** | The sweep's speed / depth: Sweep / Contour on the Cyc engines, the filter envelope's Decay / Env mod on the 303 |
-| **CUSTOM 2 / CUSTOM 3 gold knobs** | Two voicing settings: Color / Shape on the Cyc engines, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
+| **CUSTOM 2 / CUSTOM 3 gold knobs** | Two voicing settings: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
@@ -277,6 +277,7 @@ The engines:
 - **DXIA** (**DX-L**, **DX-B**, **DX-C**), called Drom1 before v1.11: three sine operators and a carrier, phase modulating each other in three routings.
 - **DIIA** (**DI-G**, **DI-I**, **DI-H**), called Drom2 before v1.11: inharmonic, metallic partials with a noise strike, in three variants.
 - **Cyc engines (new in v1.8):** **Cyc Kik** (**KIK**), **Cyc Snr** (**SNR**), **Cyc Metal** (**CMTL**), **Cyc Perc** (**PERC**), **Cyc Tone** (**TONE**), **Cyc Chord** (**CHRD**), **Vtg Snr** (**VSNR**) and **clap eng** (**CLAP**). Modelled on the Model:Cycles' six machines and the Syntakt's SD VINTAGE and CP VINTAGE, with the same knobs and starting values.
+- **GIN** (**GIN**, new in v1.13): the drum voice from SquareWave Studio's GIN for the OP-1, built on Eric Lewis's libpo32, a PO-32 style drum synth. A tone with a pitch sweep, LFO or noise modulator, and a filtered noise layer with its own envelope, mixed, driven and EQ'd. See [GIN](#gin-new-in-v113).
 
 ### Making a drum synth kit
 
@@ -285,26 +286,27 @@ The engines:
    - **Kit** (**KIT**): a normal, sample based kit.
    - **LXR** (**LXR**): seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
    - **Cycles** (**CYCL**, new in v1.11): the Model:Cycles' usual six tracks, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, playing at the note as the Cycles does at its default tune.
+   - **GIN** (**GIN**, new in v1.13): eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2**, **PERC1**, **PERC2**, **CLAP** and **OTHER**, on the 808 kit. The two hats choke each other, and each row is tuned to its sound.
 
 Vtg Snr, clap eng, DXIA and DIIA are picked per row in SYNTH MODE.
 
-The rows an LXR or Cycles kit makes are its **preset rows** (new in v1.12). Their audition pads are softly coloured by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA (brighter on the selected row).
+The rows an LXR, Cycles or GIN kit makes are its **preset rows** (new in v1.12). Their audition pads are softly coloured by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN (brighter on the selected row).
 
 - **Adding rows:** tap an empty audition pad above or below the preset rows and a new row appears there with **SYNTH MODE** open, to make it any engine, **Sample** or FM. Holding the empty pad and pressing **LOAD**, **SYNTH**, **MIDI** or **CV** works as on any kit. Added rows aren't coloured.
 - **Swapping kit type:** once rows have been added, a preset kit can't be swapped for another kit (the added rows would lose their sounds): the screen shows **CANT**. Without added rows, the swap keeps the pattern on the rows the new kit fills.
 
 ### Kit presets (new in v1.12)
 
-On an LXR or Cycles kit, **SHIFT + KIT** opens **Kit presets** (**PRST**): the kit files in `KITS/LXR` or `KITS/CYCLES` on the card.
+On an LXR, Cycles or GIN kit, **SHIFT + KIT** opens **Kit presets** (**PRST**): the kit files in `KITS/LXR`, `KITS/CYCLES` or `KITS/GIN` on the card.
 
 1. Turn **SELECT**. Each preset plays on the preset rows straight away, pattern running. Notes, added rows and the other rows stay as they are, and the audition pads still play the rows.
-2. **SELECT** (or **KIT**) keeps the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles menu: its own type goes back into the presets, the other swaps the kit.
+2. **SELECT** (or **KIT**) keeps the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu: its own type goes back into the presets, another swaps the kit.
 
-The list is **Default** (the rows as SHIFT + KIT makes them) and then the presets in name order. It opens on the preset the kit is on (kept with the kit when you save), or **Current** if it's on none of them.
+The list is **Default** (the rows as SHIFT + KIT makes them) and then the presets in name order. On a GIN kit, Default is replaced by GIN's sixteen built in kits, so there's nothing to copy to the card. It opens on the preset the kit is on (kept with the kit when you save), or **Current** if it's on none of them.
 
 - **Cycles presets:** sixteen kits of my own, bank E of my Model:Cycles kits, converted for the Cyc engines: copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) to `KITS/CYCLES` on the card.
 - **LXR presets:** sixteen kits by **Hrtl** from the free [LXR-02 pack Erica Synths released in 2022](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), converted for the drum synth: copy [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/LXR` on the card. Close to the originals rather than identical (see the folder's README).
-- **Making presets:** a preset is an ordinary kit file. Set the kit up, press **SAVE**, go into `KITS/LXR` or `KITS/CYCLES` (made the first time you open the list) and save, over an existing preset or under a new name. Only the preset rows are read back. [`tools/lxr_to_deluge.py`](tools/lxr_to_deluge.py) converts LXR-02 .SND kits.
+- **Making presets:** a preset is an ordinary kit file. Set the kit up, press **SAVE**, go into `KITS/LXR`, `KITS/CYCLES` or `KITS/GIN` (made the first time you open the list) and save, over an existing preset or under a new name. Only the preset rows are read back. [`tools/lxr_to_deluge.py`](tools/lxr_to_deluge.py) converts LXR-02 .SND kits.
 - Swapping sounds clears the undo history.
 
 ### Choosing an engine
@@ -318,6 +320,7 @@ Every engine and variant is in one list, **SYNTH MODE**. Hold a row's audition p
 | DXIA | DXIA L, DXIA B, DXIA C |
 | DIIA | DIIA G, DIIA I, DIIA H |
 | Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
+| GIN | GIN (starts on the 808 kick) |
 
 - Each engine you pick starts from its defaults, set up as its kit row is (new in v1.12): transpose, envelopes, filters open (the high pass on for the cymbal), osc 2 and noise off, tune centred, whatever the row was before. So what SYNTH MODE previews is what the kit plays. FX are left alone.
 - **Envelopes (new in v1.12):** every drum engine shapes its hits with its own decay (the LXR voices' Decay, DXIA and DIIA's engine decay, the Cyc engines' amp decay). The Deluge envelope around it is open (attack 0, sustain full) with a release long enough for that decay to ring out after the note ends, so one tap plays the whole hit and gated sounds follow the note.
@@ -383,6 +386,30 @@ All drum engines share one layout, read the way the grid is printed. Only the OS
 | MOD FX RATE | Sweep | Sweep | Sweep | Sweep | Sweep | Sweep | Pitch sweep | Spacing crunch |
 | MOD FX DEPTH | Contour | Contour | Contour | Contour | Contour | Contour | Mod envelope | Body envelope |
 
+| Pad | GIN |
+|---|---|
+| OSC1 LEVEL | GIN level |
+| OSC1 PULSE WIDTH | Tone wave |
+| OSC1 RETRIGGER | Tone attack |
+| OSC1 FEEDBACK | Drive |
+| OSC1 WAVE INDEX | Decay (tone and noise together) |
+| OSC1 NOISE | Mix |
+| OSC2 LEVEL | Mix |
+| OSC2 TRANSPOSE | Noise freq |
+| OSC2 TYPE | Noise filter |
+| OSC2 PULSE WIDTH | Noise env |
+| OSC2 RETRIGGER | Noise attack |
+| OSC2 FEEDBACK | Noise reso |
+| OSC2 WAVE INDEX | Noise decay |
+| MOD1 LEVEL | EQ gain |
+| MOD1 TRANSPOSE | EQ freq |
+| MOD1 WAVE INDEX | Tone decay |
+| MOD2 LEVEL | Mod amount |
+| MOD2 TYPE | Mod mode |
+| MOD2 WAVE INDEX | Mod rate |
+| MOD FX RATE | Mod rate |
+| MOD FX DEPTH | Mod amount |
+
 ### Gold knobs
 
 Every drum synth row and the 303 share one layout, after the Cycles' knobs (changed in v1.11). It's set whenever the sound loads, however it was saved.
@@ -402,6 +429,7 @@ Every drum synth row and the 303 share one layout, after the Cycles' knobs (chan
 | DXIA | Blendex 2 / Blendex 3 (no pitch sweep) | Blendex 1 / Freq 1 |
 | DIIA | Shape / Strike | Weight / Alloy |
 | Cyc engines | Sweep / Contour (Pitch sweep / Mod envelope on Vtg Snr, Spacing crunch / Body envelope on clap eng) | Color / Shape (Inharm / Freq complex on Vtg Snr, Body char / Balance on clap eng) |
+| GIN | Mod rate / Mod amount | Mix / Noise freq |
 
 Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated. They can't yet be modulated from the mod matrix.
 
@@ -423,13 +451,46 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 - **Punch** (OSC1 FEEDBACK, on OSC1 RETRIGGER before v1.11) squares up and lifts the attack.
 - They sound close to the originals, not identical: the same knobs and starting values, with the sound behind each knob measured from the originals and rebuilt. Cyc Kik's Contour, which barely did anything on the Cycles, sets the knock here.
 
+### GIN (new in v1.13)
+
+GIN is the drum voice from [SquareWave Studio's GIN](https://github.com/squarewave-studio/op1-mods) for the original OP-1, which builds on Eric Lewis's [libpo32](https://github.com/ericlewis/libpo32), a PO-32 style drum synth. Each sound is two layers:
+
+- **Tone:** a sine, triangle or saw with its own attack and decay, bent by a **Mod mode**: a decaying **sweep**, a **sine** LFO (at audio rates it frequency modulates the tone, for bells, cowbells and metal), or filtered **noise**.
+- **Noise:** white noise through a low, high or band pass filter (or none), with its own attack and decay and an envelope that is exponential, linear or **modulated**, a decaying train of bursts for claps.
+- **Mix** pans between them (0 tone, 64 both, 127 noise), then drive, a peak EQ and the GIN level, before a clipper.
+
+Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, PERC1, PERC2, CLAP and OTHER. They're my own sounds, made for the Deluge (GIN's factory kits aren't included). Cycle through them with **SHIFT + KIT** on a GIN kit, or load any single sound onto a row with **GIN sound** (**GSND**) in the Drum synth menu.
+
+| Kit | Style | Other |
+|---|---|---|
+| 808 | Classic analogue | Cowbell |
+| 909 | Punchy, driven kick | Rim shot |
+| ELEC | Electro: zaps, FM hats | Laser |
+| MINI | Minimal, short and clicky | Bleep |
+| INDU | Industrial, everything driven | Noise-bent saw |
+| DUST | Lo-fi, tops rolled off | Rim tick |
+| RUMB | Techno rumble, FM ride | Sub boom |
+| ZAP | Fast deep sweeps, pews | Wobble blip |
+| BOOM | Trap: long tuned 808, crisp tops | 808 tom |
+| TITE | Tight and woody | Side stick |
+| METL | Metallic: FM bells and gongs | Cowbell |
+| DUB | Deep and round, syndrums | Falling syndrum |
+| BLIP | Glitch: bleeps and broken noise | Noise-bent triangle |
+| BRKS | Breakbeat crunch | Crash |
+| PERC | Hand percussion: frame drum, shakers, congas | Clave |
+| CHIP | 8-bit: triangle kick, raw noise | Coin |
+
+- **Knobs:** Drive / Decay on attack / release, **Mod rate / Mod amount** on mod rate / depth (64 is none: above, the sweep starts high and falls; below, it starts low and rises), tune on CUSTOM 1, **Mix / Noise freq** on CUSTOM 2 / 3, as on GIN's own front panel.
+- **Decay** moves the tone and noise decays together: 64 leaves the sound as it is, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay** and **Noise decay** are on their own pads.
+- The pitch is the note and the row's transpose, not a setting: each kit row is tuned to its sound. Velocity works through the Deluge's usual velocity setting. There's no A / B morph (parameter locks do that job), and turning a knob changes a hit that's already playing.
+
 ### Snappy decay
 
 **Snappy decay** (**SNAP**), in the sound menu of any drum synth row, makes the amp envelope's decay and release follow a steeper curve: tighter hits, and the same decay setting sounds about half as long. It starts off on new drum synth rows (from v1.12: each engine's own decay does the shaping) and is saved with the row.
 
 ### Good to know
 
-- The full settings list and a pad-per-setting editor are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
+- The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
 - Kits with drum synth rows won't play those rows on firmware without them.
@@ -569,13 +630,14 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The Cycles presets** are my own Model:Cycles kits, made on my own machine and converted for the Cyc engines.
 - **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), converted for the drum synth. All credit for those sounds goes to Hrtl.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). DXIA and DIIA are ported from an open source engine set written for the Elektron Model:Cycles. The Cyc engines are original code, modelled on how the Model:Cycles and Syntakt machines respond, measured knob by knob; no Elektron code or data is used.
+- **GIN's** voice is ported from the MIT licensed synthesis core of [GIN by SquareWave Studio](https://github.com/squarewave-studio/op1-mods) and [libpo32 by Eric Lewis](https://github.com/ericlewis/libpo32), with their copyright and licence notices kept in the source. The sixteen GIN kits, the controls and the Deluge integration were made for this build; GIN's own factory kits are not used.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron** or **Roland**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, and the TB-303 is a product of Roland. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering** or **Sonic Charge**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, and the OP-1 and PO-32 are products of Teenage Engineering. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
-Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron or Roland for help with this build.
+Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio or Teenage Engineering for help with this build.
 
 ## Source code
 
