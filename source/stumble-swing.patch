@@ -248,10 +248,10 @@ index 66fd217b..2bcac1cb 100644
  };
 diff --git a/src/deluge/dsp/drum_synth/cyc.cpp b/src/deluge/dsp/drum_synth/cyc.cpp
 new file mode 100644
-index 00000000..2e9bfbcd
+index 00000000..15bee880
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/cyc.cpp
-@@ -0,0 +1,923 @@
+@@ -0,0 +1,940 @@
 +/*
 + * Cyc engines. See cyc.h for what these are.
 + *
@@ -445,7 +445,9 @@ index 00000000..2e9bfbcd
 +// - Shape: below 16 it rounds the peaks off; above, it adds a sharp spike on each peak, a buzz of odd harmonics, then
 +//   noise riding on those spikes, strongest around 96
 +// - Sweep: depth and speed of the pitch sweep, from none to about 13 times the final pitch
-+// - Contour: the knock at the start, a short burst of filtered noise and a click
++// - Contour: the length of the pitch sweep, from a short blip (0) to a long, boomy drop (127), plus the knock at the
++//   start, a short burst of filtered noise and a click. The original's Contour barely does anything; at its default
++//   (24) the sweep is as voiced.
 +
 +constexpr std::array<float, 6> kKikSweepKnob{0.f, 16.f, 32.f, 64.f, 96.f, 127.f};
 +constexpr std::array<float, 6> kKikSweepDepth{0.f, 1.46f, 1.70f, 1.90f, 2.30f, 3.09f}; ///< ln(1 + start ratio)
@@ -462,6 +464,15 @@ index 00000000..2e9bfbcd
 +	const float x16 = x8 * x8;
 +	return x * x16 * x2;
 +}
++
++/// How much Contour stretches a pitch sweep's time: 0.35 times at 0, as voiced at the engine's default, 5 times at 127
++float sweepTimeScale(float contour, float atDefault) {
++	if (contour <= atDefault) {
++		return 0.35f * powf(1.f / 0.35f, contour / atDefault);
++	}
++	return powf(5.f, (contour - atDefault) / (1.f - atDefault));
++}
++constexpr float kKikContourDefault = 24.f / 127.f;
 +
 +void startKik(Voice& v, const Ctx& c) {
 +	auto& k = v.s_.kik;
@@ -480,7 +491,9 @@ index 00000000..2e9bfbcd
 +
 +	const float fEnd = c.hz * 0.25f;
 +	const float depth = expf(interp(kKikSweepKnob, kKikSweepDepth, sweepKnob)) - 1.f;
-+	const float pitchCoef = decayFor(interp(kKikSweepKnob, kKikSweepTime, sweepKnob) * 6.907755f, c.sr);
++	const float pitchCoef = decayFor(interp(kKikSweepKnob, kKikSweepTime, sweepKnob) * 6.907755f
++	                                     * sweepTimeScale(contour, kKikContourDefault),
++	                                 c.sr);
 +	const float incPerHz = 4294967296.f / c.sr;
 +
 +	// Shape: spikes, then feedback
@@ -654,8 +667,10 @@ index 00000000..2e9bfbcd
 +// - Color: the overtone, coming in and climbing from 3 to 7 times the note
 +// - Shape: the modulation, growing sidebands around the note as the third fades: hollow to gnarly
 +// - Sweep: the pitch drop, slow and shallow in the middle of the knob, fast and deep at the top
-+// - Contour: how fast the overtone dies against the body
++// - Contour: how fast the overtone dies against the body, and the length of the pitch drop (as voiced at the default,
++//   64), so it still does something with no overtone
 +
++constexpr float kPercContourDefault = 64.f / 127.f;
 +constexpr std::array<float, 5> kPercSweepKnob{0.f, 32.f, 64.f, 100.f, 127.f};
 +constexpr std::array<float, 5> kPercSweepDepth{0.f, 0.4f, 0.75f, 0.35f, 1.2f};
 +constexpr std::array<float, 5> kPercSweepTime{0.05f, 0.2f, 0.2f, 0.025f, 0.012f};
@@ -676,7 +691,9 @@ index 00000000..2e9bfbcd
 +	const float incPerHz = 4294967296.f / c.sr;
 +
 +	const float depth = interp(kPercSweepKnob, kPercSweepDepth, sweepKnob);
-+	const float pitchCoef = decayFor(interp(kPercSweepKnob, kPercSweepTime, sweepKnob) * 6.907755f, c.sr);
++	const float pitchCoef = decayFor(interp(kPercSweepKnob, kPercSweepTime, sweepKnob) * 6.907755f
++	                                     * sweepTimeScale(contour, kPercContourDefault),
++	                                 c.sr);
 +	const float index = 0.24f * shape * shape;
 +	const float levelB = 0.9f * (1.f - 0.75f * shape);
 +	const float ratioC = 1.f + 6.f * powf(color, 1.3f);
@@ -8596,7 +8613,7 @@ index 00000000..9872e726
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..a4614e88 100644
+index 38cab4d8..555b554f 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -8786,7 +8803,7 @@ index 38cab4d8..a4614e88 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -847,6 +985,28 @@
+@@ -847,6 +985,34 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -8812,11 +8829,17 @@ index 38cab4d8..a4614e88 100644
 +    "STRING_FOR_KIT_PRESETS": "Kit presets",
 +    "STRING_FOR_KIT_PRESET_CURRENT": "Current",
 +    "STRING_FOR_KIT_PRESET_DEFAULT": "Default",
++    "STRING_FOR_AFFECT_ALL": "All voices: snapshot taken",
++    "STRING_FOR_AFFECT_ALL_LEAVING": "Snapshot back at next bar",
++    "STRING_FOR_AFFECT_ALL_RESTORED": "Snapshot back",
++    "STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY": "Affect all: LXR, Cycles and GIN kits only",
++    "STRING_FOR_AFFECT_ALL_VOICES": "All voices",
++    "STRING_FOR_AFFECT_ALL_KIT_FX": "Kit FX",
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..53fd70ef 100644
+index 1f87aacf..c229052f 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -9006,7 +9029,7 @@ index 1f87aacf..53fd70ef 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -860,6 +998,28 @@ PLACE_SDRAM_DATA Language english{
+@@ -860,6 +998,34 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -9032,14 +9055,20 @@ index 1f87aacf..53fd70ef 100644
 +        {STRING_FOR_KIT_PRESETS, "Kit presets"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "Current"},
 +        {STRING_FOR_KIT_PRESET_DEFAULT, "Default"},
++        {STRING_FOR_AFFECT_ALL, "All voices: snapshot taken"},
++        {STRING_FOR_AFFECT_ALL_LEAVING, "Snapshot back at next bar"},
++        {STRING_FOR_AFFECT_ALL_RESTORED, "Snapshot back"},
++        {STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY, "Affect all: LXR, Cycles and GIN kits only"},
++        {STRING_FOR_AFFECT_ALL_VOICES, "All voices"},
++        {STRING_FOR_AFFECT_ALL_KIT_FX, "Kit FX"},
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..908da692 100644
+index 1af382d5..89becc14 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
-@@ -323,6 +323,35 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -323,6 +323,41 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
          {STRING_FOR_SWING_AMOUNT, "SWIA"},
          {STRING_FOR_SWING_INTERVAL, "SWII"},
@@ -9072,10 +9101,16 @@ index 1af382d5..908da692 100644
 +        {STRING_FOR_KIT_PRESETS, "PRST"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "CURR"},
 +        {STRING_FOR_KIT_PRESET_DEFAULT, "DFLT"},
++        {STRING_FOR_AFFECT_ALL, "ALL"},
++        {STRING_FOR_AFFECT_ALL_LEAVING, "BACK"},
++        {STRING_FOR_AFFECT_ALL_RESTORED, "DONE"},
++        {STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY, "CANT"},
++        {STRING_FOR_AFFECT_ALL_VOICES, "ALL"},
++        {STRING_FOR_AFFECT_ALL_KIT_FX, "FX"},
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +471,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +477,8 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
@@ -9084,7 +9119,7 @@ index 1af382d5..908da692 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -450,6 +481,122 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -450,6 +487,122 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -9207,7 +9242,7 @@ index 1af382d5..908da692 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -459,6 +606,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -459,6 +612,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -9222,10 +9257,10 @@ index 1af382d5..908da692 100644
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..fa788d45 100644
+index 8328945b..40ea0366 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
-@@ -334,6 +334,35 @@
+@@ -334,6 +334,41 @@
          "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
          "STRING_FOR_SWING_AMOUNT": "SWIA",
          "STRING_FOR_SWING_INTERVAL": "SWII",
@@ -9258,10 +9293,16 @@ index 8328945b..fa788d45 100644
 +        "STRING_FOR_KIT_PRESETS": "PRST",
 +        "STRING_FOR_KIT_PRESET_CURRENT": "CURR",
 +        "STRING_FOR_KIT_PRESET_DEFAULT": "DFLT",
++        "STRING_FOR_AFFECT_ALL": "ALL",
++        "STRING_FOR_AFFECT_ALL_LEAVING": "BACK",
++        "STRING_FOR_AFFECT_ALL_RESTORED": "DONE",
++        "STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY": "CANT",
++        "STRING_FOR_AFFECT_ALL_VOICES": "ALL",
++        "STRING_FOR_AFFECT_ALL_KIT_FX": "FX",
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +486,8 @@
+@@ -457,6 +492,8 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
@@ -9270,7 +9311,7 @@ index 8328945b..fa788d45 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -466,6 +497,122 @@
+@@ -466,6 +503,122 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -9393,7 +9434,7 @@ index 8328945b..fa788d45 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -479,6 +626,20 @@
+@@ -479,6 +632,20 @@
  
          "STRING_FOR_WAVEFOLD": "FOLD",
  
@@ -9415,7 +9456,7 @@ index 8328945b..fa788d45 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..02f626fc 100644
+index 49b15e92..505d98bf 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -9605,7 +9646,7 @@ index 49b15e92..02f626fc 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -923,6 +1061,28 @@ enum class String : size_t {
+@@ -923,6 +1061,34 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -9631,6 +9672,12 @@ index 49b15e92..02f626fc 100644
 +	STRING_FOR_KIT_PRESETS,
 +	STRING_FOR_KIT_PRESET_CURRENT,
 +	STRING_FOR_KIT_PRESET_DEFAULT,
++	STRING_FOR_AFFECT_ALL,
++	STRING_FOR_AFFECT_ALL_LEAVING,
++	STRING_FOR_AFFECT_ALL_RESTORED,
++	STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY,
++	STRING_FOR_AFFECT_ALL_VOICES,
++	STRING_FOR_AFFECT_ALL_KIT_FX,
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
@@ -11347,6 +11394,34 @@ index dda3b338..2b003859 100644
  			const auto option = getOptions(OptType::FULL)[getValue()].data();
  			return image.drawStringCentered(option, slot.start_x, slot.start_y + kHorizontalMenuSlotYOffset + 5,
  			                                kTextTitleSpacingX, kTextTitleSizeY, slot.width);
+diff --git a/src/deluge/gui/menu_item/patched_param/integer.cpp b/src/deluge/gui/menu_item/patched_param/integer.cpp
+index cadefaba..32f08f52 100644
+--- a/src/deluge/gui/menu_item/patched_param/integer.cpp
++++ b/src/deluge/gui/menu_item/patched_param/integer.cpp
+@@ -18,6 +18,7 @@
+ #include "gui/menu_item/value_scaling.h"
+ #include "gui/ui/sound_editor.h"
+ #include "gui/views/automation_view.h"
++#include "gui/views/kit_affect_all.h"
+ #include "gui/views/view.h"
+ #include "model/clip/clip.h"
+ #include "model/clip/instrument_clip.h"
+@@ -39,6 +40,7 @@ void Integer::writeCurrentValue() {
+ 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+ 	ModelStackWithAutoParam* modelStack = getModelStack(modelStackMemory);
+ 	int32_t value = getFinalValue();
++	int32_t oldValue = modelStack->autoParam->getCurrentValue();
+ 	modelStack->autoParam->setCurrentValueInResponseToUserInput(value, modelStack);
+ 
+ 	// If affect-entire button held, do whole kit
+@@ -61,6 +63,7 @@ void Integer::writeCurrentValue() {
+ 	// Or, the normal case of just one sound
+ 	else {
+ 		modelStack->autoParam->setCurrentValueInResponseToUserInput(value, modelStack);
++		deluge::kit_affect_all::kitAffectAll.menuValueChanged(modelStack, oldValue);
+ 	}
+ 
+ 	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 index ab3a3d37..231c3fec 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
@@ -11834,6 +11909,34 @@ index 00000000..485fa3d9
 +};
 +
 +} // namespace deluge::gui::menu_item::tb303
+diff --git a/src/deluge/gui/menu_item/unpatched_param.cpp b/src/deluge/gui/menu_item/unpatched_param.cpp
+index d8146322..a95ca646 100644
+--- a/src/deluge/gui/menu_item/unpatched_param.cpp
++++ b/src/deluge/gui/menu_item/unpatched_param.cpp
+@@ -19,6 +19,7 @@
+ #include "gui/menu_item/value_scaling.h"
+ #include "gui/ui/sound_editor.h"
+ #include "gui/views/automation_view.h"
++#include "gui/views/kit_affect_all.h"
+ #include "gui/views/view.h"
+ #include "model/clip/clip.h"
+ #include "model/clip/instrument_clip.h"
+@@ -47,6 +48,7 @@ void UnpatchedParam::writeCurrentValue() {
+ 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
+ 	ModelStackWithAutoParam* modelStackWithParam = getModelStack(modelStackMemory);
+ 	int32_t value = getFinalValue();
++	int32_t oldValue = modelStackWithParam->autoParam->getCurrentValue();
+ 
+ 	// If affect-entire button held, do whole kit
+ 	if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
+@@ -68,6 +70,7 @@ void UnpatchedParam::writeCurrentValue() {
+ 	// Or, the normal case of just one sound
+ 	else {
+ 		modelStackWithParam->autoParam->setCurrentValueInResponseToUserInput(value, modelStackWithParam);
++		deluge::kit_affect_all::kitAffectAll.menuValueChanged(modelStackWithParam, oldValue);
+ 	}
+ 
+ 	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/value.h b/src/deluge/gui/menu_item/value.h
 index 4448a56c..142b2887 100644
 --- a/src/deluge/gui/menu_item/value.h
@@ -14052,6 +14155,562 @@ index 38f8cbc9..6de4bdf6 100644
  	int32_t copiedScreenWidth{};
  	ScaleType copiedScaleType{};
  	int16_t copiedYNoteOfBottomRow{};
+diff --git a/src/deluge/gui/views/kit_affect_all.cpp b/src/deluge/gui/views/kit_affect_all.cpp
+new file mode 100644
+index 00000000..5dadfa0f
+--- /dev/null
++++ b/src/deluge/gui/views/kit_affect_all.cpp
+@@ -0,0 +1,454 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "gui/views/kit_affect_all.h"
++#include "gui/l10n/l10n.h"
++#include "gui/ui/menus.h"
++#include "gui/ui/sound_editor.h"
++#include "gui/ui/ui.h"
++#include "gui/views/instrument_clip_view.h"
++#include "gui/views/view.h"
++#include "hid/display/display.h"
++#include "hid/led/indicator_leds.h"
++#include "model/clip/instrument_clip.h"
++#include "model/instrument/kit.h"
++#include "model/model_stack.h"
++#include "model/note/note_row.h"
++#include "model/song/song.h"
++#include "modulation/automation/auto_param.h"
++#include "modulation/params/param_collection.h"
++#include "playback/playback_handler.h"
++#include "processing/sound/drum_synth_params.h"
++#include "processing/sound/sound_drum.h"
++#include <algorithm>
++#include <limits>
++
++namespace params = deluge::modulation::params;
++
++namespace deluge::kit_affect_all {
++
++KitAffectAll kitAffectAll{};
++
++namespace {
++
++/// The rows affect all moves: drum synths, which all share one knob and pad layout
++bool isDrumSynthRow(Drum* drum) {
++	return drum != nullptr && drum->type == DrumType::SOUND
++	       && static_cast<SoundDrum*>(drum)->sources[0].oscType == OscType::DRUM_SYNTH;
++}
++
++/// A kit SHIFT + KIT made (LXR, Cycles or GIN), whatever rows have been added to it since
++bool isPresetKit(Kit* kit) {
++	for (Drum* drum = kit->firstDrum; drum != nullptr; drum = drum->next) {
++		if (drum->type == DrumType::SOUND
++		    && static_cast<SoundDrum*>(drum)->presetKit != deluge::dsp::drum_synth::PresetKit::NONE) {
++			return true;
++		}
++	}
++	return false;
++}
++
++Drum* firstDrumSynthRow(Kit* kit) {
++	for (Drum* drum = kit->firstDrum; drum != nullptr; drum = drum->next) {
++		if (isDrumSynthRow(drum)) {
++			return drum;
++		}
++	}
++	return nullptr;
++}
++
++bool isRowParam(params::Kind kind) {
++	return kind == params::Kind::PATCHED || kind == params::Kind::UNPATCHED_SOUND;
++}
++
++bool isKitParam(params::Kind kind) {
++	return kind == params::Kind::UNPATCHED_GLOBAL || kind == params::Kind::UNPATCHED_SOUND;
++}
++
++/// The model stack for a drum row of this clip, or nullptr if the row isn't in the clip
++ModelStackWithThreeMainThings* rowModelStack(void* memory, InstrumentClip* clip, SoundDrum* drum) {
++	int32_t noteRowIndex;
++	NoteRow* noteRow = clip->getNoteRowForDrum(drum, &noteRowIndex);
++	if (noteRow == nullptr) {
++		return nullptr;
++	}
++	return setupModelStackWithThreeMainThingsIncludingNoteRow(memory, currentSong, clip, noteRowIndex, noteRow, drum,
++	                                                          &noteRow->paramManager);
++}
++
++/// With no clip in the stack, setting the param never records automation: the snapshot must be able to put it all back
++ModelStackWithAutoParam* withoutAutomation(ModelStackWithAutoParam* modelStack) {
++	if (modelStack == nullptr || modelStack->autoParam == nullptr) {
++		return nullptr;
++	}
++	modelStack->setTimelineCounter(nullptr);
++	return modelStack;
++}
++
++ModelStackWithAutoParam* paramOnRow(void* memory, InstrumentClip* clip, SoundDrum* drum, params::Kind kind,
++                                    int32_t paramId) {
++	ModelStackWithThreeMainThings* modelStack = rowModelStack(memory, clip, drum);
++	if (modelStack == nullptr) {
++		return nullptr;
++	}
++	return withoutAutomation((kind == params::Kind::PATCHED) ? modelStack->getPatchedAutoParamFromId(paramId)
++	                                                         : modelStack->getUnpatchedAutoParamFromId(paramId));
++}
++
++/// Whatever this gold knob sets on the row, on the row's own engine, if it's a param affect all can move
++ModelStackWithAutoParam* knobOnRow(void* memory, InstrumentClip* clip, SoundDrum* drum, int32_t whichModEncoder) {
++	ModelStackWithThreeMainThings* modelStack = rowModelStack(memory, clip, drum);
++	if (modelStack == nullptr) {
++		return nullptr;
++	}
++	ModelStackWithAutoParam* withParam = drum->getParamFromModEncoder(whichModEncoder, modelStack, true);
++	if (withParam == nullptr || withParam->autoParam == nullptr
++	    || !isRowParam(withParam->paramCollection->getParamKind())) {
++		return nullptr;
++	}
++	return withoutAutomation(withParam);
++}
++
++ModelStackWithAutoParam* paramOnKit(void* memory, InstrumentClip* clip, Kit* kit, int32_t paramId) {
++	ModelStackWithThreeMainThings* modelStack =
++	    setupModelStackWithThreeMainThingsButNoNoteRow(memory, currentSong, kit, clip, &clip->paramManager);
++	return withoutAutomation(modelStack->getUnpatchedAutoParamFromId(paramId));
++}
++
++/// The param on another row doing the job a menu just edited on this one. Engines keep their controls on different
++/// params, so a drum control is matched by the shortcut pad, then the gold knob, it sits on. Every other param means
++/// the same on every row. kNoParamID where the other row's engine has nothing there.
++uint32_t sameJobOn(SoundDrum* from, SoundDrum* to, params::Kind kind, int32_t paramId) {
++	if (kind != params::Kind::PATCHED || deluge::dsp::drum_synth::drumSlotForParam(paramId) < 0
++	    || from->sources[0].drumPatch.engine() == to->sources[0].drumPatch.engine()) {
++		return paramId;
++	}
++	for (int32_t x = 0; x < kDisplayWidth; x++) {
++		for (int32_t y = 0; y < kDisplayHeight; y++) {
++			if (drumShortcutParam(from, x, y) == static_cast<uint32_t>(paramId)) {
++				return drumShortcutParam(to, x, y);
++			}
++		}
++	}
++	for (int32_t mode = 0; mode < kNumModButtons; mode++) {
++		for (int32_t knob = 0; knob < kNumPhysicalModKnobs; knob++) {
++			if (from->modKnobs[mode][knob].paramDescriptor.isSetToParamWithNoSource(paramId)) {
++				const ParamDescriptor& theirs = to->modKnobs[mode][knob].paramDescriptor;
++				if (theirs.isJustAParam() && theirs.getJustTheParam() < params::UNPATCHED_START) {
++					return theirs.getJustTheParam();
++				}
++				return params::kNoParamID;
++			}
++		}
++	}
++	return params::kNoParamID;
++}
++
++int32_t clampToParam(int64_t value) {
++	return static_cast<int32_t>(
++	    std::clamp<int64_t>(value, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max()));
++}
++
++} // namespace
++
++void KitAffectAll::shiftAffectEntirePressed(InstrumentClip* clip) {
++	if (leaving_ && isActiveFor(clip)) {
++		return; // Already going back at the next bar
++	}
++	if (isActiveFor(clip)) {
++		leave();
++		return;
++	}
++	if (clip_ != nullptr) {
++		restore(); // Another clip was in the mode: put it back first
++	}
++
++	Kit* kit = static_cast<Kit*>(clip->output);
++	Drum* firstRow = firstDrumSynthRow(kit);
++	if (!isPresetKit(kit) || firstRow == nullptr) {
++		display->displayPopup(l10n::get(l10n::String::STRING_FOR_AFFECT_ALL_PRESET_KITS_ONLY));
++		return;
++	}
++
++	clip_ = clip;
++	kit_ = kit;
++	song_ = currentSong;
++	affectEntireBefore_ = clip->affectEntire;
++	leaving_ = false;
++
++	// Start on all voices: the gold knobs go to the drum rows instead of the kit's FX
++	clip->affectEntire = false;
++	if (!isDrumSynthRow(kit->selectedDrum)) {
++		instrumentClipView.setSelectedDrum(firstRow);
++	}
++	view.setActiveModControllableTimelineCounter(clip);
++
++	display->displayPopup(l10n::get(l10n::String::STRING_FOR_AFFECT_ALL));
++	refreshLed();
++}
++
++bool KitAffectAll::affectEntirePressed(InstrumentClip* clip) {
++	if (!isActiveFor(clip)) {
++		return false;
++	}
++	clip->affectEntire = !clip->affectEntire;
++	if (!clip->affectEntire && !isDrumSynthRow(kit_->selectedDrum)) {
++		instrumentClipView.setSelectedDrum(firstDrumSynthRow(kit_));
++	}
++	view.setActiveModControllableTimelineCounter(clip);
++	display->displayPopup(l10n::get(clip->affectEntire ? l10n::String::STRING_FOR_AFFECT_ALL_KIT_FX
++	                                                   : l10n::String::STRING_FOR_AFFECT_ALL_VOICES));
++	refreshLed();
++	return true;
++}
++
++void KitAffectAll::leave() {
++	if (playbackHandler.isEitherClockActive() && !playbackHandler.ticksLeftInCountIn) {
++		leaving_ = true;
++		// Make sure playback actions a tick on the next bar line, even if nothing else plays there
++		int32_t barLength = currentSong->getBarLength();
++		int64_t nextBar = (playbackHandler.getActualSwungTickCount() / barLength + 1) * barLength;
++		int64_t ticksTilBar = nextBar - playbackHandler.lastSwungTickActioned;
++		if (ticksTilBar > 0 && ticksTilBar < playbackHandler.swungTicksTilNextEvent) {
++			playbackHandler.swungTicksTilNextEvent = static_cast<int32_t>(ticksTilBar);
++			playbackHandler.scheduleSwungTick();
++		}
++		display->displayPopup(l10n::get(l10n::String::STRING_FOR_AFFECT_ALL_LEAVING));
++		refreshLed();
++	}
++	else {
++		restore();
++		display->displayPopup(l10n::get(l10n::String::STRING_FOR_AFFECT_ALL_RESTORED));
++	}
++}
++
++bool KitAffectAll::isActiveFor(Clip const* clip) const {
++	return clip != nullptr && clip == clip_ && song_ == currentSong;
++}
++
++bool KitAffectAll::stillValid() const {
++	if (clip_ == nullptr || song_ != currentSong) {
++		return false;
++	}
++	if (currentSong->sessionClips.getIndexForClip(clip_) < 0
++	    && currentSong->arrangementOnlyClips.getIndexForClip(clip_) < 0) {
++		return false;
++	}
++	return clip_->output == kit_;
++}
++
++SoundDrum* KitAffectAll::drumRowFor(ModelStackWithAutoParam const* modelStack) const {
++	if (!modelStack->timelineCounterIsSet() || modelStack->getTimelineCounter() != clip_) {
++		return nullptr;
++	}
++	for (Drum* drum = kit_->firstDrum; drum != nullptr; drum = drum->next) {
++		if (isDrumSynthRow(drum)
++		    && static_cast<ModControllable*>(static_cast<SoundDrum*>(drum)) == modelStack->modControllable) {
++			return static_cast<SoundDrum*>(drum);
++		}
++	}
++	return nullptr;
++}
++
++bool KitAffectAll::isKitFx(ModelStackWithAutoParam const* modelStack) const {
++	return modelStack->timelineCounterIsSet() && modelStack->getTimelineCounter() == clip_
++	       && modelStack->modControllable == static_cast<ModControllable*>(kit_)
++	       && isKitParam(modelStack->paramCollection->getParamKind());
++}
++
++KitAffectAll::Entry& KitAffectAll::entryFor(SoundDrum* drum, ModelStackWithAutoParam const* modelStack,
++                                            int32_t valueBefore) {
++	params::Kind kind = modelStack->paramCollection->getParamKind();
++	for (Entry& entry : snapshot_) {
++		if (entry.drum == drum && entry.kind == kind && entry.paramId == modelStack->paramId) {
++			return entry;
++		}
++	}
++	snapshot_.push_back({drum, kind, modelStack->paramId, valueBefore, 0});
++	return snapshot_.back();
++}
++
++void KitAffectAll::moveBy(Entry& entry, ModelStackWithAutoParam* modelStack, int64_t amount) {
++	// Each row can go anywhere from its snapshot
++	constexpr int64_t kFullSweep = (int64_t)1 << 32;
++	entry.moved = std::clamp<int64_t>(entry.moved + amount, -kFullSweep, kFullSweep);
++	modelStack->autoParam->setCurrentValueInResponseToUserInput(clampToParam((int64_t)entry.value + entry.moved),
++	                                                            modelStack, false);
++}
++
++bool KitAffectAll::modEncoderTurned(ModelStackWithAutoParam* modelStack, int32_t whichModEncoder, int32_t offset) {
++	if (clip_ == nullptr || !stillValid()) {
++		return false;
++	}
++	params::Kind kind = modelStack->paramCollection->getParamKind();
++
++	// Kit FX: the normal knob move, remembered for the snapshot and never recorded
++	if (isKitFx(modelStack)) {
++		int32_t value = modelStack->autoParam->getCurrentValue();
++		entryFor(nullptr, modelStack, value);
++		int32_t knobPos = modelStack->paramCollection->paramValueToKnobPos(value, modelStack);
++		int32_t newKnobPos = view.calculateKnobPosForModEncoderTurn(kind, knobPos, offset);
++		view.displayModEncoderValuePopup(kind, modelStack->paramId, newKnobPos);
++		if (newKnobPos != knobPos) {
++			char modelStackMemory[MODEL_STACK_MAX_SIZE];
++			copyModelStack(modelStackMemory, modelStack, sizeof(ModelStackWithAutoParam));
++			auto* noRecording = withoutAutomation((ModelStackWithAutoParam*)modelStackMemory);
++			noRecording->autoParam->setCurrentValueInResponseToUserInput(
++			    noRecording->paramCollection->knobPosToParamValue(newKnobPos, noRecording), noRecording, false);
++			view.sendMidiFollowFeedback(modelStack, newKnobPos);
++		}
++		return true;
++	}
++
++	// All voices: every drum synth row's own control on this knob moves the same number of knob steps
++	if (!isRowParam(kind) || drumRowFor(modelStack) == nullptr) {
++		return false;
++	}
++	for (Drum* drum = kit_->firstDrum; drum != nullptr; drum = drum->next) {
++		if (!isDrumSynthRow(drum)) {
++			continue;
++		}
++		auto* row = static_cast<SoundDrum*>(drum);
++		char modelStackMemory[MODEL_STACK_MAX_SIZE];
++		ModelStackWithAutoParam* onRow = knobOnRow(modelStackMemory, clip_, row, whichModEncoder);
++		if (onRow == nullptr) {
++			continue;
++		}
++		// One knob step in param value units, as this param's knob maps them
++		int64_t step = (int64_t)onRow->paramCollection->knobPosToParamValue(1, onRow)
++		               - onRow->paramCollection->knobPosToParamValue(0, onRow);
++		Entry& entry = entryFor(row, onRow, onRow->autoParam->getCurrentValue());
++		moveBy(entry, onRow, step * offset);
++	}
++
++	int32_t knobPos =
++	    modelStack->paramCollection->paramValueToKnobPos(modelStack->autoParam->getCurrentValue(), modelStack);
++	view.displayModEncoderValuePopup(kind, modelStack->paramId, knobPos);
++	view.sendMidiFollowFeedback(modelStack, knobPos);
++	return true;
++}
++
++void KitAffectAll::menuValueChanged(ModelStackWithAutoParam const* modelStack, int32_t oldValue) {
++	if (clip_ == nullptr || !stillValid()) {
++		return;
++	}
++	// Kit FX: just remember where it was
++	if (isKitFx(modelStack)) {
++		entryFor(nullptr, modelStack, oldValue);
++		return;
++	}
++
++	params::Kind kind = modelStack->paramCollection->getParamKind();
++	SoundDrum* activeRow = drumRowFor(modelStack);
++	if (!isRowParam(kind) || activeRow == nullptr) {
++		return;
++	}
++	// The menu has already set the row it's on, from oldValue
++	int64_t delta = (int64_t)modelStack->autoParam->getCurrentValue() - oldValue;
++	Entry& own = entryFor(activeRow, modelStack, oldValue);
++	own.moved += delta;
++
++	for (Drum* drum = kit_->firstDrum; drum != nullptr; drum = drum->next) {
++		if (!isDrumSynthRow(drum) || drum == activeRow) {
++			continue;
++		}
++		auto* row = static_cast<SoundDrum*>(drum);
++		uint32_t paramId = sameJobOn(activeRow, row, kind, modelStack->paramId);
++		if (paramId == params::kNoParamID) {
++			continue;
++		}
++		char modelStackMemory[MODEL_STACK_MAX_SIZE];
++		ModelStackWithAutoParam* onRow = paramOnRow(modelStackMemory, clip_, row, kind, static_cast<int32_t>(paramId));
++		if (onRow == nullptr) {
++			continue;
++		}
++		Entry& entry = entryFor(row, onRow, onRow->autoParam->getCurrentValue());
++		moveBy(entry, onRow, delta);
++	}
++}
++
++void KitAffectAll::restore() {
++	InstrumentClip* clip = clip_;
++	bool valid = stillValid();
++	if (valid) {
++		for (Entry const& entry : snapshot_) {
++			char modelStackMemory[MODEL_STACK_MAX_SIZE];
++			ModelStackWithAutoParam* modelStack = nullptr;
++			if (entry.drum == nullptr) {
++				modelStack = paramOnKit(modelStackMemory, clip_, kit_, entry.paramId);
++			}
++			else {
++				bool rowStillThere = false;
++				for (Drum* drum = kit_->firstDrum; drum != nullptr; drum = drum->next) {
++					rowStillThere |= (drum == entry.drum);
++				}
++				if (rowStillThere) {
++					modelStack = paramOnRow(modelStackMemory, clip_, entry.drum, entry.kind, entry.paramId);
++				}
++			}
++			if (modelStack != nullptr) {
++				modelStack->autoParam->setCurrentValueInResponseToUserInput(entry.value, modelStack, false);
++			}
++		}
++		clip_->affectEntire = affectEntireBefore_;
++	}
++
++	forget();
++
++	indicator_leds::stopLedBlinking(IndicatorLED::AFFECT_ENTIRE);
++	if (valid && rootUIIsClipMinderScreen() && getCurrentClip() == clip && getCurrentUI() != &soundEditor) {
++		view.setActiveModControllableTimelineCounter(clip); // Knobs back to the kit's FX if they were there
++	}
++	else if (getCurrentUI() != &soundEditor) {
++		view.setModLedStates();
++	}
++}
++
++void KitAffectAll::forget() {
++	clip_ = nullptr;
++	kit_ = nullptr;
++	song_ = nullptr;
++	leaving_ = false;
++	snapshot_.clear();
++}
++
++int32_t KitAffectAll::processTick(int64_t swungTick) {
++	if (!leaving_) {
++		return std::numeric_limits<int32_t>::max();
++	}
++	int32_t barLength = currentSong->getBarLength();
++	int32_t intoBar = static_cast<int32_t>(swungTick % barLength);
++	if (intoBar == 0) {
++		restore(); // Before the clips play the bar's first hits
++		return std::numeric_limits<int32_t>::max();
++	}
++	return barLength - intoBar;
++}
++
++void KitAffectAll::playbackStopped() {
++	if (leaving_) {
++		restore();
++	}
++}
++
++void KitAffectAll::refreshLed() {
++	if (rootUIIsClipMinderScreen() && isActiveFor(getCurrentClip())) {
++		indicator_leds::blinkLed(IndicatorLED::AFFECT_ENTIRE, 255, leaving_ ? 1 : 0);
++	}
++}
++
++} // namespace deluge::kit_affect_all
+diff --git a/src/deluge/gui/views/kit_affect_all.h b/src/deluge/gui/views/kit_affect_all.h
+new file mode 100644
+index 00000000..16b3e505
+--- /dev/null
++++ b/src/deluge/gui/views/kit_affect_all.h
+@@ -0,0 +1,90 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "modulation/params/param.h"
++#include "util/containers.h"
++#include <cstdint>
++
++class Clip;
++class InstrumentClip;
++class Kit;
++class ModelStackWithAutoParam;
++class Song;
++class SoundDrum;
++
++// Affect all, a performance mode for the preset kits (LXR, Cycles, GIN). SHIFT + AFFECT ENTIRE in a kit clip takes a
++// temp snapshot of the kit (AFFECT ENTIRE flashes) and goes to all voices: the gold knobs, and the sound menu (SHIFT +
++// pad, turn SELECT), move every drum synth row by the same amount, each from where it was and each on its own engine's
++// control for that knob or pad. Sample and synth rows are left alone. AFFECT ENTIRE on its own swaps between all voices
++// and the kit's FX, so both can be pushed around. SHIFT + AFFECT ENTIRE again (AFFECT ENTIRE flashes twice as fast)
++// puts the whole snapshot back on the next bar, or straight away when stopped. The snapshot lives in RAM only.
++namespace deluge::kit_affect_all {
++
++class KitAffectAll {
++public:
++	/// SHIFT + AFFECT ENTIRE in a kit clip: take the snapshot, or ask to put it back
++	void shiftAffectEntirePressed(InstrumentClip* clip);
++	/// AFFECT ENTIRE on its own in a kit clip. True if the snapshot is on, which then swaps all voices / kit FX
++	bool affectEntirePressed(InstrumentClip* clip);
++	[[nodiscard]] bool isActiveFor(Clip const* clip) const;
++
++	/// A gold knob turned. True if affect all made the change, so the normal knob action must not happen
++	bool modEncoderTurned(ModelStackWithAutoParam* modelStack, int32_t whichModEncoder, int32_t offset);
++	/// The sound menu just set a param from oldValue: move the other rows the same way, and remember where it was
++	void menuValueChanged(ModelStackWithAutoParam const* modelStack, int32_t oldValue);
++
++	/// From playback, before the clips play a swung tick. Returns the ticks until it next needs one
++	int32_t processTick(int64_t swungTick);
++	void playbackStopped();
++
++	/// Flash AFFECT ENTIRE while the current clip is in the mode. Called after the view sets the mod LEDs
++	void refreshLed();
++
++private:
++	/// One param on one row (or the kit's FX, drum nullptr): where it was when the snapshot first needed it, so it can
++	/// go back exactly, and how far affect all has moved it since, in param value units. Kept apart from the value, so
++	/// a row pushed against an end keeps its place against the others when you turn back.
++	struct Entry {
++		SoundDrum* drum;
++		modulation::params::Kind kind;
++		int32_t paramId;
++		int32_t value;
++		int64_t moved;
++	};
++
++	[[nodiscard]] bool stillValid() const;
++	[[nodiscard]] SoundDrum* drumRowFor(ModelStackWithAutoParam const* modelStack) const;
++	[[nodiscard]] bool isKitFx(ModelStackWithAutoParam const* modelStack) const;
++	Entry& entryFor(SoundDrum* drum, ModelStackWithAutoParam const* modelStack, int32_t valueBefore);
++	void moveBy(Entry& entry, ModelStackWithAutoParam* modelStack, int64_t amount);
++	void restore();
++	void leave();
++	void forget();
++
++	InstrumentClip* clip_ = nullptr;
++	Kit* kit_ = nullptr;
++	Song* song_ = nullptr;
++	bool affectEntireBefore_ = false;
++	bool leaving_ = false;
++	deluge::vector<Entry> snapshot_;
++};
++
++extern KitAffectAll kitAffectAll;
++
++} // namespace deluge::kit_affect_all
 diff --git a/src/deluge/gui/views/kit_pattern_mode.cpp b/src/deluge/gui/views/kit_pattern_mode.cpp
 new file mode 100644
 index 00000000..4a339b19
@@ -14362,18 +15021,19 @@ index 00000000..4bbd4cbd
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 0690e2bb..9f4ec372 100644
+index 0690e2bb..371235d3 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
-@@ -37,6 +37,7 @@
+@@ -37,6 +37,8 @@
  #include "gui/views/arranger_view.h"
  #include "gui/views/automation_view.h"
  #include "gui/views/instrument_clip_view.h"
++#include "gui/views/kit_affect_all.h"
 +#include "gui/views/kit_pattern_mode.h"
  #include "gui/views/performance_view.h"
  #include "gui/views/session_view.h"
  #include "hid/buttons.h"
-@@ -76,6 +77,7 @@
+@@ -76,6 +78,7 @@
  #include "modulation/params/param.h"
  #include "modulation/params/param_collection.h"
  #include "modulation/params/param_set.h"
@@ -14381,7 +15041,7 @@ index 0690e2bb..9f4ec372 100644
  #include "playback/mode/arrangement.h"
  #include "playback/mode/session.h"
  #include "processing/audio_output.h"
-@@ -162,12 +164,19 @@ doEndMidiLearnPressSession:
+@@ -162,12 +165,19 @@ doEndMidiLearnPressSession:
  				endMidiLearnPressSession();
  			}
  		}
@@ -14401,7 +15061,7 @@ index 0690e2bb..9f4ec372 100644
  				// Otherwise, normal - tap tempo, but not during record count in
  				else if (currentUIMode == UI_MODE_NONE) {
  					bool useNormalTapTempoBehaviour =
-@@ -328,8 +337,17 @@ doEndMidiLearnPressSession:
+@@ -328,8 +338,17 @@ doEndMidiLearnPressSession:
  		}
  	}
  
@@ -14420,7 +15080,7 @@ index 0690e2bb..9f4ec372 100644
  		if ((runtimeFeatureSettings.get(RuntimeFeatureSettingType::SyncScalingAction)
  		     == RuntimeFeatureStateSyncScalingAction::Fill)) {
  			// If currently in the sound editor note editor / note row editor, keep this button as the global
-@@ -499,6 +517,17 @@ void View::endMIDILearn() {
+@@ -499,6 +518,17 @@ void View::endMIDILearn() {
  }
  
  void View::setTimeBaseScaleLedState() {
@@ -14438,7 +15098,20 @@ index 0690e2bb..9f4ec372 100644
  	// If this Clip is the inputTickScaleClip, flash the LED
  	if (getCurrentUI()->toClipMinder() && getCurrentClip() == currentSong->getSyncScalingClip()) {
  		indicator_leds::blinkLed(IndicatorLED::SYNC_SCALING);
-@@ -1205,7 +1234,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -851,6 +881,12 @@ void View::modEncoderAction_nonExistentParam(int32_t whichModEncoder, int32_t of
+ 
+ void View::modEncoderAction_existentParam(int32_t whichModEncoder, int32_t offset,
+                                           ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore) {
++	// Affect all on a kit moves every drum row, or the kit FX without recording (holding notes still parameter locks)
++	if (!modLength
++	    && deluge::kit_affect_all::kitAffectAll.modEncoderTurned(modelStackWithParam, whichModEncoder, offset)) {
++		return;
++	}
++
+ 	char modelStackTempMemory[MODEL_STACK_MAX_SIZE];
+ 	copyModelStack(modelStackTempMemory, modelStackWithParam, sizeof(ModelStackWithThreeMainThings));
+ 	ModelStackWithThreeMainThings* tempModelStack = (ModelStackWithThreeMainThings*)modelStackTempMemory;
+@@ -1205,7 +1241,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  	}
  	else {
  		current_display_value = calculateKnobPosForDisplay(kind, paramID, newKnobPos + kKnobPosOffset);
@@ -14466,7 +15139,7 @@ index 0690e2bb..9f4ec372 100644
  	}
  
  	// Check if we need to update the notification (avoid excessive updates)
-@@ -1332,7 +1380,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
+@@ -1332,7 +1387,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
  	valueForDisplayFloat = (knobPosFloat / maxKnobPosFloat) * maxMenuValueFloat;
  
  	// check if parameter is pan or pitch, in which case, further adjust range from 0 - 50 to -25 to +25
@@ -14474,6 +15147,16 @@ index 0690e2bb..9f4ec372 100644
 +	if (isParamPan(kind, paramID) || isParamPitch(kind, paramID) || isParamDelayTone(kind, paramID)) {
  		valueForDisplayFloat = valueForDisplayFloat - maxMenuRelativeValueFloat;
  	}
+ 
+@@ -1595,6 +1650,9 @@ void View::setModLedStates() {
+ 		affectEntire = (uiContextType == UIType::INSTRUMENT_CLIP) ? ((InstrumentClip*)clip)->affectEntire : true;
+ 	}
+ 	indicator_leds::setLedState(IndicatorLED::AFFECT_ENTIRE, affectEntire);
++	if (!itsTheSong) {
++		deluge::kit_affect_all::kitAffectAll.refreshLed();
++	}
+ 
+ 	bool onAutomationClipView = false;
  
 diff --git a/src/deluge/hid/buttons.cpp b/src/deluge/hid/buttons.cpp
 index 21f193b9..7253d362 100644
@@ -14890,6 +15573,37 @@ index b6e15e33..0d45f0e7 100644
  	// These *only* store a valid preset number for the instrument-types that the Clip is not currently on
  	int8_t backedUpInstrumentSlot[4]{};
  	int8_t backedUpInstrumentSubSlot[4]{};
+diff --git a/src/deluge/model/clip/instrument_clip_minder.cpp b/src/deluge/model/clip/instrument_clip_minder.cpp
+index 7bdb9004..ec345f2c 100644
+--- a/src/deluge/model/clip/instrument_clip_minder.cpp
++++ b/src/deluge/model/clip/instrument_clip_minder.cpp
+@@ -31,6 +31,7 @@
+ #include "gui/views/arranger_view.h"
+ #include "gui/views/automation_view.h"
+ #include "gui/views/instrument_clip_view.h"
++#include "gui/views/kit_affect_all.h"
+ #include "gui/views/view.h"
+ #include "hid/button.h"
+ #include "hid/buttons.h"
+@@ -443,9 +444,15 @@ ActionResult InstrumentClipMinder::buttonAction(deluge::hid::Button b, bool on,
+ 	else if (b == AFFECT_ENTIRE) {
+ 		if (on && currentUIMode == UI_MODE_NONE) {
+ 			if (getCurrentOutputType() == OutputType::KIT) {
+-
+-				getCurrentInstrumentClip()->affectEntire = !getCurrentInstrumentClip()->affectEntire;
+-				view.setActiveModControllableTimelineCounter(getCurrentInstrumentClip());
++				auto& affectAll = deluge::kit_affect_all::kitAffectAll;
++				if (Buttons::isShiftButtonPressed()) {
++					affectAll.shiftAffectEntirePressed(getCurrentInstrumentClip());
++				}
++				// In affect all it swaps all voices / kit FX, keeping the snapshot
++				else if (!affectAll.affectEntirePressed(getCurrentInstrumentClip())) {
++					getCurrentInstrumentClip()->affectEntire = !getCurrentInstrumentClip()->affectEntire;
++					view.setActiveModControllableTimelineCounter(getCurrentInstrumentClip());
++				}
+ 			}
+ 		}
+ 	}
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
 index a7bbbd46..02b2c7a5 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
@@ -18019,10 +18733,18 @@ index 4d769f65..3101a8df 100644
  	bool giveClipOpportunityToBeginLinearRecording(Clip* clip, int32_t clipIndex, int32_t buttonPressLatency);
  	void armClipToStopAction(Clip* clip);
 diff --git a/src/deluge/playback/playback_handler.cpp b/src/deluge/playback/playback_handler.cpp
-index f039781a..b60dba91 100644
+index f039781a..8ade127f 100644
 --- a/src/deluge/playback/playback_handler.cpp
 +++ b/src/deluge/playback/playback_handler.cpp
-@@ -59,6 +59,7 @@
+@@ -27,6 +27,7 @@
+ #include "gui/views/arranger_view.h"
+ #include "gui/views/automation_view.h"
+ #include "gui/views/instrument_clip_view.h"
++#include "gui/views/kit_affect_all.h"
+ #include "gui/views/performance_view.h"
+ #include "gui/views/session_view.h"
+ #include "gui/views/view.h"
+@@ -59,6 +60,7 @@
  #include "model/settings/runtime_feature_settings.h"
  #include "model/song/song.h"
  #include "model/sync.h"
@@ -18030,7 +18752,7 @@ index f039781a..b60dba91 100644
  #include "playback/clock_output_scheduler.h"
  #include "playback/mode/arrangement.h"
  #include "playback/mode/session.h"
-@@ -289,10 +290,27 @@ void PlaybackHandler::recordButtonPressed() {
+@@ -289,10 +291,27 @@ void PlaybackHandler::recordButtonPressed() {
  			return;
  		}
  
@@ -18058,15 +18780,16 @@ index f039781a..b60dba91 100644
  		}
  		else {
  			recording = RecordingMode::OFF;
-@@ -580,6 +598,7 @@ void PlaybackHandler::setupPlayback(int32_t newPlaybackState, int32_t playFromPo
+@@ -580,6 +599,8 @@ void PlaybackHandler::setupPlayback(int32_t newPlaybackState, int32_t playFromPo
  }
  
  void PlaybackHandler::endPlayback() {
 +	deluge::autofill::autofill.playbackStopped();
++	deluge::kit_affect_all::kitAffectAll.playbackStopped();
  	if (isInternalClockActive() && currentlySendingMIDIOutputClocks()) {
  		midiEngine.sendStop(this);
  	}
-@@ -591,6 +610,12 @@ void PlaybackHandler::endPlayback() {
+@@ -591,6 +612,12 @@ void PlaybackHandler::endPlayback() {
  
  	bool wasRecordingArrangement = (recording == RecordingMode::ARRANGEMENT);
  
@@ -18079,7 +18802,7 @@ index f039781a..b60dba91 100644
  	// Rohan: Must happen after currentSong->endInstancesOfActiveClips() is called (ok I can't
  	// remember why I wrote that, and now it needs to happen before so that
  	// Clip::beingRecordedFrom is still set when playback ends, so notes stop)
-@@ -716,10 +741,8 @@ void PlaybackHandler::actionTimerTick() {
+@@ -716,10 +743,8 @@ void PlaybackHandler::actionTimerTick() {
  // same time as a timer tick
  void PlaybackHandler::actionTimerTickPart2() {
  
@@ -18092,7 +18815,7 @@ index f039781a..b60dba91 100644
  
  	// But if count-in happening, limit it to one bar's length (or perhaps this should be one beat, to avoid slight
  	// screwiness with very long swing intervals?)
-@@ -1039,7 +1062,14 @@ void PlaybackHandler::actionSwungTick() {
+@@ -1039,7 +1064,17 @@ void PlaybackHandler::actionSwungTick() {
  	swungTicksTilNextEvent = 2147483647;
  
  	if (isEitherClockActive()) { // Occasionally, considerLaunchEvent() will stop playback
@@ -18101,6 +18824,9 @@ index f039781a..b60dba91 100644
 +			// Autofill decides its hits before the clips play theirs, so it can take theirs away
 +			int32_t swungTicksTilAutofillEvent =
 +			    deluge::autofill::autofill.processTick(lastSwungTickActioned, swungTickIncrement);
++			// Affect all goes back to its snapshot on the bar line, before the bar's first hits play
++			swungTicksTilAutofillEvent = std::min(
++			    swungTicksTilAutofillEvent, deluge::kit_affect_all::kitAffectAll.processTick(lastSwungTickActioned));
 +			currentPlaybackMode->doTickForward(swungTickIncrement);
 +			deluge::autofill::autofill.afterTick();
 +			swungTicksTilNextEvent = std::min(swungTicksTilNextEvent, swungTicksTilAutofillEvent);
@@ -18108,7 +18834,7 @@ index f039781a..b60dba91 100644
  
  		if (isEitherClockActive()) { // Occasionally, doTickForward() will stop playback
  
-@@ -1102,7 +1132,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
+@@ -1102,7 +1137,14 @@ void PlaybackHandler::scheduleSwungTickFromInternalClock() {
  		swungTickScheduled = true;
  		uint32_t swungTicksIntoTimerBit = nextSwungTick - lastTimerTickActioned;
  
@@ -18124,7 +18850,7 @@ index f039781a..b60dba91 100644
  			int32_t leftShift = 9 - currentSong->swingInterval;
  			leftShift = std::max(leftShift, 0_i32);
  			uint32_t swingInterval = 3 << (leftShift);
-@@ -1145,7 +1182,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
+@@ -1145,7 +1187,16 @@ int32_t PlaybackHandler::getNumSwungTicksInSinceLastTimerTick(uint32_t* timeRema
  
  	uint32_t timePassed = AudioEngine::audioSampleTimer - (uint32_t)(timeLastTimerTickBig >> 32);
  
@@ -18142,7 +18868,7 @@ index f039781a..b60dba91 100644
  
  		if (timeRemainder) {
  			*timeRemainder = 0; // To be improved
-@@ -1225,6 +1271,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
+@@ -1225,6 +1276,14 @@ int64_t PlaybackHandler::getActualSwungTickCount(uint32_t* timeRemainder) {
  			actualSwungTick = currentInternalTick;
  		}
  
@@ -18157,7 +18883,7 @@ index f039781a..b60dba91 100644
  		// Yes swing
  		else {
  
-@@ -1763,6 +1817,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
+@@ -1763,6 +1822,13 @@ void PlaybackHandler::scheduleSwungTickFromExternalClock() {
  	if (!currentSong->hasAnySwing()) {
  		internalTickPositionForNextSwungTickTimes50 = nextSwungTick * 50;
  	}
@@ -18171,7 +18897,7 @@ index f039781a..b60dba91 100644
  	else {
  
  		int32_t leftShift = 10 - currentSong->swingInterval;
-@@ -2090,17 +2151,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
+@@ -2090,17 +2156,48 @@ void PlaybackHandler::resyncMIDIClockOutTicksToInternalTicks() {
  	lastMIDIClockOutTickDone = (uint64_t)getCurrentInternalTickCount() * midiClockOutTicksPer / internalTicksPer;
  }
  
@@ -18227,7 +18953,7 @@ index f039781a..b60dba91 100644
  		text.append("\n");
  	}
  	syncValueToString(currentSong->swingInterval, text, currentSong->getInputTickMagnitude());
-@@ -2115,25 +2207,14 @@ void PlaybackHandler::commandClearTempoAutomation() {
+@@ -2115,25 +2212,14 @@ void PlaybackHandler::commandClearTempoAutomation() {
  void PlaybackHandler::commandDisplaySwingAmount() {
  	DEF_STACK_STRING_BUF(text, 30);
  	if (display->haveOLED()) {
@@ -18256,7 +18982,7 @@ index f039781a..b60dba91 100644
  }
  
  void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
-@@ -2142,6 +2223,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
+@@ -2142,6 +2228,12 @@ void PlaybackHandler::commandEditSwingInterval(int8_t offset) {
  }
  
  void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
@@ -18269,7 +18995,7 @@ index f039781a..b60dba91 100644
  	int32_t newSwingAmount = std::clamp(currentSong->swingAmount + offset, -49, 49);
  	if (newSwingAmount != currentSong->swingAmount) {
  		actionLogger.recordSwingChange(currentSong->swingAmount, newSwingAmount);
-@@ -2150,6 +2237,49 @@ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
+@@ -2150,6 +2242,49 @@ void PlaybackHandler::commandEditSwingAmount(int8_t offset) {
  	commandDisplaySwingAmount();
  }
  
@@ -18319,7 +19045,7 @@ index f039781a..b60dba91 100644
  void PlaybackHandler::commandNudgeClock(int8_t offset) {
  	if (!isEitherClockActive()) {
  		// Nothing to nudge
-@@ -2271,6 +2401,10 @@ void PlaybackHandler::commandEditTempoFine(int8_t offset) {
+@@ -2271,6 +2406,10 @@ void PlaybackHandler::commandEditTempoFine(int8_t offset) {
  void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPressed, bool shiftButtonPressed) {
  
  	if (Buttons::isButtonPressed(deluge::hid::button::TAP_TEMPO)) {
@@ -18330,7 +19056,7 @@ index f039781a..b60dba91 100644
  		if (display->hasPopupOfType(PopupType::SWING)) {
  			// If not yet displaying, don't change the value
  			return commandEditSwingInterval(offset);
-@@ -2287,6 +2421,17 @@ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPresse
+@@ -2287,6 +2426,17 @@ void PlaybackHandler::tempoEncoderAction(int8_t offset, bool encoderButtonPresse
  		return commandNudgeClock(offset);
  	}
  
@@ -18348,7 +19074,7 @@ index f039781a..b60dba91 100644
  	// Adjust swing
  	else if (shiftButtonPressed) {
  		if (display->hasPopupOfType(PopupType::SWING)) {
-@@ -2831,7 +2976,26 @@ int32_t PlaybackHandler::getTimeLeftInCountIn() {
+@@ -2831,7 +2981,26 @@ int32_t PlaybackHandler::getTimeLeftInCountIn() {
  	return timeLeft;
  }
  
@@ -18698,7 +19424,7 @@ index 00000000..031dfcaa
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..9fa1ce3b 100644
+index 8dd1ce44..1b17fb07 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -18725,7 +19451,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	patchedParams->params[params::LOCAL_NOISE_VOLUME].setCurrentValueBasicForSetup(-2147483648);
  	patchedParams->params[params::GLOBAL_MOD_FX_DEPTH].setCurrentValueBasicForSetup(0);
  	patchedParams->params[params::GLOBAL_MOD_FX_RATE].setCurrentValueBasicForSetup(0);
-@@ -221,6 +227,89 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
+@@ -221,6 +227,88 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -18799,7 +19525,6 @@ index 8dd1ce44..9fa1ce3b 100644
 +	}
 +
 +	// Custom 1 tunes the drum; Custom 2 / Custom 3 carry the engine's key settings
-+	modKnobs[6][0].paramDescriptor.setToHaveParamOnly(params::LOCAL_PITCH_ADJUST);
 +	setDrumSynthKnobs(sources[0].drumPatch.engine());
 +
 +	paramManager->getPatchCableSet()->numPatchCables = 1;
@@ -18815,7 +19540,7 @@ index 8dd1ce44..9fa1ce3b 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -259,7 +348,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
+@@ -259,7 +347,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -18850,7 +19575,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +441,211 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +440,214 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -18919,6 +19644,9 @@ index 8dd1ce44..9fa1ce3b 100644
 +	modKnobs[5][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.depth]);
 +	modKnobs[7][1].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.custom2]);
 +	modKnobs[7][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.custom3]);
++	// Custom 1 tunes the drum. Set here, not only in a new kit, as kit files saved without a knob layout load with a
++	// synth's (Custom 1 on portamento)
++	modKnobs[6][0].paramDescriptor.setToHaveParamOnly(params::LOCAL_PITCH_ADJUST);
 +}
 +
 +void Sound::setTb303Knobs(bool tb303) {
@@ -19062,7 +19790,7 @@ index 8dd1ce44..9fa1ce3b 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +756,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +758,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -19072,7 +19800,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1573,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1575,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -19084,7 +19812,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1347,6 +1676,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1678,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -19098,7 +19826,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1850,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1852,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -19108,7 +19836,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +1983,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +1985,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -19127,7 +19855,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1865,6 +2212,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2214,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -19144,7 +19872,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2284,11 @@ justSwitchOff:
+@@ -1927,6 +2286,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -19156,7 +19884,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2538,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2540,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -19165,7 +19893,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2747,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2749,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -19178,7 +19906,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2496,18 +2864,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2866,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -19209,7 +19937,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2894,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2896,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -19229,7 +19957,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2922,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2924,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -19241,7 +19969,7 @@ index 8dd1ce44..9fa1ce3b 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +2990,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +2992,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -19250,7 +19978,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3276,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3278,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -19286,7 +20014,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3382,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3384,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -19302,7 +20030,7 @@ index 8dd1ce44..9fa1ce3b 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3459,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3461,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -19323,7 +20051,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3517,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3519,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -19416,7 +20144,7 @@ index 8dd1ce44..9fa1ce3b 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3716,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3718,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -19425,7 +20153,7 @@ index 8dd1ce44..9fa1ce3b 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3909,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3911,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -19447,7 +20175,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3943,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3945,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -19458,7 +20186,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4157,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4159,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -19468,7 +20196,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4284,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4286,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -19480,7 +20208,7 @@ index 8dd1ce44..9fa1ce3b 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4378,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4380,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -19495,7 +20223,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4568,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4570,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -19516,7 +20244,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4661,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4663,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -19528,7 +20256,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4680,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4682,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -19538,7 +20266,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4731,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4733,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -19548,7 +20276,7 @@ index 8dd1ce44..9fa1ce3b 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +4993,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +4995,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -19571,7 +20299,7 @@ index 8dd1ce44..9fa1ce3b 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5516,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5518,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -20889,10 +21617,10 @@ index 00000000..d801dfee
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 00000000..5773d63f
+index 00000000..39d08ea4
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,379 @@
 +---
 +title: Drum Synth
 +---
@@ -20935,6 +21663,21 @@ index 00000000..5773d63f
 +**Making presets.** A preset is an ordinary kit file in **KITS/CYCLES** (Cycles kits), **KITS/LXR** (LXR kits) or **KITS/GIN** (GIN kits). LXR-02 kits (.SND files) convert with `lxr_to_deluge.py`, Model:Cycles kits with `cycles_to_deluge.py`. Set up a preset kit's rows the way you like, then save the kit into that folder. The folder is made the first time you open the Kit presets list, so it's there to save into. Only the preset rows are read back, bottom first: rows you added to the kit you saved from are ignored. A kit file made by hand with no preset rows gives its sound rows, bottom first. If a preset has fewer rows than the kit, the rest keep their sounds.
 +
 +Swapping sounds clears the undo history.
++
++## Affect all
++
++Affect all is a performance mode for LXR, Cycles and GIN kits. It takes a temporary snapshot of the kit, lets you push every drum around at once, then puts it all back on the next bar.
++
++1. In a preset kit's clip, press **SHIFT + AFFECT ENTIRE**. The kit is snapshotted and **AFFECT ENTIRE** flashes (**ALL**). You start in **All voices**.
++2. **All voices:** turn any gold knob, or open a setting (**SHIFT** + a shortcut pad) and turn **SELECT**, and every drum synth row moves by the same amount, each from where it was. Each row moves its own engine's control on that knob or pad, so on a kit mixing engines (a Cycles kit with a BXIA row added, say) Sweep moves the sweep on every row. A row pushed to the end of a setting keeps its place against the others when you turn back.
++3. **Kit FX:** press **AFFECT ENTIRE** on its own to swap to the kit's FX (**FX**), the same as AFFECT ENTIRE normally does, and again to go back to **All voices**. Swap as often as you like: the snapshot holds both.
++4. Press **SHIFT + AFFECT ENTIRE** again. **AFFECT ENTIRE** flashes twice as fast (**BACK**), and on the next bar every row and the kit's FX go back to the snapshot, before that bar's first hits. When stopped, it goes back straight away (**DONE**).
++
++- Only drum synth rows move, including ones added to the kit since. Sample rows, synth rows and the 303 are left alone.
++- Changes in affect all are never recorded as automation, so the snapshot always puts the kit back exactly. Holding notes and turning a knob still parameter locks that row, as normal.
++- Settings that are choices (waves, modes, filter type), patch cable amounts and transpose stay on the one row.
++- The snapshot is held in memory only. It isn't saved, and loading another song drops it.
++- On any other kit, **SHIFT + AFFECT ENTIRE** shows **CANT**.
 +
 +## Pad editor
 +
@@ -21169,10 +21912,10 @@ index 00000000..5773d63f
 +
 +| Engine | Knob 1 | Knob 2 | Knob 3 | Knob 4 |
 +|---|---|---|---|---|
-+| Cyc Kik | Color: odd harmonic drive | Shape: rounder, then spiky and buzzy, then noisy around 96 | Sweep: pitch drop depth and speed | Contour: knock at the start |
++| Cyc Kik | Color: odd harmonic drive | Shape: rounder, then spiky and buzzy, then noisy around 96 | Sweep: pitch drop depth and speed | Contour: length of the pitch drop, short blip to long boom, plus the knock at the start |
 +| Cyc Snr | Color: rattle tuning | Shape: rattle from tonal to noise | Sweep: body pitch drop | Contour: how fast the noise dies, leaving a tone |
 +| Cyc Metal | Color: spread of the partials | Shape: density | Sweep: pitch drop | Contour: how fast the top end dies |
-+| Cyc Perc | Color: bright overtone, 3 to 7 times the note | Shape: modulation, hollow to gnarly | Sweep: pitch drop | Contour: how fast the overtone dies |
++| Cyc Perc | Color: bright overtone, 3 to 7 times the note | Shape: modulation, hollow to gnarly | Sweep: pitch drop | Contour: how fast the overtone dies, and the length of the pitch drop |
 +| Cyc Tone | Color: FM ratio, knob / 12 (24 = 2) | Shape: FM index | Sweep: index burst at the start | Contour: how fast the index fades |
 +| Cyc Chord | Color: voicing (unison, close, inversions, dropped, spread) | Shape: the chord, 38 of them | Sweep: wave, sine to hollow to buzzy | Contour: how fast the wave mellows |
 +| Vtg Snr | Inharm: body ratio | Freq complex: snares against body | Pitch sweep | Mod envelope: knock in the body |
@@ -21185,7 +21928,7 @@ index 00000000..5773d63f
 +**Level and defaults.** Each engine is levelled to start close to full scale, then driven: **Drive** starts at 100, a soft clipper after the amp decay that gets louder as it goes up, pushing into hard clipping at 127, and cleaning up as the sound dies away. The amp decay starts longer than the original machines' (for example 50 on Cyc Kik, 60 on Cyc Snr, 80 on Cyc Chord).
 +
 +**Differences from the originals.**
-+- Same knobs, same starting values, new sound engines inside: the curves behind each knob were matched by measurement, and some knobs do more than the original's (Cyc Kik's Contour barely did anything on the Cycles; here it sets the knock).
++- Same knobs, same starting values, new sound engines inside: the curves behind each knob were matched by measurement, and some knobs do more than the original's (Cyc Kik's Contour barely did anything on the Cycles; here it sets the length of the pitch drop and the knock).
 +- They run natively at 44.1 kHz, so pitch and decay times are exact.
 +- No machine-wide gate: notes end with the Deluge envelope.
 +

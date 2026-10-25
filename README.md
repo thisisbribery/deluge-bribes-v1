@@ -1,4 +1,4 @@
-# BRIBELUGE: Deluge Bribes FW v1.14
+# BRIBELUGE: Deluge Bribes FW v1.15
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -12,6 +12,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
 10. **Delay feedback and tone:** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
+11. **Affect all (new in v1.15):** a performance snapshot for LXR, Cycles and GIN kits. SHIFT + AFFECT ENTIRE freezes the kit, then every gold knob turn moves all the drums at once, or the kit's FX, and SHIFT + AFFECT ENTIRE again snaps it all back on the next bar.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting (the tone starts flat). Songs saved before keep their own swing and sound the same through the delay.
 
@@ -19,15 +20,15 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.14.bin`](firmware/deluge-bribes-v1.14.bin)
+[`firmware/deluge-bribes-v1.15.bin`](firmware/deluge-bribes-v1.15.bin)
 
-SHA-256: `cb006e2a3fafe816df30fe88edc26330771cb1b8d9998da4ff9c1ffd4be63802`
+SHA-256: `8a95bbcccb8dc074d7134ec7c643bc101ab0b09779ab8b2ee8475e30af1c0528`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
 ## Install
 
-1. Copy `deluge-bribes-v1.14.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.15.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -70,6 +71,9 @@ To go back, install an official firmware file the same way.
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
 | **SHIFT + delay RATE pad, press again** | Delay tone. The pad blinks yellow; press again to go back to Rate (Delay feedback and tone) |
+| **SHIFT + AFFECT ENTIRE on an LXR, Cycles or GIN kit** | Snapshot the kit and move every drum at once. AFFECT ENTIRE flashes (Affect all) |
+| **AFFECT ENTIRE during the snapshot** | Swap between All voices (ALL) and the kit's FX (FX), keeping the snapshot (Affect all) |
+| **SHIFT + AFFECT ENTIRE again** | Put the snapshot back on the next bar. AFFECT ENTIRE flashes twice as fast until then (Affect all) |
 
 7-segment display names are in brackets below.
 
@@ -445,10 +449,10 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 
 | Engine | Color | Shape | Sweep | Contour |
 |---|---|---|---|---|
-| Cyc Kik | Odd harmonic drive | Rounder, then spiky and buzzy, then noisy around 96 | Pitch drop depth and speed | Knock at the start |
+| Cyc Kik | Odd harmonic drive | Rounder, then spiky and buzzy, then noisy around 96 | Pitch drop depth and speed | Length of the pitch drop, short blip to long boom, plus the knock at the start |
 | Cyc Snr | Rattle tuning | Rattle from tonal to noise | Body pitch drop | Noise dies early, leaving a tone |
 | Cyc Metal | Spread of the partials | Density | Pitch drop | How fast the top end dies |
-| Cyc Perc | Bright overtone | Modulation, hollow to gnarly | Pitch drop | Overtone decay |
+| Cyc Perc | Bright overtone | Modulation, hollow to gnarly | Pitch drop | Overtone decay and the length of the pitch drop |
 | Cyc Tone | FM ratio, knob / 12 (24 = 2) | FM index | Index burst at the start | Index decay |
 | Cyc Chord | Voicing | The chord, 38 of them in the Cycles' order | Wave, sine to buzzy | How fast the wave mellows |
 | Vtg Snr | Inharm: body ratio | Freq complex: snares | Pitch sweep | Mod envelope |
@@ -457,7 +461,7 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 - **Drive** starts at 100: a soft clipper after the amp decay that gets louder as you turn it up and hard clips at 127, cleaning up as each hit dies away.
 - **Amp decay** starts longer than the original machines' (for example 50 on Cyc Kik, 60 on Cyc Snr, 80 on Cyc Chord).
 - **Punch** (OSC1 FEEDBACK, on OSC1 RETRIGGER before v1.11) squares up and lifts the attack.
-- They sound close to the originals, not identical: the same knobs and starting values, with the sound behind each knob measured from the originals and rebuilt. Cyc Kik's Contour, which barely did anything on the Cycles, sets the knock here.
+- They sound close to the originals, not identical: the same knobs and starting values, with the sound behind each knob measured from the originals and rebuilt. Cyc Kik's Contour, which barely did anything on the Cycles, sets the length of the pitch drop and the knock here. From v1.15 Contour stretches the pitch drop on Cyc Kik and Cyc Perc, and each engine's starting Contour sounds as before.
 
 ### GIN (new in v1.13)
 
@@ -501,6 +505,7 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 - The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
+- Fixed in v1.15: CUSTOM 1 tunes rows loaded from preset kit files too (it was on portamento).
 - Kits with drum synth rows won't play those rows on firmware without them.
 - The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
 
@@ -623,6 +628,26 @@ On the stock Deluge, the delay's Amount sets both how loud the echoes are and ho
 - The tone starts flat, so it changes nothing until you turn it. When flat, the filter is switched off entirely.
 - Feedback and tone save with the song and the preset. Other firmware ignores them: it uses the amount for both level and feedback, and no filter.
 
+## 11. Affect all
+
+A performance snapshot for LXR, Cycles and GIN kits: push every drum around at once, then drop back to where you started on the next bar.
+
+### Using it
+
+1. In the kit's clip, press **SHIFT + AFFECT ENTIRE**. The kit is snapshotted and **AFFECT ENTIRE** flashes (**ALL**). You start in **All voices**.
+2. **All voices:** turn any gold knob, or press **SHIFT** + a shortcut pad and turn **SELECT**, and every drum synth row moves by the same amount, each from where it was. Turn Sweep and every drum's sweep goes up; turn CUSTOM 1 and the whole kit retunes, staying in tune with itself.
+3. **Kit FX:** press **AFFECT ENTIRE** on its own to swap to the kit's FX (**FX**), as AFFECT ENTIRE normally does, and again to go back to **All voices**. Swap as often as you like: the snapshot holds both.
+4. Press **SHIFT + AFFECT ENTIRE** again. **AFFECT ENTIRE** flashes twice as fast (**BACK**), and on the next bar every drum and the kit's FX go back to the snapshot, before that bar's first hits. When stopped, it goes back straight away (**DONE**).
+
+### Good to know
+
+- Only drum synth rows move, including ones added to the kit since it was made (a BXIA row on a Cycles kit, say). Each moves its own engine's control on that knob or pad. Sample rows, synth rows and the 303 are left alone.
+- A drum pushed to the end of a setting keeps its place against the others when you turn back.
+- Nothing you do in affect all is recorded as automation, so the snapshot always puts the kit back exactly. Holding notes and turning a knob still parameter locks that row, as normal.
+- Choices (waves, modes, filter type), patch cable amounts and transpose stay on the one row.
+- The snapshot is held in memory only. It isn't saved with the song, and loading another song drops it.
+- On any other kit, **SHIFT + AFFECT ENTIRE** shows **CANT**.
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -634,6 +659,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
+- **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
 - **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
 - **The Cycles presets** are my own Model:Cycles kits, made on my own machine and converted for the Cyc engines.
 - **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), converted for the drum synth. All credit for those sounds goes to Hrtl.
