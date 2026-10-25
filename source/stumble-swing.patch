@@ -1,5 +1,5 @@
 diff --git a/src/definitions_cxx.hpp b/src/definitions_cxx.hpp
-index 0c5a8e05..5b4f3f1c 100644
+index 0c5a8e055..5b4f3f1cc 100644
 --- a/src/definitions_cxx.hpp
 +++ b/src/definitions_cxx.hpp
 @@ -365,6 +365,7 @@ enum class OscType : uint8_t {
@@ -22,7 +22,7 @@ index 0c5a8e05..5b4f3f1c 100644
  constexpr int32_t SAMPLE_MAX_TRANSPOSE = 24;
  constexpr int32_t SAMPLE_MIN_TRANSPOSE = (-96);
 diff --git a/src/deluge/dsp/CMakeLists.txt b/src/deluge/dsp/CMakeLists.txt
-index 1cbefef8..31b02346 100644
+index 1cbefef8a..31b02346a 100644
 --- a/src/deluge/dsp/CMakeLists.txt
 +++ b/src/deluge/dsp/CMakeLists.txt
 @@ -8,6 +8,13 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
@@ -40,7 +40,7 @@ index 1cbefef8..31b02346 100644
    ${CMAKE_CURRENT_LIST_DIR}/..
    ${SHARED_INCLUDE}
 diff --git a/src/deluge/dsp/delay/delay.cpp b/src/deluge/dsp/delay/delay.cpp
-index a1a160dd..71ab5843 100644
+index a1a160dd1..71ab5843a 100644
 --- a/src/deluge/dsp/delay/delay.cpp
 +++ b/src/deluge/dsp/delay/delay.cpp
 @@ -23,6 +23,7 @@
@@ -209,7 +209,7 @@ index a1a160dd..71ab5843 100644
  
  	// And actually feedback being applied back into the actual delay primary buffer...
 diff --git a/src/deluge/dsp/delay/delay.h b/src/deluge/dsp/delay/delay.h
-index 66fd217b..2bcac1cb 100644
+index 66fd217ba..2bcac1cb0 100644
 --- a/src/deluge/dsp/delay/delay.h
 +++ b/src/deluge/dsp/delay/delay.h
 @@ -30,7 +30,13 @@ public:
@@ -248,7 +248,7 @@ index 66fd217b..2bcac1cb 100644
  };
 diff --git a/src/deluge/dsp/drum_synth/cyc.cpp b/src/deluge/dsp/drum_synth/cyc.cpp
 new file mode 100644
-index 00000000..15bee880
+index 000000000..15bee8807
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/cyc.cpp
 @@ -0,0 +1,940 @@
@@ -1194,7 +1194,7 @@ index 00000000..15bee880
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/cyc.h b/src/deluge/dsp/drum_synth/cyc.h
 new file mode 100644
-index 00000000..6294f30f
+index 000000000..6294f30ff
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/cyc.h
 @@ -0,0 +1,158 @@
@@ -1358,7 +1358,7 @@ index 00000000..6294f30f
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 00000000..c8aca12d
+index 000000000..c8aca12d0
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
 @@ -0,0 +1,1302 @@
@@ -2666,7 +2666,7 @@ index 00000000..c8aca12d
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 00000000..6af1a239
+index 000000000..6af1a2391
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
 @@ -0,0 +1,435 @@
@@ -3107,7 +3107,7 @@ index 00000000..6af1a239
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth_transients.c b/src/deluge/dsp/drum_synth/drum_synth_transients.c
 new file mode 100644
-index 00000000..233eb258
+index 000000000..233eb2584
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth_transients.c
 @@ -0,0 +1,1445 @@
@@ -4558,7 +4558,7 @@ index 00000000..233eb258
 +    }};
 diff --git a/src/deluge/dsp/drum_synth/gin.cpp b/src/deluge/dsp/drum_synth/gin.cpp
 new file mode 100644
-index 00000000..6c44c0ad
+index 000000000..6c44c0ad2
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin.cpp
 @@ -0,0 +1,451 @@
@@ -5015,7 +5015,7 @@ index 00000000..6c44c0ad
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/gin.h b/src/deluge/dsp/drum_synth/gin.h
 new file mode 100644
-index 00000000..d9afab7e
+index 000000000..d9afab7ef
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin.h
 @@ -0,0 +1,131 @@
@@ -5152,7 +5152,7 @@ index 00000000..d9afab7e
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/gin_kits.cpp b/src/deluge/dsp/drum_synth/gin_kits.cpp
 new file mode 100644
-index 00000000..f83ed3a2
+index 000000000..f83ed3a24
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin_kits.cpp
 @@ -0,0 +1,349 @@
@@ -5507,7 +5507,7 @@ index 00000000..f83ed3a2
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/gin_kits.h b/src/deluge/dsp/drum_synth/gin_kits.h
 new file mode 100644
-index 00000000..b1fd5cb2
+index 000000000..b1fd5cb2b
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin_kits.h
 @@ -0,0 +1,58 @@
@@ -5571,7 +5571,7 @@ index 00000000..b1fd5cb2
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/xia.cpp b/src/deluge/dsp/drum_synth/xia.cpp
 new file mode 100644
-index 00000000..eed64c28
+index 000000000..eed64c28a
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/xia.cpp
 @@ -0,0 +1,680 @@
@@ -6257,7 +6257,7 @@ index 00000000..eed64c28
 +} // namespace deluge::dsp::drum_synth::xia
 diff --git a/src/deluge/dsp/drum_synth/xia.h b/src/deluge/dsp/drum_synth/xia.h
 new file mode 100644
-index 00000000..c91c15ff
+index 000000000..c91c15fff
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/xia.h
 @@ -0,0 +1,99 @@
@@ -6362,7 +6362,7 @@ index 00000000..c91c15ff
 +} // namespace deluge::dsp::drum_synth::xia
 diff --git a/src/deluge/dsp/drum_synth/xia_tables.c b/src/deluge/dsp/drum_synth/xia_tables.c
 new file mode 100644
-index 00000000..f0426204
+index 000000000..f04262041
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/xia_tables.c
 @@ -0,0 +1,533 @@
@@ -6900,7 +6900,7 @@ index 00000000..f0426204
 +    -402,   -201,
 +};
 diff --git a/src/deluge/dsp/dx/aligned_buf.h b/src/deluge/dsp/dx/aligned_buf.h
-index a6d15453..288d1e2e 100644
+index a6d15453b..288d1e2e0 100644
 --- a/src/deluge/dsp/dx/aligned_buf.h
 +++ b/src/deluge/dsp/dx/aligned_buf.h
 @@ -20,6 +20,7 @@
@@ -6913,7 +6913,7 @@ index a6d15453..288d1e2e 100644
  template <typename T, size_t size, size_t alignment = 16>
 diff --git a/src/deluge/dsp/saturator.h b/src/deluge/dsp/saturator.h
 new file mode 100644
-index 00000000..c2bbd9b7
+index 000000000..c2bbd9b7a
 --- /dev/null
 +++ b/src/deluge/dsp/saturator.h
 @@ -0,0 +1,307 @@
@@ -7226,7 +7226,7 @@ index 00000000..c2bbd9b7
 +} // namespace deluge::dsp
 diff --git a/src/deluge/dsp/tb303/open303.cpp b/src/deluge/dsp/tb303/open303.cpp
 new file mode 100644
-index 00000000..a4de9581
+index 000000000..a4de95816
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.cpp
 @@ -0,0 +1,538 @@
@@ -7770,7 +7770,7 @@ index 00000000..a4de9581
 +} // namespace deluge::dsp::tb303
 diff --git a/src/deluge/dsp/tb303/open303.h b/src/deluge/dsp/tb303/open303.h
 new file mode 100644
-index 00000000..3e9b8cf8
+index 000000000..3e9b8cf81
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.h
 @@ -0,0 +1,243 @@
@@ -8018,7 +8018,7 @@ index 00000000..3e9b8cf8
 +
 +} // namespace deluge::dsp::tb303
 diff --git a/src/deluge/dsp/timestretch/time_stretcher.cpp b/src/deluge/dsp/timestretch/time_stretcher.cpp
-index adbcbc90..25b0e108 100644
+index adbcbc904..25b0e108a 100644
 --- a/src/deluge/dsp/timestretch/time_stretcher.cpp
 +++ b/src/deluge/dsp/timestretch/time_stretcher.cpp
 @@ -305,7 +305,16 @@ bool TimeStretcher::hopEnd(SamplePlaybackGuide* guide, VoiceSample* voiceSample,
@@ -8062,7 +8062,7 @@ index adbcbc90..25b0e108 100644
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
-index 00000000..b225dc27
+index 000000000..b225dc271
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.cpp
 @@ -0,0 +1,303 @@
@@ -8371,7 +8371,7 @@ index 00000000..b225dc27
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/kit_presets.h b/src/deluge/gui/context_menu/kit_presets.h
 new file mode 100644
-index 00000000..b2bf7085
+index 000000000..b2bf70855
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.h
 @@ -0,0 +1,92 @@
@@ -8469,7 +8469,7 @@ index 00000000..b2bf7085
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
-index 00000000..bff634c5
+index 000000000..bff634c5b
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/new_kit_type.cpp
 @@ -0,0 +1,90 @@
@@ -8565,7 +8565,7 @@ index 00000000..bff634c5
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/new_kit_type.h b/src/deluge/gui/context_menu/new_kit_type.h
 new file mode 100644
-index 00000000..9872e726
+index 000000000..9872e7267
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/new_kit_type.h
 @@ -0,0 +1,43 @@
@@ -8613,7 +8613,7 @@ index 00000000..9872e726
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d8..555b554f 100644
+index 38cab4d81..555b554fb 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -8839,7 +8839,7 @@ index 38cab4d8..555b554f 100644
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf..c229052f 100644
+index 1f87aacf7..c229052f7 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -9065,7 +9065,7 @@ index 1f87aacf..c229052f 100644
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d5..89becc14 100644
+index 1af382d56..89becc144 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,41 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -9257,7 +9257,7 @@ index 1af382d5..89becc14 100644
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b..40ea0366 100644
+index 8328945b4..40ea0366c 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,41 @@
@@ -9456,7 +9456,7 @@ index 8328945b..40ea0366 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92..505d98bf 100644
+index 49b15e92c..505d98bff 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -9683,7 +9683,7 @@ index 49b15e92..505d98bf 100644
  	STRING_FOR_HPF_TO_LPF,
 diff --git a/src/deluge/gui/menu_item/cpu/load.h b/src/deluge/gui/menu_item/cpu/load.h
 new file mode 100644
-index 00000000..266b0581
+index 000000000..266b0581b
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/cpu/load.h
 @@ -0,0 +1,160 @@
@@ -9849,7 +9849,7 @@ index 00000000..266b0581
 +} // namespace deluge::gui::menu_item::cpu
 diff --git a/src/deluge/gui/menu_item/cv/mono.h b/src/deluge/gui/menu_item/cv/mono.h
 new file mode 100644
-index 00000000..1a60df34
+index 000000000..1a60df341
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/cv/mono.h
 @@ -0,0 +1,83 @@
@@ -9937,7 +9937,7 @@ index 00000000..1a60df34
 +
 +} // namespace deluge::gui::menu_item::cv
 diff --git a/src/deluge/gui/menu_item/delay/amount_unpatched.h b/src/deluge/gui/menu_item/delay/amount_unpatched.h
-index 0b1d60c0..73aaaa06 100644
+index 0b1d60c02..73aaaa061 100644
 --- a/src/deluge/gui/menu_item/delay/amount_unpatched.h
 +++ b/src/deluge/gui/menu_item/delay/amount_unpatched.h
 @@ -19,7 +19,7 @@
@@ -9951,7 +9951,7 @@ index 0b1d60c0..73aaaa06 100644
  
 diff --git a/src/deluge/gui/menu_item/delay/feedback.h b/src/deluge/gui/menu_item/delay/feedback.h
 new file mode 100644
-index 00000000..6b5fdae1
+index 000000000..6b5fdae12
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/delay/feedback.h
 @@ -0,0 +1,30 @@
@@ -9987,7 +9987,7 @@ index 00000000..6b5fdae1
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/delay/tone.h b/src/deluge/gui/menu_item/delay/tone.h
 new file mode 100644
-index 00000000..466e7dab
+index 000000000..466e7dab2
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/delay/tone.h
 @@ -0,0 +1,57 @@
@@ -10050,7 +10050,7 @@ index 00000000..466e7dab
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 00000000..0057a946
+index 000000000..0057a9466
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 @@ -0,0 +1,372 @@
@@ -10428,7 +10428,7 @@ index 00000000..0057a946
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.h b/src/deluge/gui/menu_item/drum_synth/editor.h
 new file mode 100644
-index 00000000..f23cf85f
+index 000000000..f23cf85f6
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.h
 @@ -0,0 +1,98 @@
@@ -10532,7 +10532,7 @@ index 00000000..f23cf85f
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 00000000..191f1a47
+index 000000000..191f1a476
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
 @@ -0,0 +1,558 @@
@@ -11095,7 +11095,7 @@ index 00000000..191f1a47
 +
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/clipping.h
-index 500789c9..13027b19 100644
+index 500789c93..13027b190 100644
 --- a/src/deluge/gui/menu_item/fx/clipping.h
 +++ b/src/deluge/gui/menu_item/fx/clipping.h
 @@ -30,7 +30,7 @@ class Clipping final : public IntegerWithOff {
@@ -11129,7 +11129,7 @@ index 500789c9..13027b19 100644
  
 diff --git a/src/deluge/gui/menu_item/fx/saturation.h b/src/deluge/gui/menu_item/fx/saturation.h
 new file mode 100644
-index 00000000..32a60912
+index 000000000..32a60912f
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/fx/saturation.h
 @@ -0,0 +1,66 @@
@@ -11200,7 +11200,7 @@ index 00000000..32a60912
 +
 +} // namespace deluge::gui::menu_item::fx
 diff --git a/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py b/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
-index 36d668b3..8785cb5b 100644
+index 36d668b3c..8785cb5b1 100644
 --- a/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
 +++ b/src/deluge/gui/menu_item/generate/dmenus/oscillator/source.py
 @@ -143,6 +143,22 @@ for i in range(2):
@@ -11227,7 +11227,7 @@ index 36d668b3..8785cb5b 100644
  
      volumes.append(
 diff --git a/src/deluge/gui/menu_item/generate/g_menus.inc b/src/deluge/gui/menu_item/generate/g_menus.inc
-index 54cac567..454dc0fc 100644
+index 54cac5678..454dc0fcf 100644
 --- a/src/deluge/gui/menu_item/generate/g_menus.inc
 +++ b/src/deluge/gui/menu_item/generate/g_menus.inc
 @@ -73,7 +73,9 @@ sample::PitchSpeed sample0PitchSpeedMenu{STRING_FOR_PITCH_SPEED, 0};
@@ -11271,7 +11271,7 @@ index 54cac567..454dc0fc 100644
  submenu::ActualSource source1Menu{STRING_FOR_OSCILLATOR_2, child7, 1};
  modulator::Transpose modulator0TransposeMenu{STRING_FOR_TRANSPOSE, STRING_FOR_FM_MOD_TRAN_MENU_TITLE, params::LOCAL_MODULATOR_0_PITCH_ADJUST, 0};
 diff --git a/src/deluge/gui/menu_item/number.h b/src/deluge/gui/menu_item/number.h
-index 2409a2c3..e3bd0985 100644
+index 2409a2c35..e3bd0985d 100644
 --- a/src/deluge/gui/menu_item/number.h
 +++ b/src/deluge/gui/menu_item/number.h
 @@ -41,10 +41,11 @@ class Number : public Value<int32_t> {
@@ -11289,7 +11289,7 @@ index 2409a2c3..e3bd0985 100644
  	virtual float normalize(int32_t value);
  
 diff --git a/src/deluge/gui/menu_item/osc/type.h b/src/deluge/gui/menu_item/osc/type.h
-index dda3b338..2b003859 100644
+index dda3b3385..2b0038596 100644
 --- a/src/deluge/gui/menu_item/osc/type.h
 +++ b/src/deluge/gui/menu_item/osc/type.h
 @@ -16,6 +16,8 @@
@@ -11395,7 +11395,7 @@ index dda3b338..2b003859 100644
  			return image.drawStringCentered(option, slot.start_x, slot.start_y + kHorizontalMenuSlotYOffset + 5,
  			                                kTextTitleSpacingX, kTextTitleSizeY, slot.width);
 diff --git a/src/deluge/gui/menu_item/patched_param/integer.cpp b/src/deluge/gui/menu_item/patched_param/integer.cpp
-index cadefaba..32f08f52 100644
+index cadefabaf..32f08f524 100644
 --- a/src/deluge/gui/menu_item/patched_param/integer.cpp
 +++ b/src/deluge/gui/menu_item/patched_param/integer.cpp
 @@ -18,6 +18,7 @@
@@ -11423,7 +11423,7 @@ index cadefaba..32f08f52 100644
  
  	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-index ab3a3d37..231c3fec 100644
+index ab3a3d377..231c3feca 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 +++ b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 @@ -56,6 +56,8 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
@@ -11446,7 +11446,7 @@ index ab3a3d37..231c3fec 100644
      &menuTrimFromStartOfAudioClip,
 diff --git a/src/deluge/gui/menu_item/sample/start_offset.h b/src/deluge/gui/menu_item/sample/start_offset.h
 new file mode 100644
-index 00000000..ca041832
+index 000000000..ca0418322
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/sample/start_offset.h
 @@ -0,0 +1,107 @@
@@ -11559,7 +11559,7 @@ index 00000000..ca041832
 +} // namespace deluge::gui::menu_item::sample
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
-index 00000000..662c41d0
+index 000000000..662c41d01
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/swing/stumble.h
 @@ -0,0 +1,32 @@
@@ -11597,7 +11597,7 @@ index 00000000..662c41d0
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/swing/style.h b/src/deluge/gui/menu_item/swing/style.h
 new file mode 100644
-index 00000000..bb20e681
+index 000000000..bb20e6814
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/swing/style.h
 @@ -0,0 +1,46 @@
@@ -11648,7 +11648,7 @@ index 00000000..bb20e681
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/synth_mode.h b/src/deluge/gui/menu_item/synth_mode.h
-index 02acbd45..279293c3 100644
+index 02acbd45b..279293c3c 100644
 --- a/src/deluge/gui/menu_item/synth_mode.h
 +++ b/src/deluge/gui/menu_item/synth_mode.h
 @@ -16,6 +16,7 @@
@@ -11840,7 +11840,7 @@ index 02acbd45..279293c3 100644
  } // namespace deluge::gui::menu_item
 diff --git a/src/deluge/gui/menu_item/tb303/settings.h b/src/deluge/gui/menu_item/tb303/settings.h
 new file mode 100644
-index 00000000..485fa3d9
+index 000000000..485fa3d97
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/tb303/settings.h
 @@ -0,0 +1,65 @@
@@ -11910,7 +11910,7 @@ index 00000000..485fa3d9
 +
 +} // namespace deluge::gui::menu_item::tb303
 diff --git a/src/deluge/gui/menu_item/unpatched_param.cpp b/src/deluge/gui/menu_item/unpatched_param.cpp
-index d8146322..a95ca646 100644
+index d81463223..a95ca646a 100644
 --- a/src/deluge/gui/menu_item/unpatched_param.cpp
 +++ b/src/deluge/gui/menu_item/unpatched_param.cpp
 @@ -19,6 +19,7 @@
@@ -11938,7 +11938,7 @@ index d8146322..a95ca646 100644
  
  	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/value.h b/src/deluge/gui/menu_item/value.h
-index 4448a56c..142b2887 100644
+index 4448a56cf..142b28876 100644
 --- a/src/deluge/gui/menu_item/value.h
 +++ b/src/deluge/gui/menu_item/value.h
 @@ -48,9 +48,10 @@ public:
@@ -11954,7 +11954,7 @@ index 4448a56c..142b2887 100644
  	virtual void drawValue() = 0;
  
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f..be332797 100644
+index 7bbd559f6..be3327976 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -12734,7 +12734,7 @@ index 7bbd559f..be332797 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd6..24605f6b 100644
+index 09efdfd62..24605f6bc 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
 @@ -25,6 +25,7 @@
@@ -12780,7 +12780,7 @@ index 09efdfd6..24605f6b 100644
  extern MenuItem* paramShortcutsForSongView[kDisplayWidth][kDisplayHeight];
  extern MenuItem* paramShortcutsForKitGlobalFX[kDisplayWidth][kDisplayHeight];
 diff --git a/src/deluge/gui/ui/save/save_pattern_ui.cpp b/src/deluge/gui/ui/save/save_pattern_ui.cpp
-index 1d13a128..3b757113 100644
+index 1d13a1281..3b757113b 100644
 --- a/src/deluge/gui/ui/save/save_pattern_ui.cpp
 +++ b/src/deluge/gui/ui/save/save_pattern_ui.cpp
 @@ -47,7 +47,19 @@ SavePatternUI::SavePatternUI() {
@@ -12842,7 +12842,7 @@ index 1d13a128..3b757113 100644
  	writer.closeFileAfterWriting();
  
 diff --git a/src/deluge/gui/ui/save/save_pattern_ui.h b/src/deluge/gui/ui/save/save_pattern_ui.h
-index c7f05939..61dfc609 100644
+index c7f05939d..61dfc6092 100644
 --- a/src/deluge/gui/ui/save/save_pattern_ui.h
 +++ b/src/deluge/gui/ui/save/save_pattern_ui.h
 @@ -24,6 +24,8 @@ class SavePatternUI final : public SaveUI {
@@ -12866,7 +12866,7 @@ index c7f05939..61dfc609 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3..19d187c7 100644
+index d3eae8c3c..19d187c72 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -3,6 +3,7 @@
@@ -13111,7 +13111,7 @@ index d3eae8c3..19d187c7 100644
  
  	return true;
 diff --git a/src/deluge/gui/ui/sound_editor.h b/src/deluge/gui/ui/sound_editor.h
-index 85daba70..3631e364 100644
+index 85daba70e..3631e3642 100644
 --- a/src/deluge/gui/ui/sound_editor.h
 +++ b/src/deluge/gui/ui/sound_editor.h
 @@ -59,6 +59,12 @@ public:
@@ -13128,7 +13128,7 @@ index 85daba70..3631e364 100644
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index 0a42de35..b3d13141 100644
+index 0a42de354..b3d131413 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
 @@ -110,6 +110,34 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
@@ -13259,7 +13259,7 @@ index 0a42de35..b3d13141 100644
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 4f8f5ec2..9743e018 100644
+index 4f8f5ec28..9743e018a 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -20,12 +20,15 @@
@@ -14078,7 +14078,7 @@ index 4f8f5ec2..9743e018 100644
 +	display->displayPopup(text);
 +}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 38f8cbc9..6de4bdf6 100644
+index 38f8cbc98..6de4bdf6d 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -18,6 +18,7 @@
@@ -14157,7 +14157,7 @@ index 38f8cbc9..6de4bdf6 100644
  	int16_t copiedYNoteOfBottomRow{};
 diff --git a/src/deluge/gui/views/kit_affect_all.cpp b/src/deluge/gui/views/kit_affect_all.cpp
 new file mode 100644
-index 00000000..5dadfa0f
+index 000000000..5dadfa0fb
 --- /dev/null
 +++ b/src/deluge/gui/views/kit_affect_all.cpp
 @@ -0,0 +1,454 @@
@@ -14617,7 +14617,7 @@ index 00000000..5dadfa0f
 +} // namespace deluge::kit_affect_all
 diff --git a/src/deluge/gui/views/kit_affect_all.h b/src/deluge/gui/views/kit_affect_all.h
 new file mode 100644
-index 00000000..16b3e505
+index 000000000..16b3e505c
 --- /dev/null
 +++ b/src/deluge/gui/views/kit_affect_all.h
 @@ -0,0 +1,90 @@
@@ -14713,7 +14713,7 @@ index 00000000..16b3e505
 +} // namespace deluge::kit_affect_all
 diff --git a/src/deluge/gui/views/kit_pattern_mode.cpp b/src/deluge/gui/views/kit_pattern_mode.cpp
 new file mode 100644
-index 00000000..4a339b19
+index 000000000..4a339b19a
 --- /dev/null
 +++ b/src/deluge/gui/views/kit_pattern_mode.cpp
 @@ -0,0 +1,221 @@
@@ -14940,7 +14940,7 @@ index 00000000..4a339b19
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/kit_pattern_mode.h b/src/deluge/gui/views/kit_pattern_mode.h
 new file mode 100644
-index 00000000..4bbd4cbd
+index 000000000..4bbd4cbd8
 --- /dev/null
 +++ b/src/deluge/gui/views/kit_pattern_mode.h
 @@ -0,0 +1,76 @@
@@ -15021,7 +15021,7 @@ index 00000000..4bbd4cbd
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 0690e2bb..371235d3 100644
+index 0690e2bb0..371235d30 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
 @@ -37,6 +37,8 @@
@@ -15159,7 +15159,7 @@ index 0690e2bb..371235d3 100644
  	bool onAutomationClipView = false;
  
 diff --git a/src/deluge/hid/buttons.cpp b/src/deluge/hid/buttons.cpp
-index 21f193b9..7253d362 100644
+index 21f193b96..7253d3624 100644
 --- a/src/deluge/hid/buttons.cpp
 +++ b/src/deluge/hid/buttons.cpp
 @@ -26,6 +26,7 @@
@@ -15218,7 +15218,7 @@ index 21f193b9..7253d362 100644
  			else {
  				UI* currentUI = getCurrentUI();
 diff --git a/src/deluge/model/clip/clip.cpp b/src/deluge/model/clip/clip.cpp
-index e1bc1eff..c040ee97 100644
+index e1bc1eff7..c040ee971 100644
 --- a/src/deluge/model/clip/clip.cpp
 +++ b/src/deluge/model/clip/clip.cpp
 @@ -809,6 +809,11 @@ void Clip::posReachedEnd(ModelStackWithTimelineCounter* modelStack) {
@@ -15234,7 +15234,7 @@ index e1bc1eff..c040ee97 100644
  		if (playbackHandler.recording == RecordingMode::OFF) {
  			finishLinearRecording(modelStack);
 diff --git a/src/deluge/model/clip/instrument_clip.cpp b/src/deluge/model/clip/instrument_clip.cpp
-index babfd854..69082a83 100644
+index babfd8541..c40c4eb54 100644
 --- a/src/deluge/model/clip/instrument_clip.cpp
 +++ b/src/deluge/model/clip/instrument_clip.cpp
 @@ -47,8 +47,10 @@
@@ -15248,18 +15248,19 @@ index babfd854..69082a83 100644
  #include "processing/sound/sound_instrument.h"
  #include "storage/storage_manager.h"
  #include "util/const_functions.h"
-@@ -135,6 +137,10 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
+@@ -135,6 +137,11 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
  	yScroll = otherInstrumentClip->yScroll;
  	keyboardState = otherInstrumentClip->keyboardState;
  	sequenceDirectionMode = otherInstrumentClip->sequenceDirectionMode;
 +	monoMode = otherInstrumentClip->monoMode;
 +	monoCustom = otherInstrumentClip->monoCustom;
 +	monoGatePercent = otherInstrumentClip->monoGatePercent;
++	monoGridOctave = otherInstrumentClip->monoGridOctave;
 +	monoCustomMillivolts = otherInstrumentClip->monoCustomMillivolts;
  
  	affectEntire = otherInstrumentClip->affectEntire;
  
-@@ -893,6 +899,12 @@ doNewProbability:
+@@ -893,6 +900,12 @@ doNewProbability:
  					}
  				}
  
@@ -15272,7 +15273,7 @@ index babfd854..69082a83 100644
  				// probability, iterance and fill conditions have passed
  				if (conditionPassed) {
  					sendPendingNoteOn(modelStack, &pendingNoteOnList.pendingNoteOns[i]);
-@@ -905,6 +917,11 @@ doNewProbability:
+@@ -905,6 +918,11 @@ doNewProbability:
  				pendingNoteOnList.pendingNoteOns[i].noteRow->sequenced = false;
  			}
  		}
@@ -15284,7 +15285,7 @@ index babfd854..69082a83 100644
  	}
  
  	if (ticksTilNextNoteRowEvent < playbackHandler.swungTicksTilNextEvent) {
-@@ -931,13 +948,70 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
+@@ -931,13 +949,70 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
  	else {
  		ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
  		    modelStackWithNoteRow->addOtherTwoThings(output->toModControllable(), &paramManager);
@@ -15313,9 +15314,9 @@ index babfd854..69082a83 100644
 -		               pendingNoteOn->ticksLate);
 +		    ->sendNote(modelStackWithThreeMainThings, true, noteCode, mpeValues, MIDI_CHANNEL_NONE,
 +		               pendingNoteOn->velocity, pendingNoteOn->sampleSyncLength, pendingNoteOn->ticksLate);
- 	}
- }
- 
++	}
++}
++
 +void InstrumentClip::playAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId, int32_t velocity,
 +                                     int32_t semitones) {
 +	NoteRow* noteRow = noteRows.getElement(noteRowId);
@@ -15341,9 +15342,9 @@ index babfd854..69082a83 100644
 +	sendPendingNoteOn(modelStack, &pendingNoteOn);
 +	if (soundDrum) {
 +		soundDrum->transpose = oldTranspose;
-+	}
-+}
-+
+ 	}
+ }
+ 
 +void InstrumentClip::stopAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId) {
 +	NoteRow* noteRow = noteRows.getElement(noteRowId);
 +	if (output->type != OutputType::KIT || !noteRow->drum) {
@@ -15358,7 +15359,29 @@ index babfd854..69082a83 100644
  void InstrumentClip::toggleNoteRowMute(ModelStackWithNoteRow* modelStack) {
  
  	// Record action
-@@ -2392,6 +2466,16 @@ void InstrumentClip::writeDataToFile(Serializer& writer, Song* song) {
+@@ -1327,6 +1402,10 @@ void InstrumentClip::transpose(int32_t semitones, ModelStackWithTimelineCounter*
+ 
+ 	yScroll += semitones;
+ 	colourOffset -= semitones;
++	// The mono grid moves with whole octaves, so the notes keep their rows
++	if (semitones % 12 == 0) {
++		monoGridOctave += semitones / 12;
++	}
+ }
+ 
+ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType type,
+@@ -1446,6 +1525,10 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
+ 	}
+ 
+ 	yScroll += change;
++	// The mono grid moves with whole octaves, so the notes keep their rows
++	if (type == VerticalNudgeType::OCTAVE) {
++		monoGridOctave += direction > 0 ? 1 : -1;
++	}
+ 	return true;
+ }
+ 
+@@ -2392,6 +2475,16 @@ void InstrumentClip::writeDataToFile(Serializer& writer, Song* song) {
  	writer.writeAttribute("drumsZoomLevel", keyboardState.drums.zoom_level);
  	writer.writeAttribute("inKeyScrollOffset", keyboardState.inKey.scrollOffset);
  	writer.writeAttribute("inKeyRowInterval", keyboardState.inKey.rowInterval);
@@ -15375,7 +15398,7 @@ index babfd854..69082a83 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -2589,6 +2673,22 @@ someError:
+@@ -2589,6 +2682,22 @@ someError:
  			keyboardState.inKey.scrollOffset = reader.readTagOrAttributeValueInt();
  		}
  
@@ -15398,7 +15421,7 @@ index babfd854..69082a83 100644
  		else if (!strcmp(tagName, "inKeyRowInterval")) {
  			keyboardState.inKey.rowInterval = reader.readTagOrAttributeValueInt();
  		}
-@@ -3663,6 +3763,111 @@ void InstrumentClip::ensureScrollWithinKitBounds() {
+@@ -3663,6 +3772,128 @@ void InstrumentClip::ensureScrollWithinKitBounds() {
  }
  
  // Make sure not a Kit before calling this
@@ -15429,7 +15452,9 @@ index babfd854..69082a83 100644
 +		yNote -= 12;
 +	}
 +
-+	// Follow the notes an octave at a time, so they stay on the grid after the whole clip is transposed
++	// Follow the notes an octave at a time, so they stay on the grid after the whole clip is transposed. The grid
++	// stays where it is while the notes fit it: a note on the root is both the bottom row of one octave and the top row
++	// of the one below, so working it out from the notes alone moved the grid as notes were added and removed.
 +	int32_t lowest = std::numeric_limits<int32_t>::max();
 +	int32_t highest = std::numeric_limits<int32_t>::min();
 +	for (int32_t i = 0; i < noteRows.getNumElements(); i++) {
@@ -15440,17 +15465,32 @@ index babfd854..69082a83 100644
 +		}
 +	}
 +	if (lowest <= highest) {
-+		// The octave whose root is at or below the lowest note...
-+		int32_t octaves = (lowest - yNote) / 12 - (lowest < yNote && (yNote - lowest) % 12);
-+		// ... unless the notes all sit on the octave below's top row, as a lone note on the default grid's top row
-+		// does, which shouldn't move the grid
-+		int32_t lowerTop =
-+		    getYNoteFromYVisual(getYVisualFromYNote(yNote + 12 * (octaves - 1), song) + kMonoNumRows - 1, song);
-+		if (highest <= lowerTop) {
-+			octaves--;
++		auto bottomOf = [&](int32_t octave) { return yNote + 12 * octave; };
++		auto topOf = [&](int32_t octave) {
++			return getYNoteFromYVisual(getYVisualFromYNote(bottomOf(octave), song) + kMonoNumRows - 1, song);
++		};
++		auto fits = [&](int32_t octave) { return lowest >= bottomOf(octave) && highest <= topOf(octave); };
++
++		if (!fits(monoGridOctave)) {
++			// The nearest octave the notes fit, looking first the way they moved
++			int32_t step = (lowest < bottomOf(monoGridOctave)) ? -1 : 1;
++			bool found = false;
++			for (int32_t distance = 1; distance <= 11 && !found; distance++) {
++				for (int32_t octave : {monoGridOctave + step * distance, monoGridOctave - step * distance}) {
++					if (fits(octave)) {
++						monoGridOctave = octave;
++						found = true;
++						break;
++					}
++				}
++			}
++			// Too spread out for any octave: keep the lowest note on the grid
++			if (!found && (lowest < bottomOf(monoGridOctave) || lowest > topOf(monoGridOctave))) {
++				monoGridOctave = (lowest - yNote) / 12 - (lowest < yNote && (yNote - lowest) % 12);
++			}
 +		}
-+		yNote += 12 * octaves;
 +	}
++	yNote += 12 * monoGridOctave;
 +	return getYVisualFromYNote(yNote, song);
 +}
 +
@@ -15511,7 +15551,7 @@ index babfd854..69082a83 100644
  
  	if (output->type == OutputType::SYNTH) {
 diff --git a/src/deluge/model/clip/instrument_clip.h b/src/deluge/model/clip/instrument_clip.h
-index b6e15e33..0d45f0e7 100644
+index b6e15e334..8fe15c1d0 100644
 --- a/src/deluge/model/clip/instrument_clip.h
 +++ b/src/deluge/model/clip/instrument_clip.h
 @@ -47,6 +47,12 @@ enum class VerticalNudgeType { ROW, OCTAVE };
@@ -15527,7 +15567,7 @@ index b6e15e33..0d45f0e7 100644
  	explicit InstrumentClip(Song* song = nullptr);
  	~InstrumentClip() override;
  	void increaseLengthWithRepeats(ModelStackWithTimelineCounter* modelStack, int32_t newLength,
-@@ -122,6 +128,45 @@ public:
+@@ -122,6 +128,48 @@ public:
  	bool wrapEditing;
  	uint32_t wrapEditLevel{};
  
@@ -15545,6 +15585,9 @@ index b6e15e33..0d45f0e7 100644
 +	bool monoShiftsNoteCode() const;
 +	/// The yScroll that puts the scale's root on the bottom row
 +	int32_t getMonoYScroll(Song* song);
++	/// Octaves the mono grid sits above the root's default one. Only moves when the notes no longer fit the grid, so
++	/// editing never shifts it.
++	int32_t monoGridOctave = 0;
 +	/// The octave offset, -kMonoMaxOctave to kMonoMaxOctave, a note carries in a mono CV clip
 +	static int32_t getMonoOctave(int32_t lift);
 +	/// Whether a mono note slides into the next one. Slide notes keep their lift kMonoSlideLift higher.
@@ -15574,7 +15617,7 @@ index b6e15e33..0d45f0e7 100644
  	int8_t backedUpInstrumentSlot[4]{};
  	int8_t backedUpInstrumentSubSlot[4]{};
 diff --git a/src/deluge/model/clip/instrument_clip_minder.cpp b/src/deluge/model/clip/instrument_clip_minder.cpp
-index 7bdb9004..ec345f2c 100644
+index 7bdb9004d..ec345f2c7 100644
 --- a/src/deluge/model/clip/instrument_clip_minder.cpp
 +++ b/src/deluge/model/clip/instrument_clip_minder.cpp
 @@ -31,6 +31,7 @@
@@ -15605,7 +15648,7 @@ index 7bdb9004..ec345f2c 100644
  		}
  	}
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
-index a7bbbd46..02b2c7a5 100644
+index a7bbbd46a..02b2c7a57 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable.cpp
 @@ -710,6 +710,16 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
@@ -15678,7 +15721,7 @@ index a7bbbd46..02b2c7a5 100644
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
 diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
-index 22e8970a..fdc7fea0 100644
+index 22e8970a8..fdc7fea06 100644
 --- a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
 @@ -118,11 +118,18 @@ GlobalEffectableForClip::GlobalEffectableForClip() {
@@ -15706,7 +15749,7 @@ index 22e8970a..fdc7fea0 100644
  	}
  
 diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.h b/src/deluge/model/global_effectable/global_effectable_for_clip.h
-index dd1533d4..3daa319b 100644
+index dd1533d47..3daa319bc 100644
 --- a/src/deluge/model/global_effectable/global_effectable_for_clip.h
 +++ b/src/deluge/model/global_effectable/global_effectable_for_clip.h
 @@ -43,16 +43,20 @@ public:
@@ -15734,7 +15777,7 @@ index dd1533d4..3daa319b 100644
  protected:
  	int32_t getParameterFromKnob(int32_t whichModEncoder) final;
 diff --git a/src/deluge/model/instrument/cv_instrument.cpp b/src/deluge/model/instrument/cv_instrument.cpp
-index 6b202b0f..5697db7e 100644
+index 6b202b0ff..5697db7ed 100644
 --- a/src/deluge/model/instrument/cv_instrument.cpp
 +++ b/src/deluge/model/instrument/cv_instrument.cpp
 @@ -35,12 +35,25 @@ void CVInstrument::noteOnPostArp(int32_t noteCodePostArp, ArpNote* arpNote, int3
@@ -15765,7 +15808,7 @@ index 6b202b0f..5697db7e 100644
                                    int32_t noteIndex) {
  
 diff --git a/src/deluge/model/instrument/cv_instrument.h b/src/deluge/model/instrument/cv_instrument.h
-index a58e4ff9..98e162b8 100644
+index a58e4ff9f..98e162b82 100644
 --- a/src/deluge/model/instrument/cv_instrument.h
 +++ b/src/deluge/model/instrument/cv_instrument.h
 @@ -31,6 +31,16 @@ constexpr int32_t kNumCVInstrumentChannels = both + 1;
@@ -15796,7 +15839,7 @@ index a58e4ff9..98e162b8 100644
 +	int32_t monoCustomMillivolts = -1;
  };
 diff --git a/src/deluge/model/instrument/kit.cpp b/src/deluge/model/instrument/kit.cpp
-index 4aac4577..44d0d09d 100644
+index 4aac4577b..44d0d09d5 100644
 --- a/src/deluge/model/instrument/kit.cpp
 +++ b/src/deluge/model/instrument/kit.cpp
 @@ -117,6 +117,9 @@ bool Kit::writeDataToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Son
@@ -15821,7 +15864,7 @@ index 4aac4577..44d0d09d 100644
  			selectedDrumIndex = reader.readTagOrAttributeValueInt();
  			reader.exitTag("selectedDrumIndex");
 diff --git a/src/deluge/model/instrument/kit.h b/src/deluge/model/instrument/kit.h
-index 7614919a..9d72101f 100644
+index 7614919ad..9d72101fb 100644
 --- a/src/deluge/model/instrument/kit.h
 +++ b/src/deluge/model/instrument/kit.h
 @@ -37,6 +37,9 @@ public:
@@ -15836,7 +15879,7 @@ index 7614919a..9d72101f 100644
  	Drum* getPrevDrum(Drum* fromSoundSource);
 diff --git a/src/deluge/model/instrument/preset_kit.cpp b/src/deluge/model/instrument/preset_kit.cpp
 new file mode 100644
-index 00000000..8deb0093
+index 000000000..8deb00939
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.cpp
 @@ -0,0 +1,252 @@
@@ -16094,7 +16137,7 @@ index 00000000..8deb0093
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/preset_kit.h b/src/deluge/model/instrument/preset_kit.h
 new file mode 100644
-index 00000000..b48b6058
+index 000000000..b48b60583
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.h
 @@ -0,0 +1,82 @@
@@ -16181,7 +16224,7 @@ index 00000000..b48b6058
 +
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04..d3f78c95 100644
+index fd80ba04f..d3f78c95f 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -16270,7 +16313,7 @@ index fd80ba04..d3f78c95 100644
  				reader.exitTag();
  			}
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.h b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-index 64f25db1..ff951988 100644
+index 64f25db18..ff951988e 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.h
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.h
 @@ -21,6 +21,7 @@
@@ -16328,7 +16371,7 @@ index 64f25db1..ff951988 100644
  	FilterMode hpfMode;
  	FilterRoute filterRoute;
 diff --git a/src/deluge/model/note/note_row.cpp b/src/deluge/model/note/note_row.cpp
-index 58e8fb77..b336dcd6 100644
+index 58e8fb77b..b336dcd67 100644
 --- a/src/deluge/model/note/note_row.cpp
 +++ b/src/deluge/model/note/note_row.cpp
 @@ -1822,6 +1822,18 @@ Error NoteRow::changeNotesAcrossAllScreens(int32_t editPos, ModelStackWithNoteRo
@@ -16438,7 +16481,7 @@ index 58e8fb77..b336dcd6 100644
  	}
  	else if (drum) {
 diff --git a/src/deluge/model/note/note_row.h b/src/deluge/model/note/note_row.h
-index ca04ec3f..9a2db604 100644
+index ca04ec3f5..9a2db6046 100644
 --- a/src/deluge/model/note/note_row.h
 +++ b/src/deluge/model/note/note_row.h
 @@ -38,6 +38,8 @@
@@ -16471,7 +16514,7 @@ index ca04ec3f..9a2db604 100644
  	int32_t loopLengthIfIndependent; // 0 means obeying parent
  	int32_t lastProcessedPosIfIndependent;
 diff --git a/src/deluge/model/sample/sample_low_level_reader.cpp b/src/deluge/model/sample/sample_low_level_reader.cpp
-index 14e7c0cc..609185c3 100644
+index 14e7c0ccb..609185c34 100644
 --- a/src/deluge/model/sample/sample_low_level_reader.cpp
 +++ b/src/deluge/model/sample/sample_low_level_reader.cpp
 @@ -147,8 +147,15 @@ void SampleLowLevelReader::setupReassessmentLocation(SamplePlaybackGuide* guide,
@@ -16521,7 +16564,7 @@ index 14e7c0cc..609185c3 100644
  			}
  
 diff --git a/src/deluge/model/sample/sample_playback_guide.cpp b/src/deluge/model/sample/sample_playback_guide.cpp
-index 13edf255..0a5efb27 100644
+index 13edf2558..0a5efb275 100644
 --- a/src/deluge/model/sample/sample_playback_guide.cpp
 +++ b/src/deluge/model/sample/sample_playback_guide.cpp
 @@ -101,10 +101,17 @@ uint64_t SamplePlaybackGuide::getSyncedNumSamplesIn() {
@@ -16547,7 +16590,7 @@ index 13edf255..0a5efb27 100644
  
  int32_t SamplePlaybackGuide::getNumSamplesLaggingBehindSync(VoiceSample* voiceSample) {
 diff --git a/src/deluge/model/sample/sample_playback_guide.h b/src/deluge/model/sample/sample_playback_guide.h
-index 2791a5ca..7c8e181c 100644
+index 2791a5cac..7c8e181cb 100644
 --- a/src/deluge/model/sample/sample_playback_guide.h
 +++ b/src/deluge/model/sample/sample_playback_guide.h
 @@ -54,4 +54,6 @@ public:
@@ -16558,7 +16601,7 @@ index 2791a5ca..7c8e181c 100644
 +	bool hasStartOffset{false};       // Start offset shifted the playback window (Voices only)
  };
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
-index c127568b..67ab7250 100644
+index c127568bc..67ab72502 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
 +++ b/src/deluge/model/settings/runtime_feature_settings.cpp
 @@ -75,6 +75,28 @@ static void SetupSyncScalingActionSetting(RuntimeFeatureSetting& setting, deluge
@@ -16607,7 +16650,7 @@ index c127568b..67ab7250 100644
  	SetupOnOffSetting(settings[RuntimeFeatureSettingType::AlternativeTapTempoBehaviour],
  	                  STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "alternativeTapTempoBehaviour",
 diff --git a/src/deluge/model/settings/runtime_feature_settings.h b/src/deluge/model/settings/runtime_feature_settings.h
-index 55e809ef..356d6ffe 100644
+index 55e809efa..356d6ffe3 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.h
 +++ b/src/deluge/model/settings/runtime_feature_settings.h
 @@ -37,7 +37,10 @@ class DevSysexSetting;
@@ -16632,7 +16675,7 @@ index 55e809ef..356d6ffe 100644
  };
  
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index 4d3fe415..b553a2e0 100644
+index 4d3fe4159..b553a2e06 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
 @@ -160,6 +160,11 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
@@ -16780,7 +16823,7 @@ index 4d3fe415..b553a2e0 100644
  		// Reschedule all the other stuff
  		playbackHandler.swungTickScheduled = false;
 diff --git a/src/deluge/model/song/song.h b/src/deluge/model/song/song.h
-index 78ad67ce..ee1208ff 100644
+index 78ad67ce7..ee1208ff8 100644
 --- a/src/deluge/model/song/song.h
 +++ b/src/deluge/model/song/song.h
 @@ -30,6 +30,7 @@
@@ -16821,7 +16864,7 @@ index 78ad67ce..ee1208ff 100644
  	bool areAllClipsInSectionPlaying(int32_t section);
 diff --git a/src/deluge/model/swing/swing_style.cpp b/src/deluge/model/swing/swing_style.cpp
 new file mode 100644
-index 00000000..8dee9caa
+index 000000000..8dee9caae
 --- /dev/null
 +++ b/src/deluge/model/swing/swing_style.cpp
 @@ -0,0 +1,138 @@
@@ -16965,7 +17008,7 @@ index 00000000..8dee9caa
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/swing/swing_style.h b/src/deluge/model/swing/swing_style.h
 new file mode 100644
-index 00000000..6c4f5585
+index 000000000..6c4f55856
 --- /dev/null
 +++ b/src/deluge/model/swing/swing_style.h
 @@ -0,0 +1,59 @@
@@ -17029,7 +17072,7 @@ index 00000000..6c4f5585
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index ccc3f332..e0827d08 100644
+index ccc3f332f..e0827d08f 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -17586,7 +17629,7 @@ index ccc3f332..e0827d08 100644
  			// Or regular wave
  		}
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e2..e512bdec 100644
+index 33be91e25..e512bdec4 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
 @@ -18,7 +18,9 @@
@@ -17620,7 +17663,7 @@ index 33be91e2..e512bdec 100644
 +	void applyStartOffsetToGuide(VoiceSamplePlaybackGuide& guide, const Source& source, int32_t startOffsetParam);
  };
 diff --git a/src/deluge/model/voice/voice_sample.cpp b/src/deluge/model/voice/voice_sample.cpp
-index 27539505..a2c41388 100644
+index 27539505a..a2c413887 100644
 --- a/src/deluge/model/voice/voice_sample.cpp
 +++ b/src/deluge/model/voice/voice_sample.cpp
 @@ -528,6 +528,16 @@ bool VoiceSample::render(SamplePlaybackGuide* guide, int32_t* __restrict__ outpu
@@ -17798,7 +17841,7 @@ index 27539505..a2c41388 100644
 +	return true;
 +}
 diff --git a/src/deluge/model/voice/voice_sample.h b/src/deluge/model/voice/voice_sample.h
-index 5b006d27..75427f7f 100644
+index 5b006d27f..75427f7fa 100644
 --- a/src/deluge/model/voice/voice_sample.h
 +++ b/src/deluge/model/voice/voice_sample.h
 @@ -95,6 +95,7 @@ public:
@@ -17810,7 +17853,7 @@ index 5b006d27..75427f7f 100644
  	                                 int32_t phaseIncrement, int32_t timeStretchRatio, int32_t playDirection,
  	                                 int32_t priorityRating, LoopType loopingType);
 diff --git a/src/deluge/model/voice/voice_sample_playback_guide.cpp b/src/deluge/model/voice/voice_sample_playback_guide.cpp
-index 771123d6..bc962fe4 100644
+index 771123d65..bc962fe42 100644
 --- a/src/deluge/model/voice/voice_sample_playback_guide.cpp
 +++ b/src/deluge/model/voice/voice_sample_playback_guide.cpp
 @@ -71,31 +71,68 @@ void VoiceSamplePlaybackGuide::setupPlaybackBounds(bool reversed) {
@@ -17889,7 +17932,7 @@ index 771123d6..bc962fe4 100644
 +	return LoopType::NONE;
  }
 diff --git a/src/deluge/model/voice/voice_sample_playback_guide.h b/src/deluge/model/voice/voice_sample_playback_guide.h
-index 1640f0db..25458b22 100644
+index 1640f0db3..25458b22b 100644
 --- a/src/deluge/model/voice/voice_sample_playback_guide.h
 +++ b/src/deluge/model/voice/voice_sample_playback_guide.h
 @@ -43,5 +43,14 @@ public:
@@ -17908,7 +17951,7 @@ index 1640f0db..25458b22 100644
 +	uint8_t loopWrapPhase{0};                 // 0=normal, 1=loopStart->sampleEnd, 2=sampleStart->loopEnd
  };
 diff --git a/src/deluge/model/voice/voice_unison_part_source.cpp b/src/deluge/model/voice/voice_unison_part_source.cpp
-index ad8bb93d..f5e5c665 100644
+index ad8bb93d2..f5e5c6659 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.cpp
 +++ b/src/deluge/model/voice/voice_unison_part_source.cpp
 @@ -61,7 +61,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
@@ -17939,7 +17982,7 @@ index ad8bb93d..f5e5c665 100644
  		if (oscRetriggerPhase != 0xFFFFFFFF) {
  			oscPos = getOscInitialPhaseForZero(source->oscType) + oscRetriggerPhase;
 diff --git a/src/deluge/model/voice/voice_unison_part_source.h b/src/deluge/model/voice/voice_unison_part_source.h
-index c14b3f72..92a54715 100644
+index c14b3f729..92a547150 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.h
 +++ b/src/deluge/model/voice/voice_unison_part_source.h
 @@ -18,6 +18,7 @@
@@ -17957,7 +18000,7 @@ index c14b3f72..92a54715 100644
 +	deluge::dsp::drum_synth::Voice drumVoice;
  };
 diff --git a/src/deluge/modulation/envelope.cpp b/src/deluge/modulation/envelope.cpp
-index feba895b..d690ec9d 100644
+index feba895ba..d690ec9d4 100644
 --- a/src/deluge/modulation/envelope.cpp
 +++ b/src/deluge/modulation/envelope.cpp
 @@ -26,8 +26,15 @@ namespace params = deluge::modulation::params;
@@ -18005,7 +18048,7 @@ index feba895b..d690ec9d 100644
  
  	case EnvelopeStage::FAST_RELEASE:
 diff --git a/src/deluge/modulation/envelope.h b/src/deluge/modulation/envelope.h
-index 260849c6..8ef83665 100644
+index 260849c6c..8ef83665e 100644
 --- a/src/deluge/modulation/envelope.h
 +++ b/src/deluge/modulation/envelope.h
 @@ -39,8 +39,10 @@ public:
@@ -18021,7 +18064,7 @@ index 260849c6..8ef83665 100644
  	                          uint32_t newFastReleaseIncrement = SOFT_CULL_INCREMENT);
  	void unconditionalOff();
 diff --git a/src/deluge/modulation/params/param.cpp b/src/deluge/modulation/params/param.cpp
-index 6d45cbe3..3f9695f6 100644
+index 6d45cbe3c..3f9695f68 100644
 --- a/src/deluge/modulation/params/param.cpp
 +++ b/src/deluge/modulation/params/param.cpp
 @@ -28,8 +28,15 @@
@@ -18135,7 +18178,7 @@ index 6d45cbe3..3f9695f6 100644
  			return "modulator1Volume";
  
 diff --git a/src/deluge/modulation/params/param.h b/src/deluge/modulation/params/param.h
-index 6af0f7db..90a6a55c 100644
+index 6af0f7db0..90a6a55cd 100644
 --- a/src/deluge/modulation/params/param.h
 +++ b/src/deluge/modulation/params/param.h
 @@ -97,6 +97,8 @@ enum Local : ParamType {
@@ -18168,7 +18211,7 @@ index 6af0f7db..90a6a55c 100644
  bool isParamPitchBend(Kind kind, int32_t paramID);
  bool isParamArpRhythm(Kind kind, int32_t paramID);
 diff --git a/src/deluge/modulation/params/param_set.cpp b/src/deluge/modulation/params/param_set.cpp
-index 1fbf667e..c7278686 100644
+index 1fbf667e1..c72786864 100644
 --- a/src/deluge/modulation/params/param_set.cpp
 +++ b/src/deluge/modulation/params/param_set.cpp
 @@ -565,6 +565,8 @@ bool PatchedParamSet::shouldParamIndicateMiddleValue(ModelStackWithParamId const
@@ -18182,7 +18225,7 @@ index 1fbf667e..c7278686 100644
  		return false;
 diff --git a/src/deluge/playback/autofill.cpp b/src/deluge/playback/autofill.cpp
 new file mode 100644
-index 00000000..5eb0155a
+index 000000000..5eb0155a0
 --- /dev/null
 +++ b/src/deluge/playback/autofill.cpp
 @@ -0,0 +1,401 @@
@@ -18589,7 +18632,7 @@ index 00000000..5eb0155a
 +} // namespace deluge::autofill
 diff --git a/src/deluge/playback/autofill.h b/src/deluge/playback/autofill.h
 new file mode 100644
-index 00000000..4a1f0653
+index 000000000..4a1f0653c
 --- /dev/null
 +++ b/src/deluge/playback/autofill.h
 @@ -0,0 +1,103 @@
@@ -18697,7 +18740,7 @@ index 00000000..4a1f0653
 +
 +} // namespace deluge::autofill
 diff --git a/src/deluge/playback/mode/session.cpp b/src/deluge/playback/mode/session.cpp
-index d8387806..ea06e587 100644
+index d83878063..ea06e5872 100644
 --- a/src/deluge/playback/mode/session.cpp
 +++ b/src/deluge/playback/mode/session.cpp
 @@ -194,6 +194,18 @@ void Session::armNextSection(int32_t oldSection, int32_t numRepetitions) {
@@ -18720,7 +18763,7 @@ index d8387806..ea06e587 100644
  bool Session::giveClipOpportunityToBeginLinearRecording(Clip* clip, int32_t clipIndex, int32_t buttonPressLatency) {
  
 diff --git a/src/deluge/playback/mode/session.h b/src/deluge/playback/mode/session.h
-index 4d769f65..3101a8df 100644
+index 4d769f658..3101a8dfe 100644
 --- a/src/deluge/playback/mode/session.h
 +++ b/src/deluge/playback/mode/session.h
 @@ -104,6 +104,8 @@ public:
@@ -18733,7 +18776,7 @@ index 4d769f65..3101a8df 100644
  	bool giveClipOpportunityToBeginLinearRecording(Clip* clip, int32_t clipIndex, int32_t buttonPressLatency);
  	void armClipToStopAction(Clip* clip);
 diff --git a/src/deluge/playback/playback_handler.cpp b/src/deluge/playback/playback_handler.cpp
-index f039781a..8ade127f 100644
+index f039781a6..8ade127fb 100644
 --- a/src/deluge/playback/playback_handler.cpp
 +++ b/src/deluge/playback/playback_handler.cpp
 @@ -27,6 +27,7 @@
@@ -19102,7 +19145,7 @@ index f039781a..8ade127f 100644
  		bool wasRecordingArrangement = (recording == RecordingMode::ARRANGEMENT);
  		recording = RecordingMode::OFF;
 diff --git a/src/deluge/playback/playback_handler.h b/src/deluge/playback/playback_handler.h
-index 98ff45dd..1943aaff 100644
+index 98ff45ddd..1943aaffa 100644
 --- a/src/deluge/playback/playback_handler.h
 +++ b/src/deluge/playback/playback_handler.h
 @@ -158,6 +158,15 @@ public:
@@ -19141,7 +19184,7 @@ index 98ff45dd..1943aaff 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 100ddc92..bdec535e 100644
+index 100ddc92c..bdec535e4 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -48,6 +48,7 @@
@@ -19177,7 +19220,7 @@ index 100ddc92..bdec535e 100644
  
 diff --git a/src/deluge/processing/engines/cpu_meter.h b/src/deluge/processing/engines/cpu_meter.h
 new file mode 100644
-index 00000000..cbe8ba1e
+index 000000000..cbe8ba1ea
 --- /dev/null
 +++ b/src/deluge/processing/engines/cpu_meter.h
 @@ -0,0 +1,47 @@
@@ -19229,7 +19272,7 @@ index 00000000..cbe8ba1e
 +
 +} // namespace deluge::cpu_meter
 diff --git a/src/deluge/processing/engines/cv_engine.cpp b/src/deluge/processing/engines/cv_engine.cpp
-index 17eebd99..4ce75e89 100644
+index 17eebd998..4ce75e896 100644
 --- a/src/deluge/processing/engines/cv_engine.cpp
 +++ b/src/deluge/processing/engines/cv_engine.cpp
 @@ -239,6 +239,21 @@ void CVEngine::sendNote(bool on, uint8_t channel, int16_t note) {
@@ -19255,7 +19298,7 @@ index 17eebd99..4ce75e89 100644
  	uint32_t output = (uint32_t)(0b00110000 | (1 << channel)) << 24;
  	output |= (uint32_t)voltage << 8;
 diff --git a/src/deluge/processing/engines/cv_engine.h b/src/deluge/processing/engines/cv_engine.h
-index 9eca346b..8ddedad0 100644
+index 9eca346b7..8ddedad05 100644
 --- a/src/deluge/processing/engines/cv_engine.h
 +++ b/src/deluge/processing/engines/cv_engine.h
 @@ -68,6 +68,8 @@ public:
@@ -19269,7 +19312,7 @@ index 9eca346b..8ddedad0 100644
  	void setCVTranspose(uint8_t channel, int32_t semitones, int32_t cents);
 diff --git a/src/deluge/processing/sound/drum_synth_params.h b/src/deluge/processing/sound/drum_synth_params.h
 new file mode 100644
-index 00000000..031dfcaa
+index 000000000..031dfcaa1
 --- /dev/null
 +++ b/src/deluge/processing/sound/drum_synth_params.h
 @@ -0,0 +1,150 @@
@@ -19424,7 +19467,7 @@ index 00000000..031dfcaa
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce44..1b17fb07 100644
+index 8dd1ce447..1b17fb07b 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -20310,7 +20353,7 @@ index 8dd1ce44..1b17fb07 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 9d2550b6..8fc6891b 100644
+index 9d2550b65..8fc6891b4 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
 @@ -18,6 +18,7 @@
@@ -20433,7 +20476,7 @@ index 9d2550b6..8fc6891b 100644
  	/// Internally this will either acquire a new voice or steal an existing one
  	/// @return The acquired voice
 diff --git a/src/deluge/processing/sound/sound_drum.cpp b/src/deluge/processing/sound/sound_drum.cpp
-index 0c1d77de..5241c031 100644
+index 0c1d77deb..5241c0313 100644
 --- a/src/deluge/processing/sound/sound_drum.cpp
 +++ b/src/deluge/processing/sound/sound_drum.cpp
 @@ -36,6 +36,13 @@ bool SoundDrum::readTagFromFile(Deserializer& reader, char const* tagName) {
@@ -20461,7 +20504,7 @@ index 0c1d77de..5241c031 100644
  	Sound::writeToFile(writer, savingSong, paramManager, &arpSettings, path.get());
  
 diff --git a/src/deluge/processing/sound/sound_drum.h b/src/deluge/processing/sound/sound_drum.h
-index c6decafd..1e42bd38 100644
+index c6decafd3..1e42bd387 100644
 --- a/src/deluge/processing/sound/sound_drum.h
 +++ b/src/deluge/processing/sound/sound_drum.h
 @@ -29,6 +29,8 @@ class SoundDrum final : public Sound, public Drum {
@@ -20474,7 +20517,7 @@ index c6decafd..1e42bd38 100644
  	SoundDrum() : Drum(DrumType::SOUND) {}
  
 diff --git a/src/deluge/processing/sound/sound_instrument.cpp b/src/deluge/processing/sound/sound_instrument.cpp
-index a8d13e35..1729ac5a 100644
+index a8d13e35c..1729ac5a3 100644
 --- a/src/deluge/processing/sound/sound_instrument.cpp
 +++ b/src/deluge/processing/sound/sound_instrument.cpp
 @@ -470,6 +470,10 @@ ArpeggiatorBase* SoundInstrument::getArp() {
@@ -20489,7 +20532,7 @@ index a8d13e35..1729ac5a 100644
  
  	if (arpSettings != nullptr
 diff --git a/src/deluge/processing/source.h b/src/deluge/processing/source.h
-index 20b6b289..1974c207 100644
+index 20b6b2894..1974c207f 100644
 --- a/src/deluge/processing/source.h
 +++ b/src/deluge/processing/source.h
 @@ -18,6 +18,7 @@
@@ -20513,7 +20556,7 @@ index 20b6b289..1974c207 100644
  	int16_t defaultRangeI; // -1 means none yet
  
 diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
-index fd2e3f80..02a885e5 100644
+index fd2e3f80b..02a885e56 100644
 --- a/src/deluge/storage/storage_manager.cpp
 +++ b/src/deluge/storage/storage_manager.cpp
 @@ -525,6 +525,21 @@ Error StorageManager::loadPatternFile(FilePointer* filePointer, String* fileName
@@ -20539,7 +20582,7 @@ index fd2e3f80..02a885e5 100644
  Error StorageManager::loadFavouriteFile(FilePointer* filePointer, String* fileName) {
  
 diff --git a/src/deluge/storage/storage_manager.h b/src/deluge/storage/storage_manager.h
-index 366f8de7..c2e04ba8 100644
+index 366f8de77..c2e04ba87 100644
 --- a/src/deluge/storage/storage_manager.h
 +++ b/src/deluge/storage/storage_manager.h
 @@ -34,6 +34,7 @@ extern void deleteOldSongBeforeLoadingNew();
@@ -20560,7 +20603,7 @@ index 366f8de7..c2e04ba8 100644
  Error openFavouriteFile(FilePointer* filePointer);
  Error loadFavouriteFile(FilePointer* filePointer, String* fileName);
 diff --git a/src/deluge/util/functions.cpp b/src/deluge/util/functions.cpp
-index dcf105a3..a6c4f0d8 100644
+index dcf105a39..a6c4f0d84 100644
 --- a/src/deluge/util/functions.cpp
 +++ b/src/deluge/util/functions.cpp
 @@ -715,6 +715,9 @@ char const* oscTypeToString(OscType oscType) {
@@ -20604,7 +20647,7 @@ index dcf105a3..a6c4f0d8 100644
  		return SynthMode::SUBTRACTIVE;
  	}
 diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
-index 048faee9..670029d8 100644
+index 048faee99..670029d89 100644
 --- a/tests/unit/CMakeLists.txt
 +++ b/tests/unit/CMakeLists.txt
 @@ -40,7 +40,7 @@ file(GLOB_RECURSE deluge_SOURCES
@@ -20658,7 +20701,7 @@ index 048faee9..670029d8 100644
          COMMAND UnitTests)
 diff --git a/tests/unit/cyc_tests.cpp b/tests/unit/cyc_tests.cpp
 new file mode 100644
-index 00000000..dcfd95e6
+index 000000000..dcfd95e69
 --- /dev/null
 +++ b/tests/unit/cyc_tests.cpp
 @@ -0,0 +1,198 @@
@@ -20862,7 +20905,7 @@ index 00000000..dcfd95e6
 +}
 diff --git a/tests/unit/drum_synth_tests.cpp b/tests/unit/drum_synth_tests.cpp
 new file mode 100644
-index 00000000..ab97eec9
+index 000000000..ab97eec99
 --- /dev/null
 +++ b/tests/unit/drum_synth_tests.cpp
 @@ -0,0 +1,340 @@
@@ -21208,7 +21251,7 @@ index 00000000..ab97eec9
 +}
 diff --git a/tests/unit/swing_style_tests.cpp b/tests/unit/swing_style_tests.cpp
 new file mode 100644
-index 00000000..1c5c20bf
+index 000000000..1c5c20bf7
 --- /dev/null
 +++ b/tests/unit/swing_style_tests.cpp
 @@ -0,0 +1,69 @@
@@ -21283,7 +21326,7 @@ index 00000000..1c5c20bf
 +}
 diff --git a/tests/unit/xia_tests.cpp b/tests/unit/xia_tests.cpp
 new file mode 100644
-index 00000000..d801dfee
+index 000000000..d801dfeea
 --- /dev/null
 +++ b/tests/unit/xia_tests.cpp
 @@ -0,0 +1,328 @@
@@ -21617,7 +21660,7 @@ index 00000000..d801dfee
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 00000000..39d08ea4
+index 000000000..39d08ea44
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
 @@ -0,0 +1,379 @@
