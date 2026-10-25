@@ -1,4 +1,4 @@
-# BRIBELUGE: Deluge Bribes FW v1.10
+# BRIBELUGE: Deluge Bribes FW v1.11
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more groove, more wonk, more destruction, more speed, moarrrrr:
 
@@ -7,10 +7,10 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **Autofill:** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **Mono sequencer:** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row.
 5. **Endless Record:** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, Drom1 and Drom2, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
+6. **Drum synth:** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11). The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked.
 7. **Saturation:** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
 8. **Sample start offset:** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
-9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX.
+9. **303 synth (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
 10. **Delay feedback and tone:** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting (the tone starts flat). Songs saved before keep their own swing and sound the same through the delay.
@@ -19,13 +19,13 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.10.bin`](firmware/deluge-bribes-v1.10.bin)
+[`firmware/deluge-bribes-v1.11.bin`](firmware/deluge-bribes-v1.11.bin)
 
-SHA-256: `ca4ba86e37aca532e825d26ecd0a3ec420186483ef0ec1c2b9ebbf04d33d8a3e`
+SHA-256: `dca3f1a8f958cc3e79961a72ed0a60ff058120763942d77ce479caf2d83087b7`
 
 ## Install
 
-1. Copy `deluge-bribes-v1.10.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.11.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -51,16 +51,16 @@ To go back, install an official firmware file the same way.
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
-| **SHIFT + KIT** | New kit: choose **Kit** (samples) or **Drum synth** (seven synthesised rows) |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices) or **Cycles** (the six Cyc engines) |
 | **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
-| **Attack / Release gold knobs** | Drive / Decay (drum synth rows) |
-| **Mod rate / Mod depth gold knobs** | Sweep / Contour (Cyc engines) |
-| **CUSTOM 2 / CUSTOM 3 gold knobs** | The engine's two key settings, Color / Shape on the Cyc engines (drum synth rows). Hold a step and turn to parameter lock |
+| **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
+| **Mod rate / Mod depth gold knobs** | The sweep's speed / depth: Sweep / Contour on the Cyc engines, the filter envelope's Decay / Env mod on the 303 |
+| **CUSTOM 2 / CUSTOM 3 gold knobs** | Two voicing settings: Color / Shape on the Cyc engines, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 | **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
-| **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Env mod / Decay (303 synth) |
+| **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
@@ -270,15 +270,19 @@ Synthesised drums as a Deluge oscillator. A drum synth row is still a normal Del
 The engines:
 
 - **Kick / tom** (**DRUM**), **Snare** (**SNAR**) and **Cymbal / hat** (**METL**): ported from the drum voices of the open source LXR-02 firmware by Erica Synths.
-- **Drom1** (**D1-L**, **D1-B**, **D1-C**): three sine operators and a carrier, phase modulating each other in three routings.
-- **Drom2** (**D2-G**, **D2-I**, **D2-H**): inharmonic, metallic partials with a noise strike, in three variants.
+- **DXIA** (**DX-L**, **DX-B**, **DX-C**), called Drom1 before v1.11: three sine operators and a carrier, phase modulating each other in three routings.
+- **DIIA** (**DI-G**, **DI-I**, **DI-H**), called Drom2 before v1.11: inharmonic, metallic partials with a noise strike, in three variants.
 - **Cyc engines (new in v1.8):** **Cyc Kik** (**KIK**), **Cyc Snr** (**SNR**), **Cyc Metal** (**CMTL**), **Cyc Perc** (**PERC**), **Cyc Tone** (**TONE**), **Cyc Chord** (**CHRD**), **Vtg Snr** (**VSNR**) and **clap eng** (**CLAP**). Modelled on the Model:Cycles' six machines and the Syntakt's SD VINTAGE and CP VINTAGE, with the same knobs and starting values.
 
 ### Making a drum synth kit
 
 1. In clip view on an empty clip, press **SHIFT + KIT**.
-2. The **New kit** (**NEW**) menu opens. Turn **SELECT** to **Drum synth** (**DRUM**) and press **SELECT**. Choose **Kit** for a normal, sample based kit.
-3. You get seven rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
+2. The **New kit** (**NEW**) menu opens. Turn **SELECT** to a kit type and press **SELECT**:
+   - **Kit** (**KIT**): a normal, sample based kit.
+   - **LXR** (**LXR**): seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
+   - **Cycles** (**CYCL**, new in v1.11): the Model:Cycles' usual six tracks, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, playing at the note as the Cycles does at its default tune.
+
+Vtg Snr, clap eng, DXIA and DIIA are picked per row in SYNTH MODE.
 
 ### Choosing an engine
 
@@ -288,29 +292,30 @@ Every engine and variant is in one list, **SYNTH MODE**. Hold a row's audition p
 |---|---|
 | The Deluge's own | **Sample** on a kit row (**Subtractive** on a synth), FM, Ringmod, 303 (synths only) |
 | LXR voices | Kick / tom, Snare, Cymbal / hat |
-| Drom1 | Drom1 L, Drom1 B, Drom1 C |
-| Drom2 | Drom2 G, Drom2 I, Drom2 H |
+| DXIA | DXIA L, DXIA B, DXIA C |
+| DIIA | DIIA G, DIIA I, DIIA H |
 | Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
 
 - A row that wasn't a drum synth gets envelope 2 as a short blip (attack 0, decay 5, sustain 0, release 0) to patch to pitch for a snap.
-- The LXR voices, Drom1 and Drom2 get a percussive envelope 1 (attack 0, decay 30, sustain 0, release 30): the Deluge envelope shapes them.
+- The LXR voices, DXIA and DIIA get a percussive envelope 1 (attack 0, decay 30, sustain 0, release 30): the Deluge envelope shapes them.
 - The Cyc engines have their own amp decay, so they get an open envelope 1 (attack 0, sustain 50, release 40). Turn its sustain down to cut them shorter from outside.
-- Moving between the LXR voices, or between variants of Drom1 or Drom2, keeps their settings.
+- Moving between the LXR voices, or between variants of DXIA or DIIA, keeps their settings.
 
 ### Shortcut pads
 
 All drum engines share one layout, read the way the grid is printed. Only the OSC1, OSC2, MOD1 and MOD2 columns change meaning on a drum synth row. Envelope, filter, FX and master pads keep their usual jobs, and so does any pad an engine doesn't use.
 
 - **Columns:** OSC1 is the main voice. OSC2 is the second layer (snare noise, rattle, snares, overtone, clap tail, or the first operator). MOD1 is the modulator: FM depth and ratio. MOD2 is the pitch sweep, or the second modulator or third operator on engines without one.
-- **Rows:** LEVEL is an amount, TRANSPOSE a tuning or ratio, TYPE a choice, PULSE WIDTH a shape or fine tune, RETRIGGER the attack, FEEDBACK drive, resonance or curve, WAVE INDEX a decay. OSC1 NOISE is a noise amount.
-- **Drive and decay:** every engine has its drive on **OSC1 FEEDBACK** and its decay on **OSC1 WAVE INDEX**. On the LXR voices they're new in v1.8 and start neutral (no drive, decay holding), so older kits sound the same.
+- **Rows:** LEVEL is an amount, TRANSPOSE a tuning or ratio, TYPE a choice, PULSE WIDTH a shape or the wave, RETRIGGER the attack, FEEDBACK drive, resonance or curve, WAVE INDEX a decay. OSC1 NOISE is a noise amount.
+- **Drive and decay:** every engine has its decay on **OSC1 WAVE INDEX**. **OSC1 FEEDBACK** is the drive switch (**Punch**) on the engines that have one, with the drive amount on **OSC1 RETRIGGER** (changed in v1.11); the LXR voices have no switch, so their OSC1 FEEDBACK is the drive amount. On the LXR voices drive and decay start neutral (no drive, decay holding), so older kits sound the same.
+- **Sweep:** the **MOD FX RATE / DEPTH** pads are the sweep's speed and depth on every engine (new in v1.11 on the LXR voices, DXIA and DIIA).
 
-| Pad | Kick / tom | Snare | Cymbal / hat | Drom1 | Drom2 |
+| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA |
 |---|---|---|---|---|---|
 | OSC1 TYPE | SYNTH MODE | SYNTH MODE | SYNTH MODE | SYNTH MODE | SYNTH MODE |
 | OSC1 PULSE WIDTH | Osc wave | Osc wave | Osc wave | | Shape |
-| OSC1 RETRIGGER | Transient type | Transient type | Transient type | Punch | Punch |
-| OSC1 FEEDBACK | Drive | Drive | Drive | Drive | Drive |
+| OSC1 RETRIGGER | Transient type | Transient type | Transient type | Drive | Drive |
+| OSC1 FEEDBACK | Drive | Drive | Drive | Punch | Punch |
 | OSC1 WAVE INDEX | Engine decay | Engine decay | Engine decay | Engine decay | Engine decay |
 | OSC1 NOISE | | | | | Strike |
 | OSC2 LEVEL | | Noise mix | | Blendex 1 | |
@@ -330,12 +335,14 @@ All drum engines share one layout, read the way the grid is printed. Only the OS
 | MOD2 PULSE WIDTH | | | Mod 2 fine | | |
 | MOD2 FEEDBACK | Pitch curve | Pitch curve | | | |
 | MOD2 WAVE INDEX | Pitch decay | Pitch decay | | | |
+| MOD FX RATE | Pitch decay | Pitch decay | Transient speed | Blendex 2 | Shape |
+| MOD FX DEPTH | Pitch amount | Pitch amount | Transient level | Blendex 3 | Strike |
 
 | Pad | Cyc Kik | Cyc Snr | Cyc Metal | Cyc Perc | Cyc Tone | Cyc Chord | Vtg Snr | clap eng |
 |---|---|---|---|---|---|---|---|---|
-| OSC1 PULSE WIDTH | Shape | | | | | Sweep (wave) | | |
-| OSC1 RETRIGGER | Punch | Punch | Punch | Punch | Punch | Punch | Punch | Punch |
-| OSC1 FEEDBACK | Drive | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
+| OSC1 PULSE WIDTH | Shape | Shape (rattle) | | | | Sweep (wave) | | |
+| OSC1 RETRIGGER | Drive | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
+| OSC1 FEEDBACK | Punch | Punch | Punch | Punch | Punch | Punch | Punch | Punch |
 | OSC1 WAVE INDEX | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay |
 | OSC2 LEVEL | | | | Color (overtone) | | | Freq complex | Balance |
 | OSC2 FEEDBACK | | | | | | | | Body char |
@@ -355,12 +362,23 @@ All drum engines share one layout, read the way the grid is printed. Only the OS
 
 ### Gold knobs
 
-| Knob | Every drum synth row | Cyc engines |
+Every drum synth row and the 303 share one layout, after the Cycles' knobs (changed in v1.11). It's set whenever the sound loads, however it was saved.
+
+| Knob | Every drum engine |
+|---|---|
+| Attack / Release | **Drive / Decay** (the envelope's attack and release are still in its menu) |
+| Mod rate / Mod depth | **The sweep**: how fast / how deep |
+| CUSTOM 1 | Tune |
+| CUSTOM 2 / CUSTOM 3 | **Two voicing settings** (never decimation / bitcrush on a drum synth row) |
+
+| Engine | Mod rate / Mod depth | CUSTOM 2 / CUSTOM 3 |
 |---|---|---|
-| Attack / Release | **Drive / Decay** (the envelope's attack and release are still in its menu) | Drive / Decay |
-| Mod rate / Mod depth | as normal | **Sweep / Contour** |
-| CUSTOM 1 | Tune | Tune |
-| CUSTOM 2 / CUSTOM 3 | Pitch amount / FM amount (kick / tom), noise mix / pitch amount (snare), FM amount / FM 2 amount (cymbal / hat), Blendex 1 / Freq 1 (Drom1), Weight / Alloy (Drom2) | **Color / Shape** (Inharm / Freq complex on Vtg Snr, Body char / Balance on clap eng) |
+| Kick / tom | Pitch decay / Pitch amount | FM amount / Mod pitch |
+| Snare | Pitch decay / Pitch amount | Noise mix / Noise cutoff |
+| Cymbal / hat | Transient speed / Transient level (it has no pitch sweep) | FM amount / FM 2 amount |
+| DXIA | Blendex 2 / Blendex 3 (no pitch sweep) | Blendex 1 / Freq 1 |
+| DIIA | Shape / Strike | Weight / Alloy |
+| Cyc engines | Sweep / Contour (Pitch sweep / Mod envelope on Vtg Snr, Spacing crunch / Body envelope on clap eng) | Color / Shape (Inharm / Freq complex on Vtg Snr, Body char / Balance on clap eng) |
 
 Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated. They can't yet be modulated from the mod matrix.
 
@@ -379,7 +397,7 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 
 - **Drive** starts at 100: a soft clipper after the amp decay that gets louder as you turn it up and hard clips at 127, cleaning up as each hit dies away.
 - **Amp decay** starts longer than the original machines' (for example 50 on Cyc Kik, 60 on Cyc Snr, 80 on Cyc Chord).
-- **Punch** (OSC1 RETRIGGER) squares up and lifts the attack.
+- **Punch** (OSC1 FEEDBACK, on OSC1 RETRIGGER before v1.11) squares up and lifts the attack.
 - They sound close to the originals, not identical: the same knobs and starting values, with the sound behind each knob measured from the originals and rebuilt. Cyc Kik's Contour, which barely did anything on the Cycles, sets the knock here.
 
 ### Snappy decay
@@ -388,9 +406,9 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 
 ### Good to know
 
-- The full settings list and a pad-per-setting editor are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each Drom variant.
+- The full settings list and a pad-per-setting editor are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
-- Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or Drom1's Freq 2 and 3.
+- Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
 - Kits with drum synth rows won't play those rows on firmware without them.
 - The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
 
@@ -469,11 +487,13 @@ A 303 track always plays from the mono sequencer, so its grid becomes the 8 fixe
 |---|---|---|
 | **Cutoff** (**CUT**) | Gold knob Cutoff/Res (top), SHIFT + LPF FREQUENCY pad | Filter cutoff, 314 to 2394 Hz as on the 303 |
 | **Resonance** (**RES**) | Gold knob Cutoff/Res (bottom), SHIFT + LPF RESONANCE pad | Filter resonance |
-| **Env mod** (**ENV**) | Gold knob Attack/Release (top), SHIFT + MOD1 LEVEL pad | How far the envelope opens the filter |
-| **Decay** (**DCAY**) | Gold knob Attack/Release (bottom), SHIFT + MOD2 LEVEL pad | The filter envelope's decay, 200 to 2000 ms |
-| **Accent** (**ACC**) | Gold knob Portamento (bottom), SHIFT + OSC1 FEEDBACK pad | How hard accented notes hit |
-| **Saw-square** (**WAVE**) | SHIFT + OSC2 FEEDBACK pad | Fades from saw (0) to square (50) |
-| **Slide time** (**SLID**) | SHIFT + MOD1 FEEDBACK pad | How long a slide takes to arrive |
+| **Env mod** (**ENV**) | Gold knob Mod rate/depth (bottom), SHIFT + MOD1 LEVEL or MOD FX DEPTH pad | How far the envelope opens the filter |
+| **Decay** (**DCAY**) | Gold knob Mod rate/depth (top), SHIFT + MOD2 LEVEL or MOD FX RATE pad | The filter envelope's decay, 200 to 2000 ms |
+| **Drive** (**DRIV**, new in v1.11) | Gold knob Attack/Release (top), SHIFT + OSC1 FEEDBACK pad | The drum synth engines' soft clipper. 0 is clean; low settings bite on accents first, and it gets much dirtier than it gets louder |
+| **Amp decay** (**ADEC**, new in v1.11) | Gold knob Attack/Release (bottom), SHIFT + OSC1 WAVE INDEX pad | How long each note's level dies away while held: 60 ms, Open303's own 1230 ms at the centre (where older 303s sit), holding at the top |
+| **Accent** (**ACC**) | Gold knob CUSTOM 2, SHIFT + OSC1 RETRIGGER pad | How hard accented notes hit |
+| **Saw-square** (**WAVE**) | Gold knob CUSTOM 3, SHIFT + OSC1 PULSE WIDTH or OSC2 FEEDBACK pad | Fades from saw (0) to square (50) |
+| **Slide time** (**SLID**) | Gold knob Portamento (bottom), SHIFT + MOD1 FEEDBACK pad | How long a slide takes to arrive |
 | **Filter** (**FILT**) | SHIFT + MOD2 FEEDBACK pad | **303**, a model of the TB-303's filter, or **LP18**, Open303's plainer 18 dB lowpass |
 
 They're all in the sound menu under **303** too. Every one except Filter is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated.
@@ -489,6 +509,7 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 - Patch cables (LFOs and envelopes) don't reach the 303's controls yet. Gold knobs, menus, parameter locks and automation do.
 - Transpose, Fine tune and the arpeggiator all work. It's mono, so it plays one note at a time.
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
+- In automation view the 303's controls sit on the FM pads they're saved on, so OSC1 FEEDBACK there is Accent and MOD2 FEEDBACK is Drive, unlike the shortcut pads.
 
 ## 10. Delay feedback and tone
 
@@ -522,7 +543,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
-- **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). Drom1 and Drom2 are ported from an open source engine set written for the Elektron Model:Cycles. The Cyc engines are original code, modelled on how the Model:Cycles and Syntakt machines respond, measured knob by knob; no Elektron code or data is used.
+- **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). DXIA and DIIA are ported from an open source engine set written for the Elektron Model:Cycles. The Cyc engines are original code, modelled on how the Model:Cycles and Syntakt machines respond, measured knob by knob; no Elektron code or data is used.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
 ## Not affiliated or endorsed
