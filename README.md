@@ -28,6 +28,8 @@ SHA-256: `8a95bbcccb8dc074d7134ec7c643bc101ab0b09779ab8b2ee8475e30af1c0528`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
+[Back to top](#top)
+
 ## Install
 
 1. Copy `deluge-bribes-v1.15.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
@@ -35,6 +37,8 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
 To go back, install an official firmware file the same way.
+
+[Back to top](#top)
 
 ## Quick reference
 
@@ -79,6 +83,8 @@ To go back, install an official firmware file the same way.
 
 7-segment display names are in brackets below.
 
+[Back to top](#top)
+
 ## 1. Stumble swing
 
 The Deluge's own swing pushes every second 16th later by one amount. Stumble swing replaces it with four styles that move the notes in different shapes, each with seven levels.
@@ -112,6 +118,8 @@ Every style repeats each beat (HOPP every pair of 16ths), and none of them moves
 - **The display stays up while you hold SHIFT,** so you can turn, listen and turn again. It goes when you let go of SHIFT.
 - **SHIFT + click TEMPO** (without turning) still clears tempo automation. It now happens when you let go of the knob, so changing styles never clears it by accident.
 - **Swing Interval** (hold **TAP** and turn **TEMPO**, or the Song menu) still works. At 16ths the styles play as described. At 8ths every pattern stretches to twice the length.
+
+[Back to top](#top)
 
 ## 2. Kit pattern mode
 
@@ -159,6 +167,8 @@ python3 stolperbeats_to_deluge.py PatternBank000.txt --name TECHNO
 
 No patterns are included in this repo.
 
+[Back to top](#top)
+
 ## 3. Autofill
 
 TAP plays a drum fill over your beat, from the next 16th to the end of the bar. There are five fill types.
@@ -193,6 +203,8 @@ Fills play on the bottom three rows of every playing kit: Kick, Snare and Hihat 
 - **Ratchets** split the step evenly at three quarters of the velocity, so they follow the swing too.
 - **Pitch** (Climb and Stutter) shifts just that one note. Your pitch knob, any pitch automation and other sounding notes are untouched. It works on normal sound drums; MIDI and gate drum rows play fills unpitched.
 - **Persistence:** the chosen fill is not remembered after power-off and starts on Build.
+
+[Back to top](#top)
 
 ## 4. Mono sequencer
 
@@ -251,6 +263,8 @@ Set **Mono Scale** (**MSCL**) to **CUSTOM** and each of the 8 rows sends its own
 - **CV:** the octave, or the CUSTOM voltage, goes straight into the pitch voltage.
 - **Limits:** recording live into a mono clip resets recorded notes to their own octave. One note per column is enforced when you place notes by hand, so pasting or nudging can still stack two in a column. On CV, the arpeggiator and pitch-bend changes can override the octave and CUSTOM voltages.
 
+[Back to top](#top)
+
 ## 5. Endless Record
 
 On the stock Deluge, hitting RECORD while a new clip is already playing records in a loop, so you're stuck inside the clip's length. To record for as long as you like, you have to stop, arm RECORD and press PLAY. Endless Record gives you that second way of recording without stopping playback.
@@ -273,6 +287,8 @@ On the stock Deluge, hitting RECORD while a new clip is already playing records 
 - Song view only, not the arranger.
 - With it on, the blink-and-stop-at-the-bar also applies when you record the stock way (stop, arm RECORD, press PLAY).
 - If you stop just after a bar line, the clip has already grown, so you'll get one extra empty bar.
+
+[Back to top](#top)
 
 ## 6. Drum synth
 
@@ -511,6 +527,8 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 - Kits with drum synth rows won't play those rows on firmware without them.
 - The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
 
+[Back to top](#top)
+
 ## 7. Saturation
 
 The Deluge's own saturation squashes hard even at its lowest setting and gets quieter as you turn it up. This build replaces it with a one-knob drive that works like pushing an analog input stage: more drive is always denser and louder.
@@ -540,6 +558,8 @@ Hold **Affect Entire** while turning either setting in a kit row's menu to set e
 - Saturation sits after the filters and the amp envelope, as before, so the sound's volume and velocity change how hard it drives.
 - The curves are antialiased, so high notes alias less than with the original, except Fold, which aliases when pushed hard on bright sounds, as digital folders do.
 
+[Back to top](#top)
+
 ## 8. Sample start offset
 
 Moves where a sample starts playing. It's a normal Deluge parameter, so every step can start from a different point.
@@ -568,6 +588,8 @@ On any synth or kit row whose oscillator plays a sample:
 
 - The offset and its automation save with the song and the preset. Other firmware ignores them and plays from the normal start.
 - Pitched notes with an offset skip the Deluge's sample cache, so they cost a little more CPU than the same note without one.
+
+[Back to top](#top)
 
 ## 9. 303 synth
 
@@ -610,6 +632,8 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
 - In automation view the 303's controls sit on the FM pads they're saved on, so OSC1 FEEDBACK there is Accent and MOD2 FEEDBACK is Drive, unlike the shortcut pads.
 
+[Back to top](#top)
+
 ## 10. Delay feedback and tone
 
 On the stock Deluge, the delay's Amount sets both how loud the echoes are and how much of each echo is fed back, so turning it up always brings more repeats too. Here they're two controls, plus a filter in the delay loop to change its voicing.
@@ -629,6 +653,8 @@ On the stock Deluge, the delay's Amount sets both how loud the echoes are and ho
 - Songs and presets saved before v1.9 that use the delay load with feedback set to their amount, so they sound the same. Automation recorded on the old amount now moves only the echo level.
 - The tone starts flat, so it changes nothing until you turn it. When flat, the filter is switched off entirely.
 - Feedback and tone save with the song and the preset. Other firmware ignores them: it uses the amount for both level and feedback, and no filter.
+
+[Back to top](#top)
 
 ## 11. Affect all
 
@@ -650,6 +676,8 @@ A performance snapshot for LXR, Cycles and GIN kits: push every drum around at o
 - The snapshot is held in memory only. It isn't saved with the song, and loading another song drops it.
 - On any other kit, **SHIFT + AFFECT ENTIRE** shows **CANT**.
 
+[Back to top](#top)
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -669,11 +697,15 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **GIN's** voice is ported from the MIT licensed synthesis core of [GIN by SquareWave Studio](https://github.com/squarewave-studio/op1-mods) and [libpo32 by Eric Lewis](https://github.com/ericlewis/libpo32), with their copyright and licence notices kept in the source. The sixteen GIN kits, the controls and the Deluge integration were made for this build; GIN's own factory kits are not used.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
 
+[Back to top](#top)
+
 ## Not affiliated or endorsed
 
 This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering** or **Sonic Charge**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, and the OP-1 and PO-32 are products of Teenage Engineering. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
 Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio or Teenage Engineering for help with this build.
+
+[Back to top](#top)
 
 ## Source code
 
@@ -695,6 +727,10 @@ git apply /path/to/stumble-swing.patch
 
 The firmware is written to `build/Release/deluge.bin`.
 
+[Back to top](#top)
+
 ## Licence
 
 GNU General Public License v3.0. See [LICENSE](LICENSE).
+
+[Back to top](#top)
