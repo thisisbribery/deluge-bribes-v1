@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.16.1
+# BRIBELUGE: Deluge Bribes FW v1.16.2
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -26,9 +26,9 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.16.1.bin`](firmware/deluge-bribes-v1.16.1.bin)
+[`firmware/deluge-bribes-v1.16.2.bin`](firmware/deluge-bribes-v1.16.2.bin)
 
-SHA-256: `71a964f11f99b0a97d48e97547980159322fadea2b85d4bc9a7ba6eb431c5a80`
+SHA-256: `0f5eadfa22bf625aa5355a3ef869e5667e9fbdd7ef40add817a9bf40fb13de14`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -36,7 +36,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.16.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.16.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -235,7 +235,8 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 - **The grid stays put while you edit:** adding and removing notes never moves the 8 rows, so a note placed on the bottom row stays on the bottom row and plays in that octave (fixed in v1.15.1: a lone note on the root row used to jump the grid down an octave).
 - **Ratchets:** hold a note, then press and turn the up/down knob. This is the Deluge's normal note repeat.
 - **Holding a note** shows and sounds the note it actually plays, octave included.
-- **Always in scale (new in v1.16.1):** a mono clip's 8 rows are scale steps, so the clip always plays in scale mode. Turning Mono Seq on, or making the synth a 303, switches SCALE on (the song's scale is kept, or fitted to your notes), and songs saved with scale off come back in scale. Pressing SCALE on a mono clip shows **MSEQ** and leaves it on. Scales without seven notes and MIDI transpose clips are left as they are.
+- **Always in scale (new in v1.16.1):** a mono clip's 8 rows are scale steps, so the clip always plays in scale mode. Turning Mono Seq on, or making the synth a 303, switches SCALE on (the song's scale is kept, or fitted to your notes), and songs saved with scale off come back in scale. Pressing SCALE on a mono clip shows **MSEQ** and leaves it on. Scales without seven notes and MIDI transpose clips are left as they are. Mono Seq belongs to the clip, so a new synth put on a mono clip stays mono: turn Mono Seq off in the clip menu to free it.
+- **Fixed in v1.16.2:** a new synth clip, or SHIFT + SYNTH's first preset, could come up as an old unsaved 303 left in memory, bringing the mono sequencer and scale lock with it. New synths now skip unsaved 303s, and SHIFT + SYNTH always loads a saved preset.
 - **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
 
 ### Slide
@@ -650,7 +651,7 @@ Visual guides to what each pad and gold knob does. **Pad Guides** (**GUID**) is 
 ### SHIFT glow
 
 - In a clip on a drum synth (a synth, or the kit's selected row), hold **SHIFT**. The MOD1 and MOD2 pads that hold a setting glow soft pink, blended over whatever is on them, so notes still show.
-- Press one and the pads stay lit while you edit that setting. Empty pads in those columns grey out with the rest of the grid.
+- Press one and the pads stay lit while you edit that setting, with SHIFT still held or let go (fixed in v1.16.2: holding SHIFT in the menu hid them). Empty pads in those columns grey out with the rest of the grid.
 - Let go of SHIFT on the clip and the pads go straight back. Select another row with SHIFT held and the glow follows it.
 - No glow with **AFFECT ENTIRE** on in a kit, where SHIFT + pad edits the kit's FX.
 
