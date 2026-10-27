@@ -1358,10 +1358,10 @@ index 000000000..6294f30ff
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 000000000..c8aca12d0
+index 000000000..f0b62aa1f
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1302 @@
+@@ -0,0 +1,1352 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -1857,6 +1857,56 @@ index 000000000..c8aca12d0
 +		return 7;
 +	case Patch::NOISE_RESONANCE:
 +		return 8;
++	default:
++		return -1;
++	}
++}
++
++int32_t sharedControlSlot(Engine engine, StandardSlot slot) {
++	struct Shared {
++		int32_t pitchEnvAmount, pitchEnvSpeed, characterA, characterB;
++	};
++	Shared shared;
++	switch (engine) {
++	case Engine::DRUM:
++		shared = {lxrControlSlot(Patch::PITCH_AMOUNT), lxrControlSlot(Patch::PITCH_DECAY),
++		          lxrControlSlot(Patch::FM_AMOUNT), lxrControlSlot(Patch::MOD_COARSE)};
++		break;
++	case Engine::SNARE:
++		shared = {lxrControlSlot(Patch::PITCH_AMOUNT), lxrControlSlot(Patch::PITCH_DECAY),
++		          lxrControlSlot(Patch::NOISE_MIX), lxrControlSlot(Patch::NOISE_CUTOFF)};
++		break;
++	case Engine::METAL:
++		shared = {-1, -1, lxrControlSlot(Patch::FM_AMOUNT), lxrControlSlot(Patch::FM2_AMOUNT)};
++		break;
++	case Engine::TIA:
++		shared = {-1, -1, DrumControls::TIA_BLENDEX1, DrumControls::TIA_FREQ1};
++		break;
++	case Engine::IIA:
++		shared = {-1, -1, DrumControls::IIA_WEIGHT, DrumControls::IIA_ALLOY};
++		break;
++	case Engine::GIN:
++		shared = {DrumControls::GIN_MOD_AMOUNT, DrumControls::GIN_MOD_RATE, DrumControls::GIN_MIX,
++		          DrumControls::GIN_NOISE_FREQ};
++		break;
++	default: // The Cyc engines: Sweep, Contour, Color, Shape
++		shared = {DrumControls::CYC_MACRO3, DrumControls::CYC_MACRO4, DrumControls::CYC_MACRO1,
++		          DrumControls::CYC_MACRO2};
++		break;
++	}
++	switch (slot) {
++	case StandardSlot::DECAY:
++		return decaySlot(engine);
++	case StandardSlot::DRIVE:
++		return driveSlot(engine);
++	case StandardSlot::PITCH_ENV_AMOUNT:
++		return shared.pitchEnvAmount;
++	case StandardSlot::PITCH_ENV_SPEED:
++		return shared.pitchEnvSpeed;
++	case StandardSlot::CHARACTER_A:
++		return shared.characterA;
++	case StandardSlot::CHARACTER_B:
++		return shared.characterB;
 +	default:
 +		return -1;
 +	}
@@ -2666,10 +2716,10 @@ index 000000000..c8aca12d0
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 000000000..6af1a2391
+index 000000000..c4614ba00
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,435 @@
+@@ -0,0 +1,461 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -2818,6 +2868,22 @@ index 000000000..6af1a2391
 +constexpr int32_t decaySlot(Engine engine) {
 +	return isXia(engine) ? DrumControls::ENGINE_DECAY : DrumControls::COMMON_DECAY;
 +}
++
++/// The standard drum synth layout every engine follows, as far as it can: the shared slots, the same job on every
++/// engine, then each engine's own extras. The shortcut pads, the gold knobs and the shift glow all read it. It only
++/// arranges the controls: where each one is saved (DrumControls) doesn't change.
++enum class StandardSlot : uint8_t {
++	DECAY,
++	DRIVE,
++	PITCH,            ///< The Deluge's own tuning (osc 1 transpose), on every engine
++	PITCH_ENV_AMOUNT, ///< The Cyc engines' Sweep
++	PITCH_ENV_SPEED,  ///< The Cyc engines' Contour
++	CHARACTER_A,      ///< The Cyc engines' Color
++	CHARACTER_B,      ///< The Cyc engines' Shape
++	NUM_SHARED,
++	EXTRA_1 = NUM_SHARED, ///< Extras 1 to 9: each engine's own settings
++	NUM_SLOTS = 16,
++};
 +
 +enum class Wave : uint8_t { SINE, TRIANGLE, SAW, SQUARE, NOISE, NUM_WAVES };
 +
@@ -2996,6 +3062,16 @@ index 000000000..6af1a2391
 +/// The control slot an LXR setting lives on, or -1 for the choices (waves, modes, filter type), which stay in the
 +/// Patch. The slots are shared between the LXR engines: each engine uses its own settings' slots.
 +int32_t lxrControlSlot(Patch::Param param);
++
++/// The control (DrumControls slot) an engine has on a shared standard slot, or -1 where it has none (and always for
++/// PITCH, which is the Deluge's tuning). LXR Metal, DXIA and DIIA have no pitch envelope.
++///
++/// The Cyc engines put Sweep and Contour on the pitch envelope's slots on every machine, though they don't sweep pitch
++/// on all of them. Sweep / Contour per machine: Kik pitch sweep / sweep length (and the knock), Snr pitch sweep /
++/// rattle noise decay, Metal pitch sweep / top end decay, Perc pitch sweep / overtone decay and sweep length, Tone
++/// index burst / index fade, Chord wave shape / wave decay, Vtg Snr pitch sweep / body FM depth, Clap spacing crunch /
++/// tail decay.
++int32_t sharedControlSlot(Engine engine, StandardSlot slot);
 +
 +/// The controls a patch starts from: its LXR settings, or an XIA engine's defaults
 +DrumControls controlsFromPatch(const Patch& patch);
@@ -8612,8 +8688,220 @@ index 000000000..9872e7267
 +
 +extern NewKitType newKitType;
 +} // namespace deluge::gui::context_menu
+diff --git a/src/deluge/gui/context_menu/synth_instrument.cpp b/src/deluge/gui/context_menu/synth_instrument.cpp
+new file mode 100644
+index 000000000..111820f5d
+--- /dev/null
++++ b/src/deluge/gui/context_menu/synth_instrument.cpp
+@@ -0,0 +1,156 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "gui/context_menu/synth_instrument.h"
++#include "definitions_cxx.hpp"
++#include "fatfs/ff.h"
++#include "gui/l10n/l10n.h"
++#include "gui/views/instrument_clip_view.h"
++#include "gui/views/view.h"
++#include "hid/buttons.h"
++#include "hid/display/display.h"
++#include "model/instrument/synth_instruments.h"
++#include "model/model_stack.h"
++#include "model/settings/runtime_feature_settings.h"
++#include "model/song/song.h"
++#include "processing/sound/sound_instrument.h"
++#include <cstring>
++#include <strings.h>
++
++namespace deluge::gui::context_menu {
++
++using synth_instruments::kSynthInstruments;
++
++SynthInstrumentMenu synthInstrumentMenu{};
++
++namespace {
++/// Whether a preset folder has any presets in it. A missing folder is made, ready to save presets into, as the Deluge
++/// can't make folders when saving.
++bool folderHasPresets(char const* folder) {
++	DIR dir;
++	if (f_opendir(&dir, folder) != FR_OK) {
++		f_mkdir("SYNTHS");
++		f_mkdir(folder);
++		return false;
++	}
++	bool found = false;
++	FILINFO fileInfo;
++	while (!found && f_readdir(&dir, &fileInfo) == FR_OK && fileInfo.fname[0]) {
++		const size_t length = strlen(fileInfo.fname);
++		found = !(fileInfo.fattrib & AM_DIR) && fileInfo.fname[0] != '.' && length >= 5
++		        && strcasecmp(fileInfo.fname + length - 4, ".XML") == 0;
++	}
++	f_closedir(&dir);
++	return found;
++}
++} // namespace
++
++char const* SynthInstrumentMenu::getTitle() {
++	return l10n::get(l10n::String::STRING_FOR_SYNTH_INSTRUMENT);
++}
++
++std::span<char const*> SynthInstrumentMenu::getOptions() {
++	static std::array<char const*, kSynthInstruments.size()> options;
++	for (size_t i = 0; i < kSynthInstruments.size(); i++) {
++		options[i] = l10n::get(kSynthInstruments[i].name);
++	}
++	return {options.data(), options.size()};
++}
++
++bool SynthInstrumentMenu::isCurrentOptionAvailable() {
++	return !kSynthInstruments[currentOption].dx
++	       || runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine);
++}
++
++bool SynthInstrumentMenu::setupAndCheckAvailability() {
++	if (getCurrentOutputType() != OutputType::SYNTH) {
++		return false;
++	}
++	auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
++	const bool dx = synth->sources[0].oscType == OscType::DX7;
++	// The instrument whose folder the synth came from, else the first that plays like it
++	int32_t current = -1;
++	for (size_t i = 0; i < kSynthInstruments.size() && current < 0; i++) {
++		if (!strcasecmp(synth->dirPath.get(), kSynthInstruments[i].folder)) {
++			current = static_cast<int32_t>(i);
++		}
++	}
++	for (size_t i = 0; i < kSynthInstruments.size() && current < 0; i++) {
++		if (kSynthInstruments[i].dx == dx && (dx || kSynthInstruments[i].mode == synth->getSynthMode())) {
++			current = static_cast<int32_t>(i);
++		}
++	}
++	currentOption = (current < 0) ? 0 : current;
++	if (!isCurrentOptionAvailable()) {
++		currentOption = 0;
++	}
++	scrollPos = currentOption;
++	return true;
++}
++
++ActionResult SynthInstrumentMenu::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
++	// SHIFT + SYNTH again: the next instrument, round to the first after the last
++	if (b == deluge::hid::button::SYNTH && Buttons::isShiftButtonPressed()) {
++		if (on) {
++			const int32_t numOptions = static_cast<int32_t>(kSynthInstruments.size());
++			int32_t next = currentOption;
++			do {
++				next = (next + 1) % numOptions;
++			} while (next != currentOption
++			         && (kSynthInstruments[next].dx
++			             && !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine)));
++			selectEncoderAction(display->haveOLED() ? next - currentOption : 1);
++		}
++		return ActionResult::DEALT_WITH;
++	}
++	return ContextMenu::buttonAction(b, on, inCardRoutine);
++}
++
++bool SynthInstrumentMenu::acceptCurrentOption() {
++	const synth_instruments::SynthInstrument& instrument = kSynthInstruments[currentOption];
++	display->setNextTransitionDirection(-1);
++	close();
++	if (getCurrentOutputType() != OutputType::SYNTH) {
++		return true;
++	}
++
++	// Its first preset, as SELECT would step to it, so SELECT carries on through that folder
++	if (folderHasPresets(instrument.folder)) {
++		char modelStackMemory[MODEL_STACK_MAX_SIZE];
++		ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(modelStackMemory);
++		Output* before = getCurrentOutput();
++		view.navigateThroughPresetsForInstrumentClip(1, modelStack, true, instrument.folder);
++		// Every preset there already plays on another track, or this one is the only one
++		if (getCurrentOutput() == before) {
++			display->displayPopup(l10n::get(l10n::String::STRING_FOR_NO_FREE_PRESETS));
++		}
++		return true;
++	}
++
++	// Nothing saved there yet: a blank synth of that kind, which saves into the folder
++	if (instrumentClipView.createNewInstrument(OutputType::SYNTH, instrument.dx)
++	    && getCurrentOutputType() == OutputType::SYNTH) {
++		auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
++		synth->dirPath.set(instrument.folder);
++		if (instrument.mode != synth->getSynthMode()) {
++			synth->setSynthMode(instrument.mode, currentSong);
++		}
++	}
++	return true;
++}
++
++} // namespace deluge::gui::context_menu
+diff --git a/src/deluge/gui/context_menu/synth_instrument.h b/src/deluge/gui/context_menu/synth_instrument.h
+new file mode 100644
+index 000000000..cd1babb23
+--- /dev/null
++++ b/src/deluge/gui/context_menu/synth_instrument.h
+@@ -0,0 +1,44 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "gui/context_menu/context_menu.h"
++
++namespace deluge::gui::context_menu {
++
++/// Shown by SHIFT + SYNTH on a synth track: the synth instruments (see model/instrument/synth_instruments.h), opening
++/// on the one the track plays. SHIFT + SYNTH again or turning SELECT moves on. SELECT or SYNTH loads the instrument's
++/// first preset (a blank one if its folder is empty), BACK cancels. DX7 is only offered with the DX7 engine on.
++class SynthInstrumentMenu final : public ContextMenu {
++public:
++	SynthInstrumentMenu() = default;
++
++	/// Put the cursor on the instrument the current synth plays
++	bool setupAndCheckAvailability() override;
++
++	char const* getTitle() override;
++	std::span<char const*> getOptions() override;
++	bool isCurrentOptionAvailable() override;
++	bool canSeeViewUnderneath() override { return true; }
++	bool acceptCurrentOption() override;
++	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
++	deluge::hid::Button getAcceptButton() override { return deluge::hid::button::SYNTH; }
++};
++
++extern SynthInstrumentMenu synthInstrumentMenu;
++} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d81..555b554fb 100644
+index 38cab4d81..c5497a009 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -8636,16 +8924,17 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_SIDECHAIN_LEVEL": "Sidechain level",
      "STRING_FOR_SIDECHAIN_SHAPE": "Sidechain shape",
      "STRING_FOR_DISTORTION": "Distortion",
-@@ -533,6 +539,8 @@
+@@ -533,6 +539,9 @@
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "Alternative Playback Start Behaviour",
      "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "Grid View Loop Layer Pads",
      "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "Alternative Tap Tempo Behaviour",
 +    "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "Tap Tempo Action",
 +    "STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD": "Endless Record",
++    "STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES": "Pad Guides",
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -543,6 +551,122 @@
+@@ -543,6 +552,127 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -8740,6 +9029,11 @@ index 38cab4d81..555b554fb 100644
 +    "STRING_FOR_GIN_SOUND_LOADED": "Sound loaded",
 +    "STRING_FOR_CYC_AMP_DECAY": "Amp decay",
 +    "STRING_FOR_NEW_KIT_TYPE": "New kit",
++    "STRING_FOR_SYNTH_INSTRUMENT": "Instrument",
++    "STRING_FOR_SYNTH_INSTRUMENT_DELUGE": "Deluge",
++    "STRING_FOR_SYNTH_INSTRUMENT_DLFM": "DLFM",
++    "STRING_FOR_SYNTH_INSTRUMENT_DX7": "DX7",
++    "STRING_FOR_NO_FREE_PRESETS": "No free presets",
 +    "STRING_FOR_SAMPLE_KIT": "Kit",
 +    "STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED": "New LXR kit created",
 +    "STRING_FOR_NOISE": "Noise",
@@ -8768,7 +9062,7 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -568,6 +692,8 @@
+@@ -568,6 +698,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -8777,7 +9071,7 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -624,6 +750,13 @@
+@@ -624,6 +756,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -8791,7 +9085,7 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -705,6 +838,11 @@
+@@ -705,6 +844,11 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -8803,7 +9097,7 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -847,6 +985,34 @@
+@@ -847,6 +991,34 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -8839,7 +9133,7 @@ index 38cab4d81..555b554fb 100644
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf7..c229052f7 100644
+index 1f87aacf7..0ce831343 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -8862,16 +9156,17 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_SIDECHAIN_LEVEL, "Sidechain level"},
          {STRING_FOR_SIDECHAIN_SHAPE, "Sidechain shape"},
          {STRING_FOR_DISTORTION, "Distortion"},
-@@ -546,6 +552,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -546,6 +552,9 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "Alternative Playback Start Behaviour"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "Grid View Loop Layer Pads"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "Alternative Tap Tempo Behaviour"},
 +        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "Tap Tempo Action"},
 +        {STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD, "Endless Record"},
++        {STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES, "Pad Guides"},
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -556,6 +564,122 @@ PLACE_SDRAM_DATA Language english{
+@@ -556,6 +565,127 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -8966,6 +9261,11 @@ index 1f87aacf7..c229052f7 100644
 +        {STRING_FOR_GIN_SOUND_LOADED, "Sound loaded"},
 +        {STRING_FOR_CYC_AMP_DECAY, "Amp decay"},
 +        {STRING_FOR_NEW_KIT_TYPE, "New kit"},
++        {STRING_FOR_SYNTH_INSTRUMENT, "Instrument"},
++        {STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "Deluge"},
++        {STRING_FOR_SYNTH_INSTRUMENT_DLFM, "DLFM"},
++        {STRING_FOR_SYNTH_INSTRUMENT_DX7, "DX7"},
++        {STRING_FOR_NO_FREE_PRESETS, "No free presets"},
 +        {STRING_FOR_SAMPLE_KIT, "Kit"},
 +        {STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED, "New LXR kit created"},
 +        {STRING_FOR_NOISE, "Noise"},
@@ -8994,7 +9294,7 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -581,6 +705,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -581,6 +711,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -9003,7 +9303,7 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -637,6 +763,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -637,6 +769,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -9017,7 +9317,7 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -718,6 +851,11 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +857,11 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -9029,7 +9329,7 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -860,6 +998,34 @@ PLACE_SDRAM_DATA Language english{
+@@ -860,6 +1004,34 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -9065,7 +9365,7 @@ index 1f87aacf7..c229052f7 100644
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d56..89becc144 100644
+index 1af382d56..43a59d6a1 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,41 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -9110,16 +9410,17 @@ index 1af382d56..89becc144 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +477,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +477,9 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
 +        {STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION, "TAPA"},
 +        {STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD, "ENDL"},
++        {STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES, "GUID"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -450,6 +487,122 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -450,6 +488,125 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -9214,6 +9515,9 @@ index 1af382d56..89becc144 100644
 +        {STRING_FOR_GIN_SOUND_LOADED, "DONE"},
 +        {STRING_FOR_CYC_AMP_DECAY, "DEC"},
 +        {STRING_FOR_NEW_KIT_TYPE, "NEW"},
++        {STRING_FOR_SYNTH_INSTRUMENT, "INST"},
++        {STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "DELU"},
++        {STRING_FOR_NO_FREE_PRESETS, "NONE"},
 +        {STRING_FOR_SAMPLE_KIT, "KIT"},
 +        {STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED, "LXR"},
 +        {STRING_FOR_NOISE, "NOIS"},
@@ -9242,7 +9546,7 @@ index 1af382d56..89becc144 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -459,6 +612,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -459,6 +616,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -9257,7 +9561,7 @@ index 1af382d56..89becc144 100644
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b4..40ea0366c 100644
+index 8328945b4..42de45c4d 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,41 @@
@@ -9302,16 +9606,17 @@ index 8328945b4..40ea0366c 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +492,8 @@
+@@ -457,6 +492,9 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
 +        "STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION": "TAPA",
 +        "STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD": "ENDL",
++        "STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES": "GUID",
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -466,6 +503,122 @@
+@@ -466,6 +504,125 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -9406,6 +9711,9 @@ index 8328945b4..40ea0366c 100644
 +        "STRING_FOR_GIN_SOUND_LOADED": "DONE",
 +        "STRING_FOR_CYC_AMP_DECAY": "DEC",
 +        "STRING_FOR_NEW_KIT_TYPE": "NEW",
++        "STRING_FOR_SYNTH_INSTRUMENT": "INST",
++        "STRING_FOR_SYNTH_INSTRUMENT_DELUGE": "DELU",
++        "STRING_FOR_NO_FREE_PRESETS": "NONE",
 +        "STRING_FOR_SAMPLE_KIT": "KIT",
 +        "STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED": "LXR",
 +        "STRING_FOR_NOISE": "NOIS",
@@ -9434,7 +9742,7 @@ index 8328945b4..40ea0366c 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -479,6 +632,20 @@
+@@ -479,6 +636,20 @@
  
          "STRING_FOR_WAVEFOLD": "FOLD",
  
@@ -9456,7 +9764,7 @@ index 8328945b4..40ea0366c 100644
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92c..505d98bff 100644
+index 49b15e92c..7fc751077 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -9468,16 +9776,17 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_PARAM_LOCAL_MODULATOR_0_VOLUME,
  	STRING_FOR_PARAM_LOCAL_MODULATOR_1_VOLUME,
  	STRING_FOR_PARAM_LOCAL_LPF_FREQ,
-@@ -576,6 +578,8 @@ enum class String : size_t {
+@@ -576,6 +578,9 @@ enum class String : size_t {
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR,
  	STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS,
  	STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR,
 +	STRING_FOR_COMMUNITY_FEATURE_TAP_TEMPO_ACTION,
 +	STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD,
++	STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES,
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -586,6 +590,122 @@ enum class String : size_t {
+@@ -586,6 +591,127 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -9572,6 +9881,11 @@ index 49b15e92c..505d98bff 100644
 +	STRING_FOR_GIN_SOUND_LOADED,
 +	STRING_FOR_CYC_AMP_DECAY,
 +	STRING_FOR_NEW_KIT_TYPE,
++	STRING_FOR_SYNTH_INSTRUMENT,
++	STRING_FOR_SYNTH_INSTRUMENT_DELUGE,
++	STRING_FOR_SYNTH_INSTRUMENT_DLFM,
++	STRING_FOR_SYNTH_INSTRUMENT_DX7,
++	STRING_FOR_NO_FREE_PRESETS,
 +	STRING_FOR_SAMPLE_KIT,
 +	STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED,
 +	STRING_FOR_NOISE,
@@ -9600,7 +9914,7 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -615,6 +735,8 @@ enum class String : size_t {
+@@ -615,6 +741,8 @@ enum class String : size_t {
  	STRING_FOR_START_POINT,
  	STRING_FOR_START_POINT_SHORT,
  	STRING_FOR_END_POINT,
@@ -9609,7 +9923,7 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -683,6 +805,13 @@ enum class String : size_t {
+@@ -683,6 +811,13 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -9623,7 +9937,7 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -715,6 +844,10 @@ enum class String : size_t {
+@@ -715,6 +850,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -9634,7 +9948,7 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -772,6 +905,11 @@ enum class String : size_t {
+@@ -772,6 +911,11 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -9646,7 +9960,7 @@ index 49b15e92c..505d98bff 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -923,6 +1061,34 @@ enum class String : size_t {
+@@ -923,6 +1067,34 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -11423,24 +11737,26 @@ index cadefabaf..32f08f524 100644
  
  	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-index ab3a3d377..231c3feca 100644
+index ab3a3d377..3504e7166 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 +++ b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-@@ -56,6 +56,8 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
+@@ -56,6 +56,9 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
  SettingToggle menuDeleteUnusedKitRows(RuntimeFeatureSettingType::DeleteUnusedKitRows);
  SettingToggle menuAltGoldenKnobDelayParams(RuntimeFeatureSettingType::AltGoldenKnobDelayParams);
  Setting menuSyncScalingAction(RuntimeFeatureSettingType::SyncScalingAction);
 +Setting menuTapTempoAction(RuntimeFeatureSettingType::TapTempoAction);
 +Setting menuEndlessRecord(RuntimeFeatureSettingType::EndlessRecord);
++SettingToggle menuPadGuides(RuntimeFeatureSettingType::PadGuides);
  DevSysexSetting menuDevSysexAllowed(RuntimeFeatureSettingType::DevSysexAllowed);
  SettingToggle menuHighlightIncomingNotes(RuntimeFeatureSettingType::HighlightIncomingNotes);
  SettingToggle menuDisplayNornsLayout(RuntimeFeatureSettingType::DisplayNornsLayout);
-@@ -96,6 +98,8 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
+@@ -96,6 +99,9 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
      &menuAlternativePlaybackStartBehaviour,
      &menuEnableGridViewLoopPads,
      &menuAlternativeTapTempoBehaviour,
 +    &menuTapTempoAction,
 +    &menuEndlessRecord,
++    &menuPadGuides,
      &menuHorizontalMenus,
      &menuRoundedCorners,
      &menuTrimFromStartOfAudioClip,
@@ -11953,8 +12269,77 @@ index 4448a56cf..142b28876 100644
  	// 7SEG ONLY
  	virtual void drawValue() = 0;
  
+diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
+index a2997fff5..bb52c63b8 100644
+--- a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
++++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
+@@ -1462,11 +1462,17 @@ needToGrabLeftmostButHaveToReadFirst:
+ /// Caller must call emptyFileItems() at some point after calling this function - unless an error is returned
+ /// Caller must remove OLED working animation after calling this too.
+ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset, Instrument* oldInstrument,
+-                                                                  Availability availabilityRequirement, bool doBlink) {
++                                                                  Availability availabilityRequirement, bool doBlink,
++                                                                  char const* fromFolderStart) {
+ 
+ 	AudioEngine::logAction("doPresetNavigation");
+ 
+-	currentDir.set(&oldInstrument->dirPath);
++	if (fromFolderStart != nullptr) {
++		currentDir.set(fromFolderStart);
++	}
++	else {
++		currentDir.set(&oldInstrument->dirPath);
++	}
+ 	OutputType outputType = oldInstrument->type;
+ 
+ 	PresetNavigationResult toReturn;
+@@ -1474,10 +1480,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
+ 	String oldNameString; // We only might use this later for temporary storage
+ 	String newName;
+ 
+-	oldNameString.set(&oldInstrument->name);
+-	toReturn.error = oldNameString.concatenate(".XML");
+-	if (toReturn.error != Error::NONE) {
+-		return toReturn;
++	// From a folder's start: no name to search from, so the first preset comes up
++	if (fromFolderStart == nullptr) {
++		oldNameString.set(&oldInstrument->name);
++		toReturn.error = oldNameString.concatenate(".XML");
++		if (toReturn.error != Error::NONE) {
++			return toReturn;
++		}
+ 	}
+ 
+ readAgain:
+@@ -1603,6 +1612,10 @@ doneMoving:
+ 	if (availabilityRequirement == Availability::INSTRUMENT_UNUSED && isAlreadyInSong && wrapped < 2) {
+ 		goto moveAgain;
+ 	}
++	// From a folder's start, the instrument already playing is skipped: it can't be swapped for itself
++	if (fromFolderStart != nullptr && toReturn.fileItem->instrument == oldInstrument && wrapped < 2) {
++		goto moveAgain;
++	}
+ 
+ 	toReturn.loadedFromFile = false;
+ 	bool isHibernating = toReturn.fileItem->instrument && !toReturn.fileItem->instrumentAlreadyInSong;
+diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.h b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
+index f4e341a9b..47b7c1a86 100644
+--- a/src/deluge/gui/ui/load/load_instrument_preset_ui.h
++++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
+@@ -53,8 +53,10 @@ public:
+ 	                                                Availability availabilityRequirement);
+ 	std::expected<FileItem*, Error> confirmPresetOrNextUnlaunchedOne(OutputType outputType, String* searchName,
+ 	                                                                 Availability availabilityRequirement);
++	/// With fromFolderStart, from the start of that folder instead of the old instrument's place in its own
+ 	PresetNavigationResult doPresetNavigation(int32_t offset, Instrument* oldInstrument,
+-	                                          Availability availabilityRequirement, bool doBlink);
++	                                          Availability availabilityRequirement, bool doBlink,
++	                                          char const* fromFolderStart = nullptr);
+ 	void setupLoadInstrument(OutputType newOutputType, Instrument* instrumentToReplace_,
+ 	                         InstrumentClip* instrumentClipToLoadFor_) {
+ 		Browser::outputTypeToLoad = newOutputType;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..be3327976 100644
+index 7bbd559f6..256bca9c7 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -12111,7 +12496,7 @@ index 7bbd559f6..be3327976 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,6 +1520,440 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1520,432 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -12334,208 +12719,132 @@ index 7bbd559f6..be3327976 100644
 +    {&source0TransposeMenu, DrumKind::NUMBER, DrumGroup::SOUND, -2400, 2400, 100, 100},
 +}};
 +
-+// Drum synth shortcut pads. One layout for every drum engine, read the way the grid is printed. Only the four
-+// oscillator and FM columns change meaning; the envelope, filter, FX and master pads stay the Deluge's own.
-+//
-+// Columns: OSC1 = the main voice. OSC2 = the second layer (noise, rattle, snares, overtone, clap tail, or the first
-+// operator). MOD1 = the modulator (FM depth and ratio). MOD2 = the pitch sweep, or a second modulator / third operator
-+// on the engines without one.
-+// Rows: LEVEL = amount. TRANSPOSE = tuning or ratio. TYPE = a choice. PULSE WIDTH = shape, the wave or fine tune.
-+// RETRIGGER = the attack (transients, drive). FEEDBACK = drive, resonance, feedback or curve. WAVE INDEX = decay. OSC1
-+// NOISE = noise.
-+// Every engine has its decay on OSC1 WAVE INDEX. OSC1 FEEDBACK is the drive switch (Punch) on the engines with one,
-+// with the drive amount on OSC1 RETRIGGER, or the drive amount on the LXR voices, which have no switch. Drive and decay
-+// are also the attack / release gold knobs. The mod FX rate and depth pads are the sweep's speed and depth (Sweep and
-+// Contour on the Cyc engines), as are the mod rate / depth gold knobs. OSC1 TYPE opens SYNTH MODE, where the engine is
-+// chosen. Pads an engine doesn't use keep their usual job.
++// Drum synth shortcut pads. On a drum synth sound, the MOD1 and MOD2 columns hold the standard layout, the same on
++// every engine: from the bottom of MOD1 up, decay, drive, pitch, pitch envelope amount and speed, character A and B and
++// extra 1, then from the bottom of MOD2 up, extras 2 to 9. Their attack / release, mod rate / depth and Custom 2 / 3
++// gold knobs sit in one column, a pair to a knob. OSC1 TYPE opens SYNTH MODE, where the engine is chosen. Every other
++// pad keeps its usual job, except those whose param is one of the drum controls (osc 1's pulse width, the carriers'
++// feedback, the wave indexes), which do nothing: they would edit the control raw.
 +extern SynthModeSelection synthModeMenu;
++extern MenuItem* paramShortcutsForSounds[][kDisplayHeight];
 +namespace {
 +using DrumEngine = deluge::dsp::drum_synth::Engine;
-+struct DrumPad {
-+	DrumEngine engine;
-+	uint8_t x;
-+	uint8_t y;
-+	MenuItem* item;
++constexpr int32_t kPadOsc1 = 2;
++constexpr int32_t kPadMod1 = 4;
++constexpr int32_t kPadMod2 = 5;
++constexpr int32_t kRowType = 2;
++
++// The standard drum synth layout (see dsp::drum_synth::StandardSlot): the shared slots, the same job on every engine,
++// then each engine's own extras. nullptr = an engine without that setting. The shared slots' items must be the
++// controls dsp::drum_synth::sharedControlSlot() names, as the gold knobs read that. Settings an engine has beyond its
++// nine extras are only in its menu: LXR Metal's mod 2 fine, GIN's EQ and level.
++using StandardSlot = deluge::dsp::drum_synth::StandardSlot;
++constexpr int32_t kNumStandardSlots = static_cast<int32_t>(StandardSlot::NUM_SLOTS);
++struct DrumLayout {
++	DrumEngine first; ///< The engines it's for, first to last
++	DrumEngine last;
++	std::array<MenuItem*, kNumStandardSlots> items; ///< Decay, drive, pitch, pitch envelope amount and speed,
++	                                                ///< character A and B, then extras 1 to 9
 +};
-+constexpr uint8_t kPadOsc1 = 2;
-+constexpr uint8_t kPadOsc2 = 3;
-+constexpr uint8_t kPadMod1 = 4;
-+constexpr uint8_t kPadMod2 = 5;
-+constexpr uint8_t kPadModFx = 12;
-+enum PadRow : uint8_t { LEVEL, TRANSPOSE, TYPE, PULSE_WIDTH, RETRIGGER, FEEDBACK, WAVE_INDEX, NOISE };
-+
-+// Pads shared by all three LXR voices: the main wave, the transient, drive and decay
-+#define LXR_COMMON_PADS(e)                                                                                             \
-+	{e, kPadOsc1, FEEDBACK, &lxrDriveMenu}, {e, kPadOsc1, WAVE_INDEX, &lxrDecayMenu},                                  \
-+	    {e, kPadOsc1, PULSE_WIDTH, &drumOscWaveMenu}, {e, kPadOsc1, RETRIGGER, &drumTransientMenu},                    \
-+	    {e, kPadOsc2, RETRIGGER, &drumTransientVolumeMenu}, {                                                          \
-+		e, kPadMod1, RETRIGGER, &drumTransientPitchMenu                                                                \
-+	}
-+#define LXR_PITCH_PADS(e)                                                                                              \
-+	{e, kPadMod2, LEVEL, &drumPitchAmountMenu}, {e, kPadMod2, WAVE_INDEX, &drumPitchDecayMenu}, {                      \
-+		e, kPadMod2, FEEDBACK, &drumPitchSlopeMenu                                                                     \
-+	}
-+#define LXR_MOD_PADS(e)                                                                                                \
-+	{e, kPadMod1, LEVEL, &drumFmAmountMenu}, {e, kPadMod1, TRANSPOSE, &drumModCoarseMenu},                             \
-+	    {e, kPadMod1, TYPE, &drumModWaveMenu}, {                                                                       \
-+		e, kPadMod1, PULSE_WIDTH, &drumModFineMenu                                                                     \
-+	}
-+// The mod FX rate / depth pads: the sweep's speed and depth, as on the mod rate / depth gold knobs
-+#define SWEEP_PADS(e, rate, depth)                                                                                     \
-+	{e, kPadModFx, NOISE, rate}, {                                                                                     \
-+		e, kPadModFx, WAVE_INDEX, depth                                                                                \
-+	}
-+// DXIA / DIIA share punch (their drive switch), drive and their own decay
-+#define XIA_PADS(e)                                                                                                    \
-+	{e, kPadOsc1, FEEDBACK, &xiaPunchMenu}, {e, kPadOsc1, RETRIGGER, &xiaDriveMenu}, {                                 \
-+		e, kPadOsc1, WAVE_INDEX, &xiaDecayMenu                                                                         \
-+	}
-+// So do the Cyc engines, which have Sweep and Contour on the mod FX rate and depth pads
-+#define CYC_PADS(e)                                                                                                    \
-+	{e, kPadOsc1, FEEDBACK, &xiaPunchMenu}, {e, kPadOsc1, RETRIGGER, &cycDriveMenu},                                   \
-+	    {e, kPadOsc1, WAVE_INDEX, &cycDecayMenu}, SWEEP_PADS(e, &cycMacro3Menu, &cycMacro4Menu)
-+
-+PLACE_SDRAM_DATA DrumPad drumPads[] = {
-+    // LXR kick / tom
-+    LXR_COMMON_PADS(DrumEngine::DRUM),
-+    LXR_MOD_PADS(DrumEngine::DRUM),
-+    LXR_PITCH_PADS(DrumEngine::DRUM),
-+    SWEEP_PADS(DrumEngine::DRUM, &drumPitchDecayMenu, &drumPitchAmountMenu),
-+    {DrumEngine::DRUM, kPadOsc2, TYPE, &drumMixModeMenu}, // the mod osc modulating (FM) or heard as a layer (mix)
-+    // LXR snare: the noise is its second layer
-+    LXR_COMMON_PADS(DrumEngine::SNARE),
-+    LXR_PITCH_PADS(DrumEngine::SNARE),
-+    SWEEP_PADS(DrumEngine::SNARE, &drumPitchDecayMenu, &drumPitchAmountMenu),
-+    {DrumEngine::SNARE, kPadOsc2, LEVEL, &drumNoiseMixMenu},
-+    {DrumEngine::SNARE, kPadOsc2, TRANSPOSE, &drumNoisePitchMenu},
-+    {DrumEngine::SNARE, kPadOsc2, TYPE, &drumNoiseFilterMenu},
-+    {DrumEngine::SNARE, kPadOsc2, PULSE_WIDTH, &drumNoiseCutoffMenu},
-+    {DrumEngine::SNARE, kPadOsc2, FEEDBACK, &drumNoiseResonanceMenu},
-+    // LXR cymbal / hat: two modulators
-+    LXR_COMMON_PADS(DrumEngine::METAL),
-+    LXR_MOD_PADS(DrumEngine::METAL),
-+    SWEEP_PADS(DrumEngine::METAL, &drumTransientPitchMenu, &drumTransientVolumeMenu), // no sweep: the transient
-+    {DrumEngine::METAL, kPadMod2, LEVEL, &drumFm2AmountMenu},
-+    {DrumEngine::METAL, kPadMod2, TRANSPOSE, &drumMod2CoarseMenu},
-+    {DrumEngine::METAL, kPadMod2, TYPE, &drumMod2WaveMenu},
-+    {DrumEngine::METAL, kPadMod2, PULSE_WIDTH, &drumMod2FineMenu},
-+    // DXIA: three operators on OSC2, MOD1 and MOD2, LEVEL how far each modulates (Blendex), TRANSPOSE its tuning
-+    XIA_PADS(DrumEngine::TIA),
-+    SWEEP_PADS(DrumEngine::TIA, &tiaBlendex2Menu, &tiaBlendex3Menu), // no sweep: operators 2 and 3's depths
-+    {DrumEngine::TIA, kPadOsc2, LEVEL, &tiaBlendex1Menu},
-+    {DrumEngine::TIA, kPadOsc2, TRANSPOSE, &tiaFreq1Menu},
-+    {DrumEngine::TIA, kPadMod1, LEVEL, &tiaBlendex2Menu},
-+    {DrumEngine::TIA, kPadMod1, TRANSPOSE, &tiaFreq2Menu},
-+    {DrumEngine::TIA, kPadMod2, LEVEL, &tiaBlendex3Menu},
-+    {DrumEngine::TIA, kPadMod2, TRANSPOSE, &tiaFreq3Menu},
-+    // DIIA: partials as a modulator (Alloy their level, Weight their ratios), wave shape, noise strike
-+    XIA_PADS(DrumEngine::IIA),
-+    SWEEP_PADS(DrumEngine::IIA, &iiaShapeMenu, &iiaStrikeMenu),
-+    {DrumEngine::IIA, kPadOsc1, PULSE_WIDTH, &iiaShapeMenu},
-+    {DrumEngine::IIA, kPadOsc1, NOISE, &iiaStrikeMenu},
-+    {DrumEngine::IIA, kPadMod1, LEVEL, &iiaAlloyMenu},
-+    {DrumEngine::IIA, kPadMod1, TRANSPOSE, &iiaWeightMenu},
-+    // Cyc engines. Knob 1-4 are Color, Shape, Sweep, Contour (or the engine's own names).
-+    CYC_PADS(DrumEngine::CYC_KIK),
-+    {DrumEngine::CYC_KIK, kPadMod1, FEEDBACK, &cycMacro1Menu},    // Color: drive
-+    {DrumEngine::CYC_KIK, kPadOsc1, PULSE_WIDTH, &cycMacro2Menu}, // Shape: wave shape
-+    {DrumEngine::CYC_KIK, kPadMod2, LEVEL, &cycMacro3Menu},       // Sweep: pitch sweep
-+    {DrumEngine::CYC_KIK, kPadOsc2, RETRIGGER, &cycMacro4Menu},   // Contour: the knock
-+    CYC_PADS(DrumEngine::CYC_SNR),
-+    {DrumEngine::CYC_SNR, kPadOsc2, TRANSPOSE, &cycMacro1Menu},   // Color: rattle tuning
-+    {DrumEngine::CYC_SNR, kPadOsc2, PULSE_WIDTH, &cycMacro2Menu}, // Shape: rattle, tonal to noise
-+    {DrumEngine::CYC_SNR, kPadOsc1, PULSE_WIDTH, &cycMacro2Menu},
-+    {DrumEngine::CYC_SNR, kPadMod2, LEVEL, &cycMacro3Menu},      // Sweep: pitch sweep
-+    {DrumEngine::CYC_SNR, kPadOsc2, WAVE_INDEX, &cycMacro4Menu}, // Contour: rattle noise decay
-+    CYC_PADS(DrumEngine::CYC_METAL),
-+    {DrumEngine::CYC_METAL, kPadMod1, TRANSPOSE, &cycMacro1Menu},  // Color: ratio spread
-+    {DrumEngine::CYC_METAL, kPadMod1, LEVEL, &cycMacro2Menu},      // Shape: modulation depth
-+    {DrumEngine::CYC_METAL, kPadMod2, LEVEL, &cycMacro3Menu},      // Sweep: pitch sweep
-+    {DrumEngine::CYC_METAL, kPadMod1, WAVE_INDEX, &cycMacro4Menu}, // Contour: top end decay
-+    CYC_PADS(DrumEngine::CYC_PERC),
-+    {DrumEngine::CYC_PERC, kPadOsc2, LEVEL, &cycMacro1Menu},      // Color: overtone
-+    {DrumEngine::CYC_PERC, kPadMod1, LEVEL, &cycMacro2Menu},      // Shape: modulation
-+    {DrumEngine::CYC_PERC, kPadMod2, LEVEL, &cycMacro3Menu},      // Sweep: pitch sweep
-+    {DrumEngine::CYC_PERC, kPadOsc2, WAVE_INDEX, &cycMacro4Menu}, // Contour: overtone decay
-+    CYC_PADS(DrumEngine::CYC_TONE),
-+    {DrumEngine::CYC_TONE, kPadMod1, TRANSPOSE, &cycMacro1Menu},  // Color: FM ratio
-+    {DrumEngine::CYC_TONE, kPadMod1, LEVEL, &cycMacro2Menu},      // Shape: FM index
-+    {DrumEngine::CYC_TONE, kPadMod1, RETRIGGER, &cycMacro3Menu},  // Sweep: index burst at the attack
-+    {DrumEngine::CYC_TONE, kPadMod1, WAVE_INDEX, &cycMacro4Menu}, // Contour: index decay
-+    CYC_PADS(DrumEngine::CYC_CHORD),
-+    {DrumEngine::CYC_CHORD, kPadOsc2, TRANSPOSE, &cycMacro1Menu},   // Color: voicing
-+    {DrumEngine::CYC_CHORD, kPadOsc2, TYPE, &cycMacro2Menu},        // Shape: the chord
-+    {DrumEngine::CYC_CHORD, kPadOsc1, PULSE_WIDTH, &cycMacro3Menu}, // Sweep: wave shape
-+    {DrumEngine::CYC_CHORD, kPadMod1, WAVE_INDEX, &cycMacro4Menu},  // Contour: wave decay
-+    CYC_PADS(DrumEngine::VTG_SNR),
-+    {DrumEngine::VTG_SNR, kPadMod1, TRANSPOSE, &cycMacro1Menu}, // Inharm: body ratio
-+    {DrumEngine::VTG_SNR, kPadOsc2, LEVEL, &cycMacro2Menu},     // Freq complex: snares
-+    {DrumEngine::VTG_SNR, kPadMod2, LEVEL, &cycMacro3Menu},     // Pitch sweep
-+    {DrumEngine::VTG_SNR, kPadMod1, LEVEL, &cycMacro4Menu},     // Mod envelope: body FM depth
-+    CYC_PADS(DrumEngine::CLAP_ENG),
-+    {DrumEngine::CLAP_ENG, kPadOsc2, FEEDBACK, &cycMacro1Menu},   // Body char: colour
-+    {DrumEngine::CLAP_ENG, kPadOsc2, LEVEL, &cycMacro2Menu},      // Balance: tail against claps
-+    {DrumEngine::CLAP_ENG, kPadOsc2, TRANSPOSE, &cycMacro3Menu},  // Spacing crunch: gap between claps
-+    {DrumEngine::CLAP_ENG, kPadOsc2, WAVE_INDEX, &cycMacro4Menu}, // Body envelope: tail decay
-+
-+    // GIN: OSC1 the tone, OSC2 the noise layer, MOD1 the EQ and the tone's own decay, MOD2 the pitch modulation. No
-+    // drive switch, so OSC1 FEEDBACK is the drive amount, as on the LXR voices. OSC1 WAVE INDEX moves both decays.
-+    {DrumEngine::GIN, kPadOsc1, FEEDBACK, &ginDriveMenu},
-+    {DrumEngine::GIN, kPadOsc1, WAVE_INDEX, &ginDecayMenu},
-+    {DrumEngine::GIN, kPadOsc1, PULSE_WIDTH, &ginWaveMenu},
-+    {DrumEngine::GIN, kPadOsc1, RETRIGGER, &ginToneAttackMenu},
-+    {DrumEngine::GIN, kPadOsc1, LEVEL, &ginLevelMenu},
-+    {DrumEngine::GIN, kPadOsc1, NOISE, &ginMixMenu},
-+    {DrumEngine::GIN, kPadOsc2, LEVEL, &ginMixMenu},
-+    {DrumEngine::GIN, kPadOsc2, TRANSPOSE, &ginNoiseFreqMenu},
-+    {DrumEngine::GIN, kPadOsc2, TYPE, &drumNoiseFilterMenu},
-+    {DrumEngine::GIN, kPadOsc2, PULSE_WIDTH, &ginNoiseEnvMenu},
-+    {DrumEngine::GIN, kPadOsc2, RETRIGGER, &ginNoiseAttackMenu},
-+    {DrumEngine::GIN, kPadOsc2, FEEDBACK, &ginNoiseResMenu},
-+    {DrumEngine::GIN, kPadOsc2, WAVE_INDEX, &ginNoiseDecayMenu},
-+    {DrumEngine::GIN, kPadMod1, LEVEL, &ginEqGainMenu},
-+    {DrumEngine::GIN, kPadMod1, TRANSPOSE, &ginEqFreqMenu},
-+    {DrumEngine::GIN, kPadMod1, WAVE_INDEX, &ginToneDecayMenu},
-+    {DrumEngine::GIN, kPadMod2, LEVEL, &ginModAmountMenu},
-+    {DrumEngine::GIN, kPadMod2, TYPE, &ginModModeMenu},
-+    {DrumEngine::GIN, kPadMod2, WAVE_INDEX, &ginModRateMenu},
-+    SWEEP_PADS(DrumEngine::GIN, &ginModRateMenu, &ginModAmountMenu),
++PLACE_SDRAM_DATA DrumLayout drumLayouts[] = {
++    {DrumEngine::DRUM,
++     DrumEngine::DRUM,
++     {&lxrDecayMenu, &lxrDriveMenu, &source0TransposeMenu, &drumPitchAmountMenu, &drumPitchDecayMenu, &drumFmAmountMenu,
++      &drumModCoarseMenu, &drumPitchSlopeMenu, &drumOscWaveMenu, &drumMixModeMenu, &drumModWaveMenu, &drumModFineMenu,
++      &drumTransientMenu, &drumTransientVolumeMenu, &drumTransientPitchMenu, nullptr}},
++    {DrumEngine::SNARE,
++     DrumEngine::SNARE,
++     {&lxrDecayMenu, &lxrDriveMenu, &source0TransposeMenu, &drumPitchAmountMenu, &drumPitchDecayMenu, &drumNoiseMixMenu,
++      &drumNoiseCutoffMenu, &drumPitchSlopeMenu, &drumOscWaveMenu, &drumNoisePitchMenu, &drumNoiseFilterMenu,
++      &drumNoiseResonanceMenu, &drumTransientMenu, &drumTransientVolumeMenu, &drumTransientPitchMenu, nullptr}},
++    {DrumEngine::METAL,
++     DrumEngine::METAL,
++     {&lxrDecayMenu, &lxrDriveMenu, &source0TransposeMenu, nullptr, nullptr, &drumFmAmountMenu, &drumFm2AmountMenu,
++      &drumMod2CoarseMenu, &drumOscWaveMenu, &drumModWaveMenu, &drumModCoarseMenu, &drumModFineMenu, &drumTransientMenu,
++      &drumTransientVolumeMenu, &drumTransientPitchMenu, &drumMod2WaveMenu}},
++    {DrumEngine::TIA,
++     DrumEngine::TIA,
++     {&xiaDecayMenu, &xiaDriveMenu, &source0TransposeMenu, nullptr, nullptr, &tiaBlendex1Menu, &tiaFreq1Menu,
++      &xiaPunchMenu, &tiaBlendex2Menu, &tiaFreq2Menu, &tiaBlendex3Menu, &tiaFreq3Menu, nullptr, nullptr, nullptr,
++      nullptr}},
++    {DrumEngine::IIA,
++     DrumEngine::IIA,
++     {&xiaDecayMenu, &xiaDriveMenu, &source0TransposeMenu, nullptr, nullptr, &iiaWeightMenu, &iiaAlloyMenu,
++      &xiaPunchMenu, &iiaShapeMenu, &iiaStrikeMenu, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
++    // Every Cyc engine: Sweep and Contour on the pitch envelope's slots, Color and Shape on the characters (each
++    // engine's own names show in the menus). Drive is the engine's drive, not Punch, which is an extra.
++    {DrumEngine::CYC_KIK,
++     DrumEngine::CLAP_ENG,
++     {&cycDecayMenu, &cycDriveMenu, &source0TransposeMenu, &cycMacro3Menu, &cycMacro4Menu, &cycMacro1Menu,
++      &cycMacro2Menu, &xiaPunchMenu, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}},
++    // GIN: its pitch modulation as the pitch envelope, the tone / noise mix and the noise filter as the characters
++    {DrumEngine::GIN,
++     DrumEngine::GIN,
++     {&ginDecayMenu, &ginDriveMenu, &source0TransposeMenu, &ginModAmountMenu, &ginModRateMenu, &ginMixMenu,
++      &ginNoiseFreqMenu, &ginModModeMenu, &ginWaveMenu, &ginToneAttackMenu, &ginToneDecayMenu, &drumNoiseFilterMenu,
++      &ginNoiseResMenu, &ginNoiseEnvMenu, &ginNoiseAttackMenu, &ginNoiseDecayMenu}},
 +};
-+#undef LXR_COMMON_PADS
-+#undef LXR_PITCH_PADS
-+#undef LXR_MOD_PADS
-+#undef XIA_PADS
-+#undef CYC_PADS
-+#undef SWEEP_PADS
++
++/// The standard slot on a pad, or -1
++int32_t drumLayoutSlotAt(int32_t x, int32_t y) {
++	return (x == kPadMod1 || x == kPadMod2) ? (x - kPadMod1) * kDisplayHeight + y : -1;
++}
 +} // namespace
 +
-+MenuItem* drumShortcutFor(const Sound* sound, int32_t x, int32_t y) {
-+	if (sound == nullptr || sound->sources[0].oscType != OscType::DRUM_SYNTH) {
++bool isDrumSynth(const Sound* sound) {
++	return sound != nullptr && sound->sources[0].oscType == OscType::DRUM_SYNTH;
++}
++
++MenuItem* drumLayoutItem(deluge::dsp::drum_synth::Engine engine, int32_t slot) {
++	if (slot < 0 || slot >= kNumStandardSlots) {
 +		return nullptr;
 +	}
-+	if (x == kPadOsc1 && y == TYPE) {
-+		return &synthModeMenu;
-+	}
-+	const DrumEngine engine = sound->sources[0].drumPatch.engine();
-+	for (const DrumPad& pad : drumPads) {
-+		if (pad.engine == engine && pad.x == x && pad.y == y) {
-+			return pad.item;
++	for (const DrumLayout& layout : drumLayouts) {
++		if (engine >= layout.first && engine <= layout.last) {
++			return layout.items[slot];
 +		}
 +	}
 +	return nullptr;
 +}
 +
-+uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y) {
-+	const uint32_t usual = params::patchedParamShortcuts[x][y];
-+	if (x < kPadOsc1 || x > kPadMod2) {
++bool isDrumLayoutPad(const Sound* sound, int32_t x, int32_t y) {
++	return isDrumSynth(sound) && drumLayoutSlotAt(x, y) >= 0;
++}
++
++bool drumLayoutPadFor(int32_t slot, int32_t* x, int32_t* y) {
++	if (slot < 0 || slot >= kNumStandardSlots) {
++		return false;
++	}
++	*x = kPadMod1 + slot / kDisplayHeight;
++	*y = slot % kDisplayHeight;
++	return true;
++}
++
++MenuItem* soundShortcutFor(const Sound* sound, int32_t x, int32_t y) {
++	MenuItem* usual = paramShortcutsForSounds[x][y];
++	if (!isDrumSynth(sound)) {
 +		return usual;
 +	}
-+	MenuItem* item = drumShortcutFor(sound, x, y);
-+	if (item != nullptr && item->getParamKind() == params::Kind::PATCHED) {
-+		return item->getParamIndex();
++	if (x == kPadOsc1 && y == kRowType) {
++		return &synthModeMenu;
 +	}
-+	// A choice, or a pad the engine leaves alone: the Deluge's own param, unless that's where another of the engine's
-+	// controls lives
++	if (const int32_t slot = drumLayoutSlotAt(x, y); slot >= 0) {
++		return drumLayoutItem(sound->sources[0].drumPatch.engine(), slot);
++	}
++	if (usual != nullptr && usual->getParamKind() == params::Kind::PATCHED
++	    && deluge::dsp::drum_synth::drumSlotForParam(usual->getParamIndex()) >= 0) {
++		return nullptr;
++	}
++	return usual;
++}
++
++uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y) {
++	if (isDrumSynth(sound) && drumLayoutSlotAt(x, y) >= 0) {
++		MenuItem* item = soundShortcutFor(sound, x, y);
++		return (item != nullptr && item->getParamKind() == params::Kind::PATCHED) ? item->getParamIndex()
++		                                                                          : params::kNoParamID;
++	}
++	const uint32_t usual = params::patchedParamShortcuts[x][y];
 +	return (deluge::dsp::drum_synth::drumSlotForParam(usual) >= 0) ? params::kNoParamID : usual;
 +}
 +#undef XIA_ENGINE_COLUMNS
@@ -12552,8 +12861,13 @@ index 7bbd559f6..be3327976 100644
  // Not FM
  PLACE_SDRAM_BSS MasterTranspose masterTransposeMenu{STRING_FOR_MASTER_TRANSPOSE, STRING_FOR_MASTER_TRAN_MENU_TITLE};
  
-@@ -1477,6 +1962,62 @@ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, para
+ PLACE_SDRAM_BSS patch_cable_strength::Fixed vibratoMenu{STRING_FOR_VIBRATO, params::LOCAL_PITCH_ADJUST,
+                                                         PatchSource::LFO_GLOBAL_1};
  
++bool isVibratoShortcut(MenuItem const* item) {
++	return item == &vibratoMenu;
++}
++
  // Synth only
  PLACE_SDRAM_BSS SynthModeSelection synthModeMenu{STRING_FOR_SYNTH_MODE};
 +
@@ -12615,7 +12929,7 @@ index 7bbd559f6..be3327976 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2059,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +1987,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -12627,7 +12941,7 @@ index 7bbd559f6..be3327976 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2088,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2016,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -12636,7 +12950,7 @@ index 7bbd559f6..be3327976 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2097,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2025,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -12645,7 +12959,7 @@ index 7bbd559f6..be3327976 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2251,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2179,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -12655,7 +12969,7 @@ index 7bbd559f6..be3327976 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2384,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2312,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -12664,7 +12978,7 @@ index 7bbd559f6..be3327976 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2440,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2368,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -12673,7 +12987,7 @@ index 7bbd559f6..be3327976 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2462,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2390,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -12681,7 +12995,7 @@ index 7bbd559f6..be3327976 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2505,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2433,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -12715,7 +13029,7 @@ index 7bbd559f6..be3327976 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2576,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2504,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -12724,7 +13038,7 @@ index 7bbd559f6..be3327976 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2600,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2528,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -12734,7 +13048,7 @@ index 7bbd559f6..be3327976 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd62..24605f6bc 100644
+index 09efdfd62..c7e4c5d65 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
 @@ -25,6 +25,7 @@
@@ -12754,12 +13068,14 @@ index 09efdfd62..24605f6bc 100644
  extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
  extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
  extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
-@@ -113,7 +116,24 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
+@@ -113,7 +116,37 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
  extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
 +/// In 303 mode, the menu item that takes over a shortcut pad, or nullptr
 +MenuItem* tb303ShortcutAt(int32_t x, int32_t y);
++/// Whether a shortcut pad item is the vibrato pad (LFO 1 to pitch)
++bool isVibratoShortcut(MenuItem const* item);
 +/// The shortcut pad of a 303 mode menu item, if it has one
 +bool tb303ShortcutFor(MenuItem* item, int32_t* x, int32_t* y);
  extern MenuItem* paramShortcutsForSoundsSecondLayer[kDisplayWidth][kDisplayHeight];
@@ -12768,13 +13084,24 @@ index 09efdfd62..24605f6bc 100644
 +/// The delay amount / rate pad item that delay feedback / tone sit under, or nullptr
 +MenuItem* globalDelayFirstLayer(MenuItem const* item);
 +class Sound;
-+/// On drum synth sounds, some sound shortcut pads open the engine's settings instead (see menus.cpp). nullptr = the
-+/// normal shortcut.
-+MenuItem* drumShortcutFor(const Sound* sound, int32_t x, int32_t y);
-+/// The patched param on a drum synth sound's shortcut pad, for the automation view and patch cable blinks. In the
-+/// oscillator and FM columns, the drum synth's own pads: the engine's control there, else the Deluge's own param, or
-+/// kNoParamID where that would be another of the engine's controls. Elsewhere (the mod FX pads too, as every sweep
-+/// setting also has a pad in those columns), the Deluge's own.
++namespace deluge::dsp::drum_synth {
++enum class Engine : uint8_t;
++}
++/// Whether a sound's osc 1 is a drum synth
++bool isDrumSynth(const Sound* sound);
++/// The menu item on a standard drum synth slot (dsp::drum_synth::StandardSlot) for an engine, or nullptr where the
++/// engine has none
++MenuItem* drumLayoutItem(deluge::dsp::drum_synth::Engine engine, int32_t slot);
++/// The pad a standard drum synth slot is on
++bool drumLayoutPadFor(int32_t slot, int32_t* x, int32_t* y);
++/// Whether a pad is one of a drum synth sound's standard layout pads (the MOD1 and MOD2 columns)
++bool isDrumLayoutPad(const Sound* sound, int32_t x, int32_t y);
++/// A sound's shortcut pad item. On a drum synth sound, the MOD1 and MOD2 columns are the standard drum layout and OSC1
++/// TYPE opens SYNTH MODE (see menus.cpp). nullptr = nothing.
++MenuItem* soundShortcutFor(const Sound* sound, int32_t x, int32_t y);
++/// The patched param on a drum synth sound's shortcut pad, for the automation view and patch cable blinks: the
++/// control on a drum layout pad (kNoParamID for a choice or the tuning), elsewhere the Deluge's own param, or
++/// kNoParamID where that is one of the drum controls.
 +uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y);
  extern MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight];
  extern MenuItem* paramShortcutsForSongView[kDisplayWidth][kDisplayHeight];
@@ -12866,7 +13193,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3c..19d187c72 100644
+index d3eae8c3c..a5199426f 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -3,6 +3,7 @@
@@ -12926,7 +13253,7 @@ index d3eae8c3c..19d187c72 100644
  	if (!image)
  	{
  		D_PRINTLN("no image");
-@@ -420,7 +445,43 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
+@@ -420,7 +445,40 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
  	}
  }
  
@@ -12951,10 +13278,7 @@ index d3eae8c3c..19d187c72 100644
 +}
 +
 +MenuItem* SoundEditor::soundShortcut(int32_t x, int32_t y) {
-+	if (MenuItem* item = drumShortcutFor(shortcutSound(), x, y)) {
-+		return item;
-+	}
-+	return paramShortcutsForSounds[x][y];
++	return soundShortcutFor(shortcutSound(), x, y);
 +}
 +
 +bool SoundEditor::isDrumSynthEditorOnGrid() {
@@ -12970,7 +13294,24 @@ index d3eae8c3c..19d187c72 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -963,9 +1024,15 @@ ActionResult SoundEditor::exitCompletely() {
+@@ -452,6 +510,16 @@ bool SoundEditor::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
+ 		}
+ 		else {
+ 			*cols = 0xFFFFFFFE;
++			// Pad Guides: the drum synth layout's columns stay lit, the glow greys their empty pads itself
++			if (InstrumentClipView::padGuidesGlowSound() != nullptr) {
++				for (int32_t slot : {int32_t{0}, int32_t{kDisplayHeight}}) { // the bottom of each column
++					int32_t x;
++					int32_t y;
++					if (drumLayoutPadFor(slot, &x, &y)) {
++						*cols &= ~(1u << (kDisplayWidth + kSideBarWidth - 1 - x));
++					}
++				}
++			}
+ 		}
+ 		break;
+ 	case UIType::PERFORMANCE:
+@@ -963,9 +1031,15 @@ ActionResult SoundEditor::exitCompletely() {
  
  bool SoundEditor::findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout, bool* isSecondLayerParamOut) {
  	bool found = false;
@@ -12987,7 +13328,7 @@ index d3eae8c3c..19d187c72 100644
  				*isSecondLayerParamOut = false;
  				*xout = x;
  				*yout = y;
-@@ -1012,6 +1079,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
+@@ -1012,6 +1086,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
  
  void SoundEditor::setupShortcutsBlinkFromTable(MenuItem const* const currentItem,
                                                 MenuItem const* const items[kDisplayWidth][kDisplayHeight]) {
@@ -13005,7 +13346,7 @@ index d3eae8c3c..19d187c72 100644
  	for (auto x = 0; x < kDisplayWidth; ++x) {
  		for (auto y = 0; y < kDisplayHeight; ++y) {
  			if (items[x][y] == currentItem) {
-@@ -1090,6 +1168,10 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1090,14 +1175,20 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  			}
  
  			// First, see if there's a shortcut for the actual MenuItem we're currently on
@@ -13015,8 +13356,10 @@ index d3eae8c3c..19d187c72 100644
 +			}
  			for (int32_t x = 0; x < kDisplayWidth; x++) {
  				for (int32_t y = 0; y < kDisplayHeight; y++) {
- 					if (paramShortcutsForSoundsSecondLayer[x][y] == currentItem) {
-@@ -1097,7 +1179,8 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+-					if (paramShortcutsForSoundsSecondLayer[x][y] == currentItem) {
++					if (paramShortcutsForSoundsSecondLayer[x][y] == currentItem
++					    && !isDrumLayoutPad(shortcutSound(), x, y)) {
+ 						setupShortcutBlink(x, y, 0, 0b00000011 /* yellow */);
  						goto stopThat;
  					}
  
@@ -13026,7 +13369,7 @@ index d3eae8c3c..19d187c72 100644
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1505,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1513,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -13035,7 +13378,7 @@ index d3eae8c3c..19d187c72 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1586,10 +1669,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1586,10 +1677,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -13054,7 +13397,16 @@ index d3eae8c3c..19d187c72 100644
  
  					// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  					secondLayerShortcutsToggled =
-@@ -1607,6 +1697,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1598,7 +1696,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+ 							? !secondLayerShortcutsToggled
+ 							: false;
+ 
+-					if (secondLayerShortcutsToggled) {
++					if (secondLayerShortcutsToggled && !isDrumLayoutPad(shortcutSound(), x, y)) {
+ 						if (const auto secondLayerItem = paramShortcutsForSoundsSecondLayer[x][y];
+ 							secondLayerItem != nullptr) {
+ 							item = secondLayerItem;
+@@ -1607,6 +1705,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			}
  		}
@@ -13074,7 +13426,20 @@ index d3eae8c3c..19d187c72 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1650,6 +1753,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1631,7 +1742,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+ 
+ 			// Special shortcut for Note Row Editor menu: [audition pad] + [sequence direction pad]
+ 			Clip* currentClip = getCurrentClip();
+-			if (currentClip->type == ClipType::INSTRUMENT && item == &sequenceDirectionMenu
++			// (a drum synth row has its own setting on the sequence direction pad, but keeps this)
++			const bool sequenceDirectionPad =
++			    item == &sequenceDirectionMenu
++			    || (isDrumLayoutPad(shortcutSound(), x, y) && paramShortcutsForSounds[x][y] == &sequenceDirectionMenu);
++			if (currentClip->type == ClipType::INSTRUMENT && sequenceDirectionPad
+ 			    && display->haveOLED() && runtimeFeatureSettings.get(HorizontalMenus) == On
+ 			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
+ 
+@@ -1650,6 +1765,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -13087,7 +13452,7 @@ index d3eae8c3c..19d187c72 100644
  			if (!setupSuccess) {
  				return ActionResult::DEALT_WITH;
  			}
-@@ -1704,6 +1813,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1704,6 +1825,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -13102,7 +13467,7 @@ index d3eae8c3c..19d187c72 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2264,7 @@ doMIDIOrCV:
+@@ -2147,6 +2276,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -13127,8 +13492,36 @@ index 85daba70e..3631e3642 100644
  	Sound* currentSound;
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
+diff --git a/src/deluge/gui/ui_timer_manager.cpp b/src/deluge/gui/ui_timer_manager.cpp
+index 86bfc3fd6..264098dfe 100644
+--- a/src/deluge/gui/ui_timer_manager.cpp
++++ b/src/deluge/gui/ui_timer_manager.cpp
+@@ -148,6 +148,10 @@ void UITimerManager::routine() {
+ 					instrumentClipView.pulseSelectedNote();
+ 					break;
+ 
++				case TimerName::MOD_BUTTON_BLINK:
++					view.blinkModButtonPads();
++					break;
++
+ 				case TimerName::MATRIX_DRIVER:
+ 					PadLEDs::timerRoutine();
+ 					break;
+diff --git a/src/deluge/gui/ui_timer_manager.h b/src/deluge/gui/ui_timer_manager.h
+index e94b776d8..97eb4d467 100644
+--- a/src/deluge/gui/ui_timer_manager.h
++++ b/src/deluge/gui/ui_timer_manager.h
+@@ -50,6 +50,8 @@ enum class TimerName {
+ 	MOD_ENCODER_POPUP_FLUSH,
+ 	SELECTED_CLIP_PULSE,
+ 	SELECTED_NOTE_PULSE,
++	/// Pad Guides: the pads of a held gold knob button's params
++	MOD_BUTTON_BLINK,
+ 	/// Idle countdown before the screensaver appears, then its frame clock while it shows
+ 	SCREENSAVER,
+ 	/// Total number of timers
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index 0a42de354..b3d131413 100644
+index 0a42de354..311e12a82 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
 @@ -110,6 +110,34 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
@@ -13136,8 +13529,8 @@ index 0a42de354..b3d131413 100644
  using namespace deluge::gui;
  
 +// The patched param on a shortcut pad, or kNoParamID. On a sample oscillator, the pulse width pad (unused for samples)
-+// gives the sample start offset instead. On a drum synth, the oscillator and FM columns follow the drum synth's own
-+// pads, as in the sound editor.
++// gives the sample start offset instead. On a drum synth, the MOD1 and MOD2 columns are its standard layout and the
++// drum controls' usual pads are blank, as in the sound editor.
 +static uint32_t patchedParamForShortcut(Output* output, int32_t x, int32_t y) {
 +	Sound* sound = nullptr;
 +	if (output->type == OutputType::SYNTH) {
@@ -13259,18 +13652,20 @@ index 0a42de354..b3d131413 100644
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 4f8f5ec28..9743e018a 100644
+index 4f8f5ec28..58204fa63 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
-@@ -20,12 +20,15 @@
+@@ -20,12 +20,17 @@
  #include "extern.h"
  #include "fatfs.hpp"
  #include "gui/colour/colour.h"
 +#include "gui/context_menu/kit_presets.h"
 +#include "gui/context_menu/new_kit_type.h"
  #include "gui/context_menu/stem_export/cancel_stem_export.h"
++#include "gui/context_menu/synth_instrument.h"
  #include "gui/l10n/l10n.h"
  #include "gui/menu_item/colour.h"
++#include "gui/menu_item/drum_synth/editor.h"
  #include "gui/menu_item/file_selector.h"
  #include "gui/menu_item/horizontal_menu.h"
  #include "gui/menu_item/multi_range.h"
@@ -13278,7 +13673,7 @@ index 4f8f5ec28..9743e018a 100644
  #include "gui/ui/audio_recorder.h"
  #include "gui/ui/browser/sample_browser.h"
  #include "gui/ui/keyboard/keyboard_screen.h"
-@@ -34,10 +37,12 @@
+@@ -34,10 +39,12 @@
  #include "gui/ui/rename/rename_drum_ui.h"
  #include "gui/ui/sample_marker_editor.h"
  #include "gui/ui/save/save_kit_row_ui.h"
@@ -13291,7 +13686,7 @@ index 4f8f5ec28..9743e018a 100644
  #include "gui/views/timeline_view.h"
  #include "gui/views/view.h"
  #include "hid/buttons.h"
-@@ -62,9 +67,11 @@
+@@ -62,9 +69,11 @@
  #include "model/consequence/consequence_note_row_length.h"
  #include "model/drum/drum.h"
  #include "model/drum/midi_drum.h"
@@ -13303,7 +13698,7 @@ index 4f8f5ec28..9743e018a 100644
  #include "model/model_stack.h"
  #include "model/note/copied_note_row.h"
  #include "model/note/note.h"
-@@ -100,6 +107,7 @@
+@@ -100,6 +109,7 @@
  
  extern "C" {}
  
@@ -13311,7 +13706,20 @@ index 4f8f5ec28..9743e018a 100644
  using namespace deluge::gui;
  
  PLACE_SDRAM_DATA InstrumentClipView instrumentClipView{};
-@@ -575,6 +583,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -251,6 +261,12 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+ 
+ 	maybeStartShortcutOverview(b, on);
+ 
++	// Pad Guides: the drum synth pads glow while SHIFT is held. Redrawn on every SHIFT edge, as the sound may have
++	// changed while it was held.
++	if (b == SHIFT && runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides)) {
++		uiNeedsRendering(this, 0xFFFFFFFF, 0);
++	}
++
+ 	// Scale mode button
+ 	if (b == SCALE_MODE && currentUIMode != UI_MODE_HOLDING_LOAD_BUTTON) {
+ 		return handleScaleButtonAction(on, inCardRoutine);
+@@ -575,6 +591,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  		}
  	}
@@ -13335,7 +13743,7 @@ index 4f8f5ec28..9743e018a 100644
  	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
  		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
  		if (noteRow->drum->type == DrumType::SOUND) {
-@@ -784,12 +809,19 @@ doCancelPopup:
+@@ -784,12 +817,19 @@ doCancelPopup:
  		// If holding notes down...
  		if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)) {
  			if (on) {
@@ -13355,7 +13763,7 @@ index 4f8f5ec28..9743e018a 100644
  				goto doCancelPopup;
  			}
  		}
-@@ -838,6 +870,14 @@ doCancelPopup:
+@@ -838,6 +878,14 @@ doCancelPopup:
  
  	else if (b == SELECT_ENC) {
  		if (on) {
@@ -13370,7 +13778,7 @@ index 4f8f5ec28..9743e018a 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -955,6 +995,22 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
+@@ -955,6 +1003,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
  		            == RuntimeFeatureStateToggle::On);
  	}
  
@@ -13390,10 +13798,19 @@ index 4f8f5ec28..9743e018a 100644
 +		return false;
 +	}
 +
++	// SHIFT + SYNTH on a synth track: pick an instrument (Deluge, DLFM, DX7...). The menu does the loading.
++	if (outputType == OutputType::SYNTH && !is_fm && Buttons::isShiftButtonPressed()
++	    && getCurrentOutputType() == OutputType::SYNTH && getCurrentUI() == getRootUI()) {
++		if (context_menu::synthInstrumentMenu.setupAndCheckAvailability()) {
++			openUI(&context_menu::synthInstrumentMenu);
++		}
++		return false;
++	}
++
  	if (!isMIDIorCV && (is_fm || Buttons::isShiftButtonPressed())) {
  		return createNewInstrument(outputType, is_fm);
  	}
-@@ -1114,7 +1170,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1114,7 +1187,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -13402,7 +13819,7 @@ index 4f8f5ec28..9743e018a 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1181,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1198,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -13413,7 +13830,7 @@ index 4f8f5ec28..9743e018a 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1353,8 @@ ramError:
+@@ -1297,8 +1370,8 @@ ramError:
  	}
  }
  
@@ -13424,7 +13841,7 @@ index 4f8f5ec28..9743e018a 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1689,11 +1745,107 @@ getOut: {}
+@@ -1689,11 +1762,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -13533,7 +13950,7 @@ index 4f8f5ec28..9743e018a 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1755,6 +1907,137 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1755,6 +1924,191 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -13614,7 +14031,61 @@ index 4f8f5ec28..9743e018a 100644
 +	}
 +	return true;
 +}
++
++/// Pad Guides: while SHIFT is held on a drum synth (the synth, or the kit's selected row), the pads of its standard
++/// layout settings glow soft pink, blended over whatever is on them so notes still show
++void renderDrumSynthShiftGlow(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth]) {
++	using deluge::dsp::drum_synth::StandardSlot;
++	const Sound* sound = InstrumentClipView::padGuidesGlowSound();
++	if (sound == nullptr) {
++		return;
++	}
++	// In the sound editor the two columns are left out of its greyout (see SoundEditor::getGreyoutColsAndRows), so
++	// grey the pads without a setting here, as the rest of the grid is
++	const bool inSoundEditor = getCurrentUI() == &soundEditor;
++	constexpr int32_t kFullGreyout = 6500000;
++	constexpr RGB kGlow{255, 40, 90};
++	const auto engine = sound->sources[0].drumPatch.engine();
++	for (int32_t slot = 0; slot < static_cast<int32_t>(StandardSlot::NUM_SLOTS); slot++) {
++		int32_t x;
++		int32_t y;
++		if (!drumLayoutPadFor(slot, &x, &y) || !(whichRows & (1 << y))) {
++			continue;
++		}
++		if (drumLayoutItem(engine, slot) != nullptr) {
++			image[y][x] = RGB::blend(kGlow, image[y][x], 32768);
++		}
++		else if (inSoundEditor) {
++			image[y][x] = image[y][x].greyOut(kFullGreyout);
++		}
++	}
++}
 +} // namespace
++
++const Sound* InstrumentClipView::padGuidesGlowSound() {
++	if (!runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides) || getRootUI() != &instrumentClipView) {
++		return nullptr;
++	}
++	// While SHIFT is held on the clip, and on through the sound menu SHIFT + pad opens, so the pads stay lit while a
++	// setting is edited. Not over the drum synth pad editor, which draws its own grid.
++	UI* currentUI = getCurrentUI();
++	if (currentUI == &instrumentClipView) {
++		if (!Buttons::isButtonPressed(deluge::hid::button::SHIFT)) {
++			return nullptr;
++		}
++	}
++	else if (currentUI != &soundEditor || !soundEditor.in_sound_editor()
++	         || soundEditor.getCurrentMenuItem() == &deluge::gui::menu_item::drum_synth::drumSynthEditor) {
++		return nullptr;
++	}
++	// With affect entire on in a kit, SHIFT + pad edits the kit's FX, not the row
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	if (clip == nullptr || (getCurrentOutputType() == OutputType::KIT && clip->affectEntire)) {
++		return nullptr;
++	}
++	const Sound* sound = soundEditor.shortcutSound();
++	return isDrumSynth(sound) ? sound : nullptr;
++}
 +
 +bool InstrumentClipView::createNewDrumSynthKit(deluge::dsp::drum_synth::PresetKit type) {
 +	using deluge::dsp::drum_synth::PresetKit;
@@ -13671,7 +14142,7 @@ index 4f8f5ec28..9743e018a 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1774,6 +2057,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1774,6 +2128,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -13693,7 +14164,7 @@ index 4f8f5ec28..9743e018a 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2585,9 +2883,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2585,9 +2954,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -13712,7 +14183,7 @@ index 4f8f5ec28..9743e018a 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -4935,6 +5242,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4935,6 +5313,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -13738,7 +14209,20 @@ index 4f8f5ec28..9743e018a 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5398,6 +5724,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5176,6 +5573,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+ 		}
+ 	}
+ 
++	// Pad Guides: SHIFT held, so the glow follows the newly selected row
++	if (drumSelectionChanged && Buttons::isButtonPressed(deluge::hid::button::SHIFT)
++	    && runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides)) {
++		uiNeedsRendering(this, 0xFFFFFFFF, 0);
++	}
++
+ 	if (shouldRedrawStuff) {
+ 		// make sure the clip we're displaying actually belongs to this kit
+ 		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
+@@ -5398,6 +5801,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -13750,7 +14234,7 @@ index 4f8f5ec28..9743e018a 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -6283,6 +6614,11 @@ drawNormally:
+@@ -6283,6 +6691,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -13762,7 +14246,7 @@ index 4f8f5ec28..9743e018a 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6393,6 +6729,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6393,6 +6806,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -13770,7 +14254,7 @@ index 4f8f5ec28..9743e018a 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6408,6 +6745,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6408,6 +6822,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -13784,7 +14268,7 @@ index 4f8f5ec28..9743e018a 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -7548,6 +7892,16 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7548,6 +7969,16 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -13801,7 +14285,15 @@ index 4f8f5ec28..9743e018a 100644
  	if (!image) {
  		return true;
  	}
-@@ -7607,6 +7961,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7565,6 +7996,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+ 	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
+ 	                    drawUndefinedArea);
+ 	render_selected_note_pulse(whichRows, image);
++	renderDrumSynthShiftGlow(whichRows, image);
+ 	PadLEDs::renderingLock = false;
+ 
+ 	return true;
+@@ -7607,6 +8039,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -13811,7 +14303,7 @@ index 4f8f5ec28..9743e018a 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7655,6 +8012,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7655,6 +8090,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -13824,7 +14316,7 @@ index 4f8f5ec28..9743e018a 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8376,3 +8739,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8376,3 +8817,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -14078,7 +14570,7 @@ index 4f8f5ec28..9743e018a 100644
 +	display->displayPopup(text);
 +}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 38f8cbc98..6de4bdf6d 100644
+index 38f8cbc98..cf60f648e 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -18,6 +18,7 @@
@@ -14089,7 +14581,7 @@ index 38f8cbc98..6de4bdf6d 100644
  #include "gui/views/clip_view.h"
  #include "hid/button.h"
  #include "model/clip/instrument_clip_minder.h"
-@@ -223,6 +224,13 @@ public:
+@@ -223,6 +224,15 @@ public:
  	uint32_t getSquareWidth(int32_t square, int32_t effectiveLength);
  	void drawNoteCode(uint8_t yDisplay);
  	bool createNewInstrument(OutputType instrumentType, bool is_fm = false);
@@ -14097,13 +14589,15 @@ index 38f8cbc98..6de4bdf6d 100644
 +	/// Whether kit was made as a preset kit (LXR or Cycles) and has had other rows added since. Swapping it for a new
 +	/// kit would leave those rows without their sounds, so SHIFT + KIT refuses.
 +	static bool presetKitHasAddedRows(Kit* kit);
++	/// Pad Guides: the drum synth whose standard layout pads glow right now, or nullptr
++	static const Sound* padGuidesGlowSound();
 +	/// Add a row to a preset kit at the empty row being auditioned, starting on the kit's first engine, and open SYNTH
 +	/// MODE on it to choose what it is
 +	void addRowToPresetKit(ModelStackWithTimelineCounter* modelStack, Kit* kit);
  	bool changeOutputType(OutputType newOutputType);
  	Sound* getSoundForNoteRow(NoteRow* noteRow, ParamManagerForTimeline** getParamManager);
  	void someAuditioningHasEnded(bool recalculateLastAuditionedNoteOnScreen);
-@@ -311,7 +319,13 @@ public:
+@@ -311,7 +321,13 @@ public:
  	bool handleNoteRowEditorPadAction(int32_t x, int32_t y, int32_t on);
  	bool handleNoteRowEditorMainPadAction(int32_t x, int32_t y, int32_t on);
  	void handleNoteRowEditorAuditionPadAction(int32_t y);
@@ -14118,7 +14612,7 @@ index 38f8cbc98..6de4bdf6d 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -352,6 +366,21 @@ public:
+@@ -352,6 +368,21 @@ public:
  	ModControllableAudio* getModControllableAudioOrNone() override;
  
  private:
@@ -14140,7 +14634,7 @@ index 38f8cbc98..6de4bdf6d 100644
  	bool doneAnyNudgingSinceFirstEditPadPress{};
  	bool offsettingNudgeNumberDisplay{};
  
-@@ -397,11 +426,13 @@ private:
+@@ -397,11 +428,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -15021,10 +15515,18 @@ index 000000000..4bbd4cbd8
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 0690e2bb0..371235d30 100644
+index 0690e2bb0..b82040db5 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
-@@ -37,6 +37,8 @@
+@@ -29,6 +29,7 @@
+ #include "gui/ui/keyboard/keyboard_screen.h"
+ #include "gui/ui/load/load_instrument_preset_ui.h"
+ #include "gui/ui/load/load_song_ui.h"
++#include "gui/ui/menus.h"
+ #include "gui/ui/root_ui.h"
+ #include "gui/ui/save/save_song_ui.h"
+ #include "gui/ui/sound_editor.h"
+@@ -37,6 +38,8 @@
  #include "gui/views/arranger_view.h"
  #include "gui/views/automation_view.h"
  #include "gui/views/instrument_clip_view.h"
@@ -15033,7 +15535,7 @@ index 0690e2bb0..371235d30 100644
  #include "gui/views/performance_view.h"
  #include "gui/views/session_view.h"
  #include "hid/buttons.h"
-@@ -76,6 +78,7 @@
+@@ -76,6 +79,7 @@
  #include "modulation/params/param.h"
  #include "modulation/params/param_collection.h"
  #include "modulation/params/param_set.h"
@@ -15041,7 +15543,7 @@ index 0690e2bb0..371235d30 100644
  #include "playback/mode/arrangement.h"
  #include "playback/mode/session.h"
  #include "processing/audio_output.h"
-@@ -162,12 +165,19 @@ doEndMidiLearnPressSession:
+@@ -162,12 +166,19 @@ doEndMidiLearnPressSession:
  				endMidiLearnPressSession();
  			}
  		}
@@ -15061,7 +15563,7 @@ index 0690e2bb0..371235d30 100644
  				// Otherwise, normal - tap tempo, but not during record count in
  				else if (currentUIMode == UI_MODE_NONE) {
  					bool useNormalTapTempoBehaviour =
-@@ -328,8 +338,17 @@ doEndMidiLearnPressSession:
+@@ -328,8 +339,17 @@ doEndMidiLearnPressSession:
  		}
  	}
  
@@ -15080,7 +15582,7 @@ index 0690e2bb0..371235d30 100644
  		if ((runtimeFeatureSettings.get(RuntimeFeatureSettingType::SyncScalingAction)
  		     == RuntimeFeatureStateSyncScalingAction::Fill)) {
  			// If currently in the sound editor note editor / note row editor, keep this button as the global
-@@ -499,6 +518,17 @@ void View::endMIDILearn() {
+@@ -499,6 +519,17 @@ void View::endMIDILearn() {
  }
  
  void View::setTimeBaseScaleLedState() {
@@ -15098,7 +15600,7 @@ index 0690e2bb0..371235d30 100644
  	// If this Clip is the inputTickScaleClip, flash the LED
  	if (getCurrentUI()->toClipMinder() && getCurrentClip() == currentSong->getSyncScalingClip()) {
  		indicator_leds::blinkLed(IndicatorLED::SYNC_SCALING);
-@@ -851,6 +881,12 @@ void View::modEncoderAction_nonExistentParam(int32_t whichModEncoder, int32_t of
+@@ -851,6 +882,12 @@ void View::modEncoderAction_nonExistentParam(int32_t whichModEncoder, int32_t of
  
  void View::modEncoderAction_existentParam(int32_t whichModEncoder, int32_t offset,
                                            ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore) {
@@ -15111,7 +15613,7 @@ index 0690e2bb0..371235d30 100644
  	char modelStackTempMemory[MODEL_STACK_MAX_SIZE];
  	copyModelStack(modelStackTempMemory, modelStackWithParam, sizeof(ModelStackWithThreeMainThings));
  	ModelStackWithThreeMainThings* tempModelStack = (ModelStackWithThreeMainThings*)modelStackTempMemory;
-@@ -1205,7 +1241,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1205,7 +1242,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  	}
  	else {
  		current_display_value = calculateKnobPosForDisplay(kind, paramID, newKnobPos + kKnobPosOffset);
@@ -15139,7 +15641,7 @@ index 0690e2bb0..371235d30 100644
  	}
  
  	// Check if we need to update the notification (avoid excessive updates)
-@@ -1332,7 +1387,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
+@@ -1332,7 +1388,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
  	valueForDisplayFloat = (knobPosFloat / maxKnobPosFloat) * maxMenuValueFloat;
  
  	// check if parameter is pan or pitch, in which case, further adjust range from 0 - 50 to -25 to +25
@@ -15148,7 +15650,130 @@ index 0690e2bb0..371235d30 100644
  		valueForDisplayFloat = valueForDisplayFloat - maxMenuRelativeValueFloat;
  	}
  
-@@ -1595,6 +1650,9 @@ void View::setModLedStates() {
+@@ -1558,6 +1614,7 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+ 
+ 				setKnobIndicatorLevels();
+ 				setModLedStates();
++				startModButtonBlink(whichButton);
+ 			}
+ 		}
+ 		else {
+@@ -1565,6 +1622,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+ 			    whichButton, false, (ParamManagerForTimeline*)activeModControllableModelStack.paramManager);
+ 		}
+ 	}
++	if (!on && whichButton == blinkingModButton) {
++		stopModButtonBlink();
++	}
++}
++
++namespace {
++/// The shortcut pad of a gold knob's param, as SHIFT + pad would edit it in the current context. False if it has none.
++bool shortcutPadForParam(ModelStackWithAutoParam const* modelStack, int32_t* xOut, int32_t* yOut) {
++	if (modelStack == nullptr || modelStack->autoParam == nullptr || modelStack->paramCollection == nullptr) {
++		return false;
++	}
++	const params::Kind kind = modelStack->paramCollection->getParamKind();
++	const uint32_t paramId = modelStack->paramId;
++	// Patched and sound unpatched params, and patch cables, only exist on sounds
++	Sound const* sound =
++	    (kind == params::Kind::PATCHED || kind == params::Kind::UNPATCHED_SOUND || kind == params::Kind::PATCH_CABLE)
++	        ? static_cast<Sound const*>(modelStack->modControllable)
++	        : nullptr;
++	ParamDescriptor vibrato;
++	vibrato.setToHaveParamAndSource(params::LOCAL_PITCH_ADJUST, PatchSource::LFO_GLOBAL_1);
++
++	for (int32_t x = 0; x < kDisplayWidth; x++) {
++		for (int32_t y = 0; y < kDisplayHeight; y++) {
++			bool match = false;
++			switch (kind) {
++			case params::Kind::PATCHED:
++				if (sound->isTb303()) {
++					if (MenuItem* item = tb303ShortcutAt(x, y)) {
++						match = item->getParamKind() == params::Kind::PATCHED && item->getParamIndex() == paramId;
++						break;
++					}
++				}
++				if (isDrumSynth(sound)) {
++					match = drumShortcutParam(sound, x, y) == paramId;
++				}
++				else {
++					match = params::patchedParamShortcuts[x][y] == paramId
++					        || params::patchedParamShortcutsSecondLayer[x][y] == paramId;
++				}
++				break;
++			case params::Kind::UNPATCHED_SOUND:
++				match = params::unpatchedNonGlobalParamShortcuts[x][y] == paramId && !isDrumLayoutPad(sound, x, y);
++				break;
++			case params::Kind::UNPATCHED_GLOBAL:
++				match = params::unpatchedGlobalParamShortcuts[x][y] == paramId;
++				break;
++			case params::Kind::PATCH_CABLE:
++				// The vibrato pad: LFO 1 to pitch, the mod depth knob on most sounds
++				match = paramId == vibrato.data && isVibratoShortcut(soundShortcutFor(sound, x, y));
++				break;
++			default:
++				break;
++			}
++			if (match) {
++				*xOut = x;
++				*yOut = y;
++				return true;
++			}
++		}
++	}
++	return false;
++}
++} // namespace
++
++void View::startModButtonBlink(uint8_t whichButton) {
++	stopModButtonBlink();
++	RootUI* rootUI = getRootUI();
++	// Not while recording the arrangement: finding the params would clone the clip into it
++	if (!runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides) || getCurrentUI() != rootUI
++	    || rootUI == &performanceView || playbackHandler.recording == RecordingMode::ARRANGEMENT) {
++		return;
++	}
++	bool found = false;
++	for (int32_t knob = 0; knob < 2; knob++) {
++		bool noteTailsAllowedBefore;
++		modButtonPadX[knob] = modButtonPadY[knob] = kNoSelection;
++		found |= shortcutPadForParam(getModelStackWithParam(knob, noteTailsAllowedBefore), &modButtonPadX[knob],
++		                             &modButtonPadY[knob]);
++	}
++	if (found) {
++		blinkingModButton = static_cast<int8_t>(whichButton);
++		modButtonBlinkTop = true;
++		blinkModButtonPads();
++	}
++}
++
++void View::stopModButtonBlink() {
++	blinkingModButton = -1;
++	uiTimerManager.unsetTimer(TimerName::MOD_BUTTON_BLINK);
++}
++
++void View::blinkModButtonPads() {
++	if (blinkingModButton < 0
++	    || !Buttons::isButtonPressed(
++	        deluge::hid::button::fromXY(modButtonX[blinkingModButton], modButtonY[blinkingModButton]))
++	    || getCurrentUI() != getRootUI()) {
++		stopModButtonBlink();
++		return;
++	}
++	// One pad at a time, top then bottom: two pads in a row can't flash together
++	constexpr int32_t kRed = 0b01;
++	constexpr int32_t kYellow = 0b11;
++	const int32_t knob = modButtonBlinkTop ? 1 : 0;
++	if (modButtonPadX[knob] != kNoSelection) {
++		PadLEDs::flashMainPad(modButtonPadX[knob], modButtonPadY[knob], modButtonBlinkTop ? kRed : kYellow);
++	}
++	modButtonBlinkTop = !modButtonBlinkTop;
++	uiTimerManager.setTimer(TimerName::MOD_BUTTON_BLINK, 120);
+ }
+ 
+ void View::setModLedStates() {
+@@ -1595,6 +1760,9 @@ void View::setModLedStates() {
  		affectEntire = (uiContextType == UIType::INSTRUMENT_CLIP) ? ((InstrumentClip*)clip)->affectEntire : true;
  	}
  	indicator_leds::setLedState(IndicatorLED::AFFECT_ENTIRE, affectEntire);
@@ -15158,6 +15783,66 @@ index 0690e2bb0..371235d30 100644
  
  	bool onAutomationClipView = false;
  
+@@ -2297,7 +2465,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
+ }
+ 
+ void View::navigateThroughPresetsForInstrumentClip(int32_t offset, ModelStackWithTimelineCounter* modelStack,
+-                                                   bool doBlink) {
++                                                   bool doBlink, char const* fromFolderStart) {
+ 
+ 	AudioEngine::logAction("navigateThroughPresets");
+ 
+@@ -2543,8 +2711,8 @@ gotAnInstrument:
+ 	// Or if we're on a Kit or Synth...
+ 	else {
+ 
+-		PresetNavigationResult results =
+-		    loadInstrumentPresetUI.doPresetNavigation(offset, oldInstrument, availabilityRequirement, false);
++		PresetNavigationResult results = loadInstrumentPresetUI.doPresetNavigation(
++		    offset, oldInstrument, availabilityRequirement, false, fromFolderStart);
+ 		if (results.error == Error::NO_ERROR_BUT_GET_OUT) {
+ getOut:
+ 			display->removeWorkingAnimation();
+diff --git a/src/deluge/gui/views/view.h b/src/deluge/gui/views/view.h
+index 823aee7b0..8738b23b2 100644
+--- a/src/deluge/gui/views/view.h
++++ b/src/deluge/gui/views/view.h
+@@ -71,6 +71,9 @@ public:
+ 	void modEncoderAction(int32_t whichModEncoder, int32_t offset);
+ 	void modEncoderButtonAction(uint8_t whichModEncoder, bool on);
+ 	void modButtonAction(uint8_t whichButton, bool on);
++	/// Pad Guides: flash the shortcut pads of the held gold knob button's params, red for the top knob's, yellow for
++	/// the bottom's. From the timer.
++	void blinkModButtonPads();
+ 	void setKnobIndicatorLevels();
+ 	void setKnobIndicatorLevel(uint8_t whichModEncoder);
+ 	int32_t convertPatchCableKnobPosToIndicatorLevel(int32_t knobPos);
+@@ -85,8 +88,9 @@ public:
+ 	void displayAutomation();
+ 	void displayOutputName(Output* output, bool doBlink = true, Clip* clip = nullptr);
+ 	void instrumentChanged(ModelStackWithTimelineCounter* modelStack, Instrument* newInstrument);
++	/// Step through the current instrument's folder, or with fromFolderStart, go to that folder's first preset
+ 	void navigateThroughPresetsForInstrumentClip(int32_t offset, ModelStackWithTimelineCounter* modelStack,
+-	                                             bool doBlink = false);
++	                                             bool doBlink = false, char const* fromFolderStart = nullptr);
+ 	void navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* clip, bool doBlink = false);
+ 	bool changeOutputType(OutputType newOutputType, ModelStackWithTimelineCounter* modelStack, bool doBlink = false);
+ 	void drawOutputNameFromDetails(OutputType outputType, int32_t slot, int32_t subSlot, char const* name,
+@@ -172,6 +176,14 @@ private:
+ 	                                    ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore);
+ 	ModelStackWithAutoParam* getModelStackWithParam(int32_t whichModEncoder, bool& noteTailsAllowedBefore);
+ 
++	// Pad Guides: the held gold knob button, and its knobs' pads (bottom knob, then top), kNoSelection for none
++	void startModButtonBlink(uint8_t whichButton);
++	void stopModButtonBlink();
++	int8_t blinkingModButton = -1;
++	int32_t modButtonPadX[2] = {kNoSelection, kNoSelection};
++	int32_t modButtonPadY[2] = {kNoSelection, kNoSelection};
++	bool modButtonBlinkTop = true; ///< Which knob's pad flashes next
++
+ 	// mod encoder button action
+ 	void modEncoderButtonAction_deleteAutomation(uint8_t whichModEncoder);
+ 	void modEncoderButtonAction_changeModControllable(uint8_t whichModEncoder, bool on);
 diff --git a/src/deluge/hid/buttons.cpp b/src/deluge/hid/buttons.cpp
 index 21f193b96..7253d3624 100644
 --- a/src/deluge/hid/buttons.cpp
@@ -16223,6 +16908,55 @@ index 000000000..b48b60583
 +void deleteDrum(SoundDrum* drum);
 +
 +} // namespace deluge::preset_kit
+diff --git a/src/deluge/model/instrument/synth_instruments.h b/src/deluge/model/instrument/synth_instruments.h
+new file mode 100644
+index 000000000..a66102878
+--- /dev/null
++++ b/src/deluge/model/instrument/synth_instruments.h
+@@ -0,0 +1,43 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "definitions_cxx.hpp"
++#include "gui/l10n/strings.h"
++#include <array>
++
++/// The synth instruments SHIFT + SYNTH picks between on a synth track. Each has its own preset folder: picking one
++/// loads the first preset there, and SELECT then steps through that folder's presets as usual. A new instrument is one
++/// entry here (and its name string) plus its preset folder on the card.
++namespace deluge::synth_instruments {
++
++struct SynthInstrument {
++	l10n::String name;
++	char const* folder;
++	/// What an empty folder gives: a blank synth in this mode (DX7 on osc 1 if dx)
++	SynthMode mode;
++	bool dx;
++};
++
++inline constexpr std::array<SynthInstrument, 3> kSynthInstruments{{
++    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "SYNTHS", SynthMode::SUBTRACTIVE, false},
++    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DLFM, "SYNTHS/DLFM", SynthMode::FM, false},
++    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DX7, "SYNTHS/DX7", SynthMode::SUBTRACTIVE, true},
++}};
++
++} // namespace deluge::synth_instruments
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 index fd80ba04f..d3f78c95f 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
@@ -16601,7 +17335,7 @@ index 2791a5cac..7c8e181cb 100644
 +	bool hasStartOffset{false};       // Start offset shifted the playback window (Voices only)
  };
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
-index c127568bc..67ab72502 100644
+index c127568bc..7ee5b78f7 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
 +++ b/src/deluge/model/settings/runtime_feature_settings.cpp
 @@ -75,6 +75,28 @@ static void SetupSyncScalingActionSetting(RuntimeFeatureSetting& setting, deluge
@@ -16633,7 +17367,7 @@ index c127568bc..67ab72502 100644
  	};
  }
  
-@@ -181,6 +203,15 @@ void RuntimeFeatureSettings::init() {
+@@ -181,6 +203,20 @@ void RuntimeFeatureSettings::init() {
  	                  STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "enableGridViewLoopPads",
  	                  RuntimeFeatureStateToggle::Off);
  
@@ -16646,11 +17380,16 @@ index c127568bc..67ab72502 100644
 +	SetupOnOffSetting(settings[RuntimeFeatureSettingType::EndlessRecord], STRING_FOR_COMMUNITY_FEATURE_ENDLESS_RECORD,
 +	                  "endlessRecord", RuntimeFeatureStateToggle::Off);
 +
++	// PadGuides: drum synth pads glow while SHIFT is held, drum synth gold knobs follow the standard drum layout,
++	// holding a gold knob button blinks its params' pads
++	SetupOnOffSetting(settings[RuntimeFeatureSettingType::PadGuides], STRING_FOR_COMMUNITY_FEATURE_PAD_GUIDES,
++	                  "padGuides", RuntimeFeatureStateToggle::On);
++
  	// AlternativeTapTempoBehaviour
  	SetupOnOffSetting(settings[RuntimeFeatureSettingType::AlternativeTapTempoBehaviour],
  	                  STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "alternativeTapTempoBehaviour",
 diff --git a/src/deluge/model/settings/runtime_feature_settings.h b/src/deluge/model/settings/runtime_feature_settings.h
-index 55e809efa..356d6ffe3 100644
+index 55e809efa..9fcf5edc7 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.h
 +++ b/src/deluge/model/settings/runtime_feature_settings.h
 @@ -37,7 +37,10 @@ class DevSysexSetting;
@@ -16665,12 +17404,13 @@ index 55e809efa..356d6ffe3 100644
  
  enum RuntimeFeatureStateEmulatedDisplay : uint32_t { Hardware = 0, Toggle = 1, OnBoot = 2 };
  
-@@ -68,6 +71,8 @@ enum RuntimeFeatureSettingType : uint32_t {
+@@ -68,6 +71,9 @@ enum RuntimeFeatureSettingType : uint32_t {
  	ShowBatteryLevel,
  	RoundedCorners,
  	ShortcutOverlay,
 +	TapTempoAction,
 +	EndlessRecord,
++	PadGuides,
  	MaxElement // Keep as boundary
  };
  
@@ -19467,7 +20207,7 @@ index 000000000..031dfcaa1
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce447..1b17fb07b 100644
+index 8dd1ce447..dfa418945 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -19618,7 +20358,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +440,214 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +440,239 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -19641,8 +20381,8 @@ index 8dd1ce447..1b17fb07b 100644
 +		return;
 +	}
 +
-+	// The slots on mod rate / mod depth (the sweep: how fast, how deep, as the Cycles' Sweep and Contour) and Custom 2
-+	// / Custom 3 (voicing)
++	// The slots on mod rate / mod depth (the sweep: how fast, how deep) and Custom 2 / Custom 3 (voicing), as v1.11
++	// laid them out. Kept when Pad Guides is off.
 +	struct Layout {
 +		int32_t rate, depth, custom2, custom3;
 +	};
@@ -19681,10 +20421,35 @@ index 8dd1ce447..1b17fb07b 100644
 +		break;
 +	}
 +
++	// Pad Guides: the knobs follow the standard drum layout. Mod rate / depth are the pitch envelope's speed / amount
++	// (Contour / Sweep on the Cyc engines), Custom 2 / 3 the characters. An engine without a pitch envelope leaves mod
++	// rate / depth as on any sound.
++	if (runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides)) {
++		using deluge::dsp::drum_synth::sharedControlSlot;
++		using deluge::dsp::drum_synth::StandardSlot;
++		const int32_t speed = sharedControlSlot(engine, StandardSlot::PITCH_ENV_SPEED);
++		const int32_t amount = sharedControlSlot(engine, StandardSlot::PITCH_ENV_AMOUNT);
++		if (speed >= 0 && amount >= 0) {
++			layout.rate = speed;
++			layout.depth = amount;
++		}
++		else {
++			layout.rate = layout.depth = -1;
++		}
++		layout.custom2 = sharedControlSlot(engine, StandardSlot::CHARACTER_A);
++		layout.custom3 = sharedControlSlot(engine, StandardSlot::CHARACTER_B);
++	}
++
 +	modKnobs[2][1].paramDescriptor.setToHaveParamOnly(kDrumControlParams[deluge::dsp::drum_synth::driveSlot(engine)]);
 +	modKnobs[2][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[deluge::dsp::drum_synth::decaySlot(engine)]);
-+	modKnobs[5][1].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.rate]);
-+	modKnobs[5][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.depth]);
++	if (layout.rate >= 0) {
++		modKnobs[5][1].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.rate]);
++		modKnobs[5][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.depth]);
++	}
++	else {
++		modKnobs[5][1].paramDescriptor.setToHaveParamOnly(params::GLOBAL_LFO_FREQ_1);
++		modKnobs[5][0].paramDescriptor.setToHaveParamAndSource(params::LOCAL_PITCH_ADJUST, PatchSource::LFO_GLOBAL_1);
++	}
 +	modKnobs[7][1].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.custom2]);
 +	modKnobs[7][0].paramDescriptor.setToHaveParamOnly(kDrumControlParams[layout.custom3]);
 +	// Custom 1 tunes the drum. Set here, not only in a new kit, as kit files saved without a knob layout load with a
@@ -19833,7 +20598,7 @@ index 8dd1ce447..1b17fb07b 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +758,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +783,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -19843,7 +20608,7 @@ index 8dd1ce447..1b17fb07b 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1575,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1600,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -19855,7 +20620,7 @@ index 8dd1ce447..1b17fb07b 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1347,6 +1678,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1703,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -19869,7 +20634,7 @@ index 8dd1ce447..1b17fb07b 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1852,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1877,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -19879,7 +20644,7 @@ index 8dd1ce447..1b17fb07b 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +1985,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2010,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -19898,7 +20663,7 @@ index 8dd1ce447..1b17fb07b 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1865,6 +2214,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2239,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -19915,7 +20680,7 @@ index 8dd1ce447..1b17fb07b 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2286,11 @@ justSwitchOff:
+@@ -1927,6 +2311,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -19927,7 +20692,7 @@ index 8dd1ce447..1b17fb07b 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2540,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2565,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -19936,7 +20701,7 @@ index 8dd1ce447..1b17fb07b 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2749,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2774,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -19949,7 +20714,7 @@ index 8dd1ce447..1b17fb07b 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2496,18 +2866,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2891,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -19980,7 +20745,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2896,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2921,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -20000,7 +20765,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2924,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2949,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -20012,7 +20777,7 @@ index 8dd1ce447..1b17fb07b 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +2992,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +3017,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -20021,7 +20786,7 @@ index 8dd1ce447..1b17fb07b 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3278,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3303,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -20057,7 +20822,7 @@ index 8dd1ce447..1b17fb07b 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3384,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3409,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -20073,7 +20838,7 @@ index 8dd1ce447..1b17fb07b 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3461,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3486,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -20094,7 +20859,7 @@ index 8dd1ce447..1b17fb07b 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3519,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3544,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -20187,7 +20952,7 @@ index 8dd1ce447..1b17fb07b 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3718,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3743,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -20196,7 +20961,7 @@ index 8dd1ce447..1b17fb07b 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3911,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3936,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -20218,7 +20983,7 @@ index 8dd1ce447..1b17fb07b 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3945,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3970,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -20229,7 +20994,7 @@ index 8dd1ce447..1b17fb07b 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4159,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4184,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -20239,7 +21004,7 @@ index 8dd1ce447..1b17fb07b 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4286,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4311,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -20251,7 +21016,7 @@ index 8dd1ce447..1b17fb07b 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4380,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4405,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -20266,7 +21031,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4570,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4595,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -20287,7 +21052,7 @@ index 8dd1ce447..1b17fb07b 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4663,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4688,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -20299,7 +21064,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4682,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4707,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -20309,7 +21074,7 @@ index 8dd1ce447..1b17fb07b 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4733,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4758,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -20319,7 +21084,7 @@ index 8dd1ce447..1b17fb07b 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +4995,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +5020,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -20342,7 +21107,7 @@ index 8dd1ce447..1b17fb07b 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5518,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5543,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -21660,10 +22425,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..39d08ea44
+index 000000000..217884617
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,379 @@
+@@ -0,0 +1,341 @@
 +---
 +title: Drum Synth
 +---
@@ -21816,112 +22581,66 @@ index 000000000..39d08ea44
 +
 +## Shortcut pads
 +
-+All drum engines share one layout, read the way the grid is printed. Only the four oscillator and FM columns change meaning on a drum synth row; the envelope, filter, FX and master pads keep their usual jobs, and so does any pad an engine doesn't use.
++Every drum engine has the same settings on the same pads, in the **MOD1** and **MOD2** columns (changed in v1.16). Hold **SHIFT** and press a pad to open its setting. The same pad does the same job on every engine: decay on one engine's decay pad is decay on all of them. An engine without a setting leaves its pad empty.
 +
-+- **Columns.** OSC1 is the main voice. OSC2 is the second layer: the snare noise, a rattle, snares, an overtone, a clap tail, or the first operator. MOD1 is the modulator: FM depth and ratio. MOD2 is the pitch sweep, or the second modulator (Cymbal / hat) or third operator (DXIA) on engines without one.
-+- **Rows.** LEVEL is an amount, TRANSPOSE a tuning or ratio, TYPE a choice, PULSE WIDTH a shape or the wave, RETRIGGER the attack, FEEDBACK drive, resonance or curve, and WAVE INDEX a decay. OSC1 NOISE is a noise amount.
-+- **Common pads.** OSC1 WAVE INDEX is every engine's decay. OSC1 FEEDBACK is the drive switch (**Punch**) on the engines that have one, with the drive amount on OSC1 RETRIGGER; the LXR voices have no switch, so their OSC1 FEEDBACK is the drive amount. The **MOD FX RATE / DEPTH** pads are the sweep's speed and depth on every engine.
++- **MOD1, from the bottom up:** Decay, Drive, Pitch, Pitch envelope amount, Pitch envelope speed, Character A, Character B, Extra 1.
++- **MOD2, from the bottom up:** Extras 2 to 9, each engine's own settings.
++- **OSC1 TYPE** opens SYNTH MODE, where the engine is chosen.
++- Every other pad keeps its usual Deluge job: OSC1 LEVEL and TRANSPOSE, OSC2 (a real second oscillator on a drum row), the envelopes, filters, FX and the mod FX pads. The few whose Deluge setting a drum engine uses for its own controls (osc 1 pulse width, both oscillators' feedback and wave index) do nothing on a drum row.
++- **Pitch** is the oscillator's transpose, the same pad as OSC1 TRANSPOSE.
++- Each pair of gold knobs sits in one column: Drive / Decay, Pitch envelope speed / amount and Character A / B (see Gold knobs below).
 +
-+| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA |
-+|---|---|---|---|---|---|
-+| OSC1 TYPE | SYNTH MODE | SYNTH MODE | SYNTH MODE | SYNTH MODE | SYNTH MODE |
-+| OSC1 PULSE WIDTH | Osc wave | Osc wave | Osc wave | | Shape |
-+| OSC1 RETRIGGER | Transient type | Transient type | Transient type | Drive | Drive |
-+| OSC1 FEEDBACK | Drive | Drive | Drive | Punch | Punch |
-+| OSC1 WAVE INDEX | Engine decay | Engine decay | Engine decay | Engine decay | Engine decay |
-+| OSC1 NOISE | | | | | Strike |
-+| OSC2 LEVEL | | Noise mix | | Blendex 1 | |
-+| OSC2 TRANSPOSE | | Noise rate | | Freq 1 | |
-+| OSC2 TYPE | Osc mode (FM / mix) | Noise filter | | | |
-+| OSC2 PULSE WIDTH | | Noise cutoff | | | |
-+| OSC2 RETRIGGER | Transient level | Transient level | Transient level | | |
-+| OSC2 FEEDBACK | | Noise resonance | | | |
-+| MOD1 LEVEL | FM amount | | FM amount | Blendex 2 | Alloy |
-+| MOD1 TRANSPOSE | Mod pitch | | Mod pitch | Freq 2 | Weight |
-+| MOD1 TYPE | Mod wave | | Mod wave | | |
-+| MOD1 PULSE WIDTH | Mod fine | | Mod fine | | |
-+| MOD1 RETRIGGER | Transient speed | Transient speed | Transient speed | | |
-+| MOD2 LEVEL | Pitch amount | Pitch amount | FM 2 amount | Blendex 3 | |
-+| MOD2 TRANSPOSE | | | Mod 2 pitch | Freq 3 | |
-+| MOD2 TYPE | | | Mod 2 wave | | |
-+| MOD2 PULSE WIDTH | | | Mod 2 fine | | |
-+| MOD2 FEEDBACK | Pitch curve | Pitch curve | | | |
-+| MOD2 WAVE INDEX | Pitch decay | Pitch decay | | | |
-+| MOD FX RATE | Pitch decay | Pitch decay | Transient speed | Blendex 2 | Shape |
-+| MOD FX DEPTH | Pitch amount | Pitch amount | Transient level | Blendex 3 | Strike |
++| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA | Cyc engines | GIN |
++|---|---|---|---|---|---|---|---|
++| MOD1 row 1 (bottom) | Decay | Decay | Decay | Engine decay | Engine decay | Amp decay | Decay (both) |
++| MOD1 row 2 | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
++| MOD1 row 3 | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch |
++| MOD1 row 4 | Pitch amount | Pitch amount | | | | Sweep | Mod amount |
++| MOD1 row 5 | Pitch decay | Pitch decay | | | | Contour | Mod rate |
++| MOD1 row 6 | FM amount | Noise mix | FM amount | Blendex 1 | Weight | Color | Mix |
++| MOD1 row 7 | Mod pitch | Noise cutoff | FM 2 amount | Freq 1 | Alloy | Shape | Noise freq |
++| MOD1 row 8 (top) | Pitch curve | Pitch curve | Mod 2 pitch | Punch | Punch | Punch | Mod mode |
++| MOD2 row 1 (bottom) | Osc wave | Osc wave | Osc wave | Blendex 2 | Shape | | Tone wave |
++| MOD2 row 2 | Osc mode (FM / mix) | Noise rate | Mod wave | Freq 2 | Strike | | Tone attack |
++| MOD2 row 3 | Mod wave | Noise filter | Mod pitch | Blendex 3 | | | Tone decay |
++| MOD2 row 4 | Mod fine | Noise resonance | Mod fine | Freq 3 | | | Noise filter |
++| MOD2 row 5 | Transient | Transient | Transient | | | | Noise reso |
++| MOD2 row 6 | Transient level | Transient level | Transient level | | | | Noise env |
++| MOD2 row 7 | Transient speed | Transient speed | Transient speed | | | | Noise attack |
++| MOD2 row 8 (top) | | | Mod 2 wave | | | | Noise decay |
 +
-+| Pad | Cyc Kik | Cyc Snr | Cyc Metal | Cyc Perc | Cyc Tone | Cyc Chord | Vtg Snr | clap eng |
-+|---|---|---|---|---|---|---|---|---|
-+| OSC1 PULSE WIDTH | Shape | Shape (rattle) | | | | Sweep (wave) | | |
-+| OSC1 RETRIGGER | Drive | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
-+| OSC1 FEEDBACK | Punch | Punch | Punch | Punch | Punch | Punch | Punch | Punch |
-+| OSC1 WAVE INDEX | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay | Amp decay |
-+| OSC2 LEVEL | | | | Color (overtone) | | | Freq complex | Balance |
-+| OSC2 FEEDBACK | | | | | | | | Body char |
-+| OSC2 TRANSPOSE | | Color (rattle tune) | | | | Color (voicing) | | Spacing crunch |
-+| OSC2 TYPE | | | | | | Shape (chord) | | |
-+| OSC2 PULSE WIDTH | | Shape (rattle) | | | | | | |
-+| OSC2 RETRIGGER | Contour (knock) | | | | | | | |
-+| OSC2 WAVE INDEX | | Contour (noise decay) | | Contour (overtone decay) | | | | Body envelope |
-+| MOD1 LEVEL | | | Shape (density) | Shape (modulation) | Shape (FM index) | | Mod envelope | |
-+| MOD1 TRANSPOSE | | | Color (ratio spread) | | Color (FM ratio) | | Inharm | |
-+| MOD1 FEEDBACK | Color (harmonic drive) | | | | | | | |
-+| MOD1 RETRIGGER | | | | | Sweep (index burst) | | | |
-+| MOD1 WAVE INDEX | | | Contour (top end decay) | | Contour (index decay) | Contour (wave decay) | | |
-+| MOD2 LEVEL | Sweep | Sweep | Sweep | Sweep | | | Pitch sweep | |
-+| MOD FX RATE | Sweep | Sweep | Sweep | Sweep | Sweep | Sweep | Pitch sweep | Spacing crunch |
-+| MOD FX DEPTH | Contour | Contour | Contour | Contour | Contour | Contour | Mod envelope | Body envelope |
++On the Cyc engines the names follow each machine: Sweep / Contour are Pitch sweep / Mod envelope on Vtg Snr and Spacing crunch / Body envelope on clap eng, and Color / Shape are Inharm / Freq complex and Body char / Balance. Sweep and Contour sit on the pitch envelope's pads on every Cyc engine, though on Cyc Tone, Cyc Chord and clap eng they shape something else (see [Cyc engines](#cyc-engines)).
 +
-+| Pad | GIN |
-+|---|---|
-+| OSC1 LEVEL | GIN level |
-+| OSC1 PULSE WIDTH | Tone wave |
-+| OSC1 RETRIGGER | Tone attack |
-+| OSC1 FEEDBACK | Drive |
-+| OSC1 WAVE INDEX | Decay (both decays) |
-+| OSC1 NOISE | Mix |
-+| OSC2 LEVEL | Mix |
-+| OSC2 TRANSPOSE | Noise freq |
-+| OSC2 TYPE | Noise filter |
-+| OSC2 PULSE WIDTH | Noise env |
-+| OSC2 RETRIGGER | Noise attack |
-+| OSC2 FEEDBACK | Noise reso |
-+| OSC2 WAVE INDEX | Noise decay |
-+| MOD1 LEVEL | EQ gain |
-+| MOD1 TRANSPOSE | EQ freq |
-+| MOD1 WAVE INDEX | Tone decay |
-+| MOD2 LEVEL | Mod amount |
-+| MOD2 TYPE | Mod mode |
-+| MOD2 WAVE INDEX | Mod rate |
-+| MOD FX RATE | Mod rate |
-+| MOD FX DEPTH | Mod amount |
++Settings with no pad are in the sound menu's **Drum synth** item: Mod 2 fine on the Cymbal / hat, and GIN's EQ freq, EQ gain and level.
 +
 +Every engine's continuous settings are Deluge parameters, so they can be parameter locked, automated, MIDI learned, put on gold knobs and modulated from the mod matrix. They run 0-127, as on the LXR and the Cycles. The choices (waves, transient type, noise filter, osc mode, Punch) are row settings. The full list is in the sound menu's **Drum synth** item.
 +
 +**Drive and decay.** Every engine has both, on the same pads and gold knobs. DXIA and DIIA use their own. On the LXR voices drive is a soft clipper that gets louder as it goes up and hard clips at the top, and decay is the voice's own fade (127 holds). Both start neutral, so older kits sound the same. The Cyc engines start with drive at 100.
 +
-+**Gold knobs.** Every drum synth row (and the 303 synth mode) uses the same layout, after the Cycles' knobs:
++**Gold knobs.** Every drum synth row (and the 303 synth mode) uses the same layout, after the Cycles' knobs. With **Pad Guides** on (see below), the drum engines' knobs follow the shortcut pads' shared settings (changed in v1.16):
 +
 +| Gold knobs | Every drum engine |
 +|---|---|
 +| Attack / release | Drive / Decay (the envelope is still in its menu) |
-+| Mod rate / mod depth | The sweep: how fast / how deep |
++| Mod rate / mod depth | Pitch envelope speed / amount |
 +| Custom 1 | Tune |
-+| Custom 2 / Custom 3 | Two voicing settings |
++| Custom 2 / Custom 3 | Character A / Character B |
 +
 +| Engine | Mod rate | Mod depth | Custom 2 | Custom 3 |
 +|---|---|---|---|---|
 +| Kick / tom | Pitch decay | Pitch amount | FM amount | Mod pitch |
 +| Snare | Pitch decay | Pitch amount | Noise mix | Noise cutoff |
-+| Cymbal / hat | Transient speed | Transient level | FM amount | FM 2 amount |
-+| DXIA | Blendex 2 | Blendex 3 | Blendex 1 | Freq 1 |
-+| DIIA | Shape | Strike | Weight | Alloy |
-+| Cyc engines | Sweep (Pitch sweep, Spacing crunch) | Contour (Mod envelope, Body envelope) | Color (Inharm, Body char) | Shape (Freq complex, Balance) |
++| Cymbal / hat | LFO rate | Vibrato | FM amount | FM 2 amount |
++| DXIA | LFO rate | Vibrato | Blendex 1 | Freq 1 |
++| DIIA | LFO rate | Vibrato | Weight | Alloy |
++| Cyc engines | Contour (Mod envelope, Body envelope) | Sweep (Pitch sweep, Spacing crunch) | Color (Inharm, Body char) | Shape (Freq complex, Balance) |
 +| GIN | Mod rate | Mod amount | Mix | Noise freq |
++
++The Cymbal / hat, DXIA and DIIA have no pitch envelope, so their mod rate / depth knobs keep the Deluge's usual LFO rate and vibrato. On the Cyc engines mod depth is now Sweep and mod rate Contour (before v1.16 it was the other way round), and Drive is the engine's drive, not Punch: 0 is clean, 100 is where it starts, 127 is full saturation. With Pad Guides off, the drum knobs keep the v1.11 layout (Cymbal / hat: transient speed / level; DXIA: Blendex 2 / 3; DIIA: Shape / Strike; Cyc: Sweep / Contour on rate / depth). The knobs are set whenever a sound loads or changes engine, so after switching Pad Guides, reload the song.
 +
 +**303.** A synth in the 303 synth mode follows the same layout: attack / release = **Drive / Amp decay**, mod rate / mod depth = the filter envelope's **Decay / Env mod**, Custom 1's portamento knob = **Slide time**, Custom 2 / Custom 3 = **Accent / Saw-square**. Cutoff and resonance stay on the filter knobs. Its pads match too: OSC1 RETRIGGER accent, PULSE WIDTH saw-square (a morph), FEEDBACK drive, WAVE INDEX amp decay, MOD FX RATE / DEPTH decay / env mod. Drive is the drum engines' soft clipper (0 is clean); amp decay runs from 60 ms through Open303's own 1230 ms at the centre to holding at the top. 303s saved before keep their sound.
 +
-+The Cymbal / hat and DXIA have no pitch sweep, so their mod rate / depth pair goes to the closest thing they have. Custom 2 / Custom 3 never fall back to the Deluge's decimation and bitcrush on a drum synth row. The other gold knobs keep their usual Deluge jobs. Hold a step and turn a knob to parameter lock it.
++Custom 2 / Custom 3 never fall back to the Deluge's decimation and bitcrush on a drum synth row. The other gold knobs keep their usual Deluge jobs. Hold a step and turn a knob to parameter lock it.
 +
 +**Snappy decay.** On any drum synth row, **Snappy decay** (in the sound menu, under **Drum synth**) makes the amp envelope's decay and release follow the square of the Deluge's usual curve: at every point it has dropped twice as many dB, so the same decay setting sounds about half as long, with a tighter body. It starts off on new drum synth rows (each engine's own decay does the shaping), is saved with the row, and only changes envelope 1.
 +
@@ -21929,7 +22648,15 @@ index 000000000..39d08ea44
 +
 +The LXR settings share parameters between engines: each voice's settings are stored with the row and come back when you switch back. **Modulation.** Any mod source can be patched to any of the settings: hold the source's pad with the setting open, as for any Deluge parameter. Each voice gets its own modulation, so velocity, random or an envelope can change every hit. A cable at 50 with its source at full moves a setting 64 steps, from the middle to either end.
 +
-+**Automation view.** On a drum synth row the OSC1, OSC2, MOD1 and MOD2 columns follow the drum synth's own pads, so each setting is where its shortcut is. Pads holding a choice are blank. The mod FX pads stay mod FX rate and depth (every sweep setting also has a pad in those columns).
++**Automation view.** On a drum synth row the MOD1 and MOD2 columns follow the drum synth's own pads, so each setting is where its shortcut is. Pads holding a choice or the pitch are blank, and so are the drum controls' usual Deluge pads elsewhere.
++
++## Pad Guides
++
++**Pad Guides** (**GUID**) is a Community Features setting, on by default (new in v1.16).
++
++- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** tints the MOD1 / MOD2 pads that have a setting soft pink, blended over the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
++- **Gold knobs.** Drum synth rows use the layout above.
++- **Mod button pads.** Holding any gold knob button still shows its two settings' names, and now also flashes their shortcut pads: red for the top knob's, yellow for the bottom's. This works on every sound type, and on kit, audio clip and song FX. A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
 +
 +## DXIA and DIIA
 +
@@ -21966,7 +22693,7 @@ index 000000000..39d08ea44
 +
 +The Shape knob on Cyc Chord runs 0 to 127 like the others, stepping through the 38 chords in the Cycles' order: root and fifth, unison, minor, major, sus2, sus4, m7, 7, m(maj7), maj7, 7sus4, dim7, m(add9), add9, m6, 6, and on through the altered chords to fourths and fifths.
 +
-+**Punch** squares up and lifts the attack and stretches the decay a little.
++**Punch** (MOD1 top pad) squares up and lifts the attack and stretches the decay a little.
 +
 +**Level and defaults.** Each engine is levelled to start close to full scale, then driven: **Drive** starts at 100, a soft clipper after the amp decay that gets louder as it goes up, pushing into hard clipping at 127, and cleaning up as the sound dies away. The amp decay starts longer than the original machines' (for example 50 on Cyc Kik, 60 on Cyc Snr, 80 on Cyc Chord).
 +
@@ -22006,7 +22733,7 @@ index 000000000..39d08ea44
 +
 +Cycle through them with **SHIFT + KIT** on a GIN kit (see [Kit presets](#kit-presets)), or put any one sound on a row with **GIN sound** in the Drum synth menu.
 +
-+**Settings.** The gold knobs follow the shared layout: attack / release = **Drive / Decay**, mod rate / depth = the pitch modulation's **Mod rate / Mod amount** (64 is none; above 64 the sweep starts high and falls, below it starts low and rises), Custom 1 = tune, Custom 2 / 3 = **Mix / Noise freq**, as on GIN's own front panel. **Decay** moves the tone and noise decays together: 64 leaves them as the sound has them, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay**, **Noise decay**, both attacks, **Noise reso**, the waves and modes, the EQ and **GIN level** are in the Drum synth menu, the pad editor and on the pads. The continuous ones are parameters (lockable, automatable, modulatable), EQ freq included from v1.14; the waves, modes, filter type, EQ gain and level are row settings.
++**Settings.** The gold knobs follow the shared layout: attack / release = **Drive / Decay**, mod rate / depth = the pitch modulation's **Mod rate / Mod amount** (64 is none; above 64 the sweep starts high and falls, below it starts low and rises), Custom 1 = tune, Custom 2 / 3 = **Mix / Noise freq**, as on GIN's own front panel. **Decay** moves the tone and noise decays together: 64 leaves them as the sound has them, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay**, **Noise decay**, both attacks, **Noise reso**, the waves and modes, the EQ and **GIN level** are in the Drum synth menu and the pad editor, and all but the EQ and level on the shortcut pads. The continuous ones are parameters (lockable, automatable, modulatable), EQ freq included from v1.14; the waves, modes, filter type, EQ gain and level are row settings.
 +
 +**Differences from GIN on the OP-1.**
 +- The pitch is the note (and row transpose), not a setting: the kits tune each row to its sound.
@@ -22043,3 +22770,30 @@ index 000000000..39d08ea44
 +GIN (gin.cpp) is derived from the MIT licensed GIN synthesis core by SquareWave Studio and libpo32 by Eric Lewis; their copyright and licence notices are kept in gin.h, and the Deluge port is GPL-3.0-or-later. The kits (gin_kits.cpp) are original. Not affiliated with or endorsed by SquareWave Studio, Teenage Engineering or Sonic Charge; OP-1 and PO-32 are trademarks of Teenage Engineering. Elektron, Model:Cycles and Syntakt are trademarks of Elektron Music Machines; these engines are not affiliated with or endorsed by Elektron.
 +
 +The drum synth code is licensed GPL-3.0-only, with the additional terms in the LXR firmware's NOTICE.md: it is marked as a modified version, and no rights to the Erica Synths or LXR trademarks are granted.
+diff --git a/website/src/content/docs/features/synth_instruments.mdx b/website/src/content/docs/features/synth_instruments.mdx
+new file mode 100644
+index 000000000..dd0dad4a4
+--- /dev/null
++++ b/website/src/content/docs/features/synth_instruments.mdx
+@@ -0,0 +1,21 @@
++---
++title: Synth Instruments
++---
++
++On a synth track, **SHIFT + SYNTH** picks which synth instrument the track plays, the way SHIFT + KIT picks a kit type (new in v1.16). Each instrument has its own preset folder.
++
++| Instrument | 7-segment | Preset folder | An empty folder gives |
++|---|---|---|---|
++| Deluge | DELU | `SYNTHS` (its own files, not the folders inside) | A blank subtractive synth |
++| DLFM | DLFM | `SYNTHS/DLFM` | A blank FM synth |
++| DX7 | DX7 | `SYNTHS/DX7` | A blank DX7 synth (only listed with the DX7 engine on in Community Features) |
++
++1. On a synth track, press **SHIFT + SYNTH**. The **Instrument** (**INST**) list opens on the instrument the track plays.
++2. Press **SHIFT + SYNTH** again, or turn **SELECT**, to move to the next instrument.
++3. Press **SELECT** or **SYNTH** to load that instrument's first preset. Turning **SELECT** in the clip then steps through that folder's presets as usual. **BACK** closes the list and changes nothing.
++
++- A missing folder is made the first time you pick its instrument, ready to save into. A blank synth made this way saves into its instrument's folder.
++- Presets already playing on another track are skipped. If every preset in the folder is in use, the screen shows **No free presets** (**NONE**).
++- On kit, MIDI and CV tracks, and with a menu open, **SHIFT + SYNTH** still makes a new blank synth. **MOD7 + SYNTH** still makes a new DX7 synth.
++- Ringmod, the 303 and the drum synth engines aren't in the list: pick those in **SYNTH MODE**.
++- The list is one table in the source (`model/instrument/synth_instruments.h`): a new instrument is one entry, its name, and its preset folder.
