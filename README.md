@@ -1,16 +1,16 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.16
+# BRIBELUGE: Deluge Bribes FW v1.16.1
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
 1. **[Stumble swing](#1-stumble-swing):** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob. New songs start on Stumble, SQEZ style (new in v1.8).
 2. **[Kit pattern mode](#2-kit-pattern-mode):** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
 3. **[Autofill](#3-autofill):** TAP plays drum fills over your beat, with five fill types to pick from.
-4. **[Mono sequencer](#4-mono-sequencer):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row.
+4. **[Mono sequencer](#4-mono-sequencer):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row. From v1.16.1 a mono clip always plays in scale mode.
 5. **[Endless Record](#5-endless-record):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
 6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine.
-7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound.
+7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound. New in v1.16.1: the drive can be learned to a gold knob, automated and MIDI learned.
 8. **[Sample start offset](#8-sample-start-offset):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
@@ -26,9 +26,9 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.16.bin`](firmware/deluge-bribes-v1.16.bin)
+[`firmware/deluge-bribes-v1.16.1.bin`](firmware/deluge-bribes-v1.16.1.bin)
 
-SHA-256: `21234c4a90eeddf59b2793ef89c1ff2d8962358000fb0ad801e31437190c8d0e`
+SHA-256: `71a964f11f99b0a97d48e97547980159322fadea2b85d4bc9a7ba6eb431c5a80`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -36,7 +36,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.16.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.16.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -77,6 +77,7 @@ To go back, install an official firmware file the same way.
 | **SHIFT + SYNTH on a synth track** | Pick the instrument: **Deluge**, **DLFM** or **DX7**. SHIFT + SYNTH again moves on, SELECT loads its first preset (Synth instruments) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
+| **SHIFT + SATURATION pad, then hold LEARN and turn a gold knob** | Put saturation drive on that gold knob, in the context its button has selected (Saturation, new in v1.16.1) |
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 | **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
@@ -234,6 +235,7 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 - **The grid stays put while you edit:** adding and removing notes never moves the 8 rows, so a note placed on the bottom row stays on the bottom row and plays in that octave (fixed in v1.15.1: a lone note on the root row used to jump the grid down an octave).
 - **Ratchets:** hold a note, then press and turn the up/down knob. This is the Deluge's normal note repeat.
 - **Holding a note** shows and sounds the note it actually plays, octave included.
+- **Always in scale (new in v1.16.1):** a mono clip's 8 rows are scale steps, so the clip always plays in scale mode. Turning Mono Seq on, or making the synth a 303, switches SCALE on (the song's scale is kept, or fitted to your notes), and songs saved with scale off come back in scale. Pressing SCALE on a mono clip shows **MSEQ** and leaves it on. Scales without seven notes and MIDI transpose clips are left as they are.
 - **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
 
 ### Slide
@@ -516,7 +518,8 @@ Hold **Affect Entire** while turning either setting in a kit row's menu to set e
 ### Good to know
 
 - Songs and presets made before v1.5 load with **Classic**, so they sound the same. A sound that had no saturation starts on **Tape** when you turn it up.
-- Saved files also store the old saturation amount, so other firmware still plays them, with the original curve.
+- **Gold knobs, automation and MIDI (new in v1.16.1):** the drive is now a parameter. Learn it to a gold knob on any synth or kit row (open it with **SHIFT + SATURATION pad**, then hold **LEARN** and turn the gold knob, with its button's context selected), draw it in automation view on the SATURATION pad, MIDI learn it, or hold a step and turn to parameter lock it. Kit-level and audio clip gold knobs keep their fixed layout. On drum synth rows, the attack / release, mod rate / depth, CUSTOM 1 and CUSTOM 2 / 3 knobs are set again whenever the row loads, so learn saturation onto another knob there.
+- Songs and presets saved before v1.16.1 keep their drive. From v1.16.1 files store the drive as a parameter only, so other firmware loads them without saturation.
 - Saturation sits after the filters and the amp envelope, as before, so the sound's volume and velocity change how hard it drives.
 - The curves are antialiased, so high notes alias less than with the original, except Fold, which aliases when pushed hard on bright sounds, as digital folders do.
 
