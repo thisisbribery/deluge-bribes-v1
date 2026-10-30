@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.16.2
+# BRIBELUGE: Deluge Bribes FW v1.16.3
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -26,9 +26,9 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 ## Download
 
-[`firmware/deluge-bribes-v1.16.2.bin`](firmware/deluge-bribes-v1.16.2.bin)
+[`firmware/deluge-bribes-v1.16.3.bin`](firmware/deluge-bribes-v1.16.3.bin)
 
-SHA-256: `0f5eadfa22bf625aa5355a3ef869e5667e9fbdd7ef40add817a9bf40fb13de14`
+SHA-256: `2fdebbe7c2fa0c44b776dcf81bdb037dfa935ba2b44695c3fe9e8adb6d463f3a`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -36,7 +36,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.16.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.16.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -597,6 +597,7 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 - Transpose, Fine tune and the arpeggiator all work. It's mono, so it plays one note at a time.
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
 - In automation view the 303's controls sit on the FM pads they're saved on, so OSC1 FEEDBACK there is Accent and MOD2 FEEDBACK is Drive, unlike the shortcut pads.
+- **Fixed in v1.16.3:** with a 303 sounding, a busy song that ran out of CPU could scramble memory and freeze (any error code, often after notes moved around on their own). The Deluge now cuts only real voices when it's overloaded. The 303 itself is never cut, so it still uses CPU that the other voices compete for.
 
 [Back to top](#readme-top)
 

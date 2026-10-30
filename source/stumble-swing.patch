@@ -20310,7 +20310,7 @@ index 98ff45ddd..1943aaffa 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 100ddc92c..bdec535e4 100644
+index 100ddc92c..b225aa950 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -48,6 +48,7 @@
@@ -20334,7 +20334,19 @@ index 100ddc92c..bdec535e4 100644
  
  SampleRecorder* firstRecorder = nullptr;
  
-@@ -792,7 +795,9 @@ bool calledFromScheduler = false;
+@@ -285,8 +288,10 @@ int32_t numAudioLogItems = 0;
+ /// same render. Will stop an audio clip if there are no voices to kill
+ void killOneVoice(size_t num_samples) {
+ 	logAction("kill");
++	// Only sounds that have voices: a sounding 303 has active voices but none in its list, and taking the lowest
++	// priority voice from an empty list reads past its end and writes through garbage
+ 	auto lowest_priority_voices = sounds //<
+-	                              | std::views::filter(&Sound::hasActiveVoices)
++	                              | std::views::filter([](const Sound* sound) { return !sound->voices().empty(); })
+ 	                              | std::views::transform(&Sound::getLowestPriorityVoice);
+ 	auto it = std::ranges::max_element(lowest_priority_voices, [](const auto& a, const auto& b) {
+ 		return a->getPriorityRating() < b->getPriorityRating();
+@@ -792,7 +797,9 @@ bool calledFromScheduler = false;
  
  	numSamplesLastTime = numSamples;
  
