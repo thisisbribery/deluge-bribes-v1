@@ -248,10 +248,10 @@ index 66fd217ba..2bcac1cb0 100644
  };
 diff --git a/src/deluge/dsp/drum_synth/cyc.cpp b/src/deluge/dsp/drum_synth/cyc.cpp
 new file mode 100644
-index 000000000..15bee8807
+index 000000000..6bcd9ca8e
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/cyc.cpp
-@@ -0,0 +1,940 @@
+@@ -0,0 +1,1330 @@
 +/*
 + * Cyc engines. See cyc.h for what these are.
 + *
@@ -262,6 +262,9 @@ index 000000000..15bee8807
 +#include "dsp/drum_synth/cyc.h"
 +#include <algorithm>
 +#include <cmath>
++#if defined(__ARM_NEON)
++#include <arm_neon.h>
++#endif
 +
 +namespace deluge::dsp::drum_synth::cyc {
 +
@@ -315,10 +318,17 @@ index 000000000..15bee8807
 +	return static_cast<float>(static_cast<int32_t>(state)) * (1.f / 2147483648.f);
 +}
 +
++/// Step the noise on n samples without using them, so the noise after is as if they had been
++inline void skipNoise(uint32_t& state, int32_t n) {
++	for (int32_t i = 0; i < n; i++) {
++		state ^= state << 13;
++		state ^= state >> 17;
++		state ^= state << 5;
++	}
++}
++
 +/// A TPT state variable filter, after Andrew Simper's
-+struct SvfCoefs {
-+	float a1, a2, a3, k;
-+};
++using SvfCoefs = Voice::SvfCoefs;
 +
 +inline SvfCoefs svfCoefs(float hz, float q, float sampleRate) {
 +	const float g = tanf(3.14159265f * std::clamp(hz, 10.f, 0.45f * sampleRate) / sampleRate);
@@ -352,12 +362,26 @@ index 000000000..15bee8807
 +
 +constexpr float kHoldKnob = 0.995f;
 +
++/// Samples per chunk. Which layers still sound is looked at once a chunk, the chunks counted from the start of the
++/// note, so it sounds the same at any host block size.
++constexpr int32_t kChunk = 64;
++/// A voice ends once its level is below -72 dB, fading out over a chunk so it doesn't click
++constexpr float kEndLevel = 2.5118864e-4f;
++/// An envelope times the deepest sweep below this leaves 1 + depth * envelope exactly 1: the sweep is over to the bit
++constexpr float kSweepOver = 0x1p-24f;
++/// A layer whose part of the output has fallen below this, at full scale, is left out: -110 dB, so a few left out
++/// together still come to less than -100 dB
++constexpr float kInaudible = 3e-6f;
++/// The most the output stage can raise an engine's output: full drive, and punch at its start
++constexpr float kMaxOutputGain = 5.6234133f * 1.5f;
++
 +} // namespace cyc_detail
 +
 +using namespace cyc_detail;
 +
 +// Engines -------------------------------------------------------------------------------------------------------------
-+// Each renders mono float samples, about -1 to 1, before the common amp envelope.
++// Each renders mono float samples, about -1 to 1, before the common amp envelope. prepare*() works out what the
++// settings make, only when they change; render*() runs a chunk or part of one, chunkStart at the start of a chunk.
 +
 +namespace {
 +
@@ -418,6 +442,11 @@ index 000000000..15bee8807
 +    2.02f, // clap eng
 +};
 +
++/// A part of an engine's output below this, before the level trim, is inaudible (see kInaudible)
++constexpr float goneFor(Kind kind) {
++	return kInaudible / (kLevelTrim[static_cast<size_t>(kind)] * kMaxOutputGain);
++}
++
 +const DecayCurve& decayCurveFor(Kind kind) {
 +	switch (kind) {
 +	case Kind::SNR:
@@ -455,6 +484,9 @@ index 000000000..15bee8807
 +constexpr std::array<float, 6> kKikShapeKnob{0.f, 16.f, 32.f, 64.f, 96.f, 127.f};
 +constexpr std::array<float, 6> kKikSpike{-0.05f, 0.f, 0.1f, 0.45f, 0.5f, 0.2f};
 +constexpr std::array<float, 6> kKikSpikeNoise{0.f, 0.f, 0.f, 0.f, 2.5f, 0.5f};
++constexpr float kKikLevel = 0.23f;
++constexpr float kKikMaxDepth = 22.f; ///< Deeper than the deepest sweep, e^3.09 - 1
++constexpr float kKikMaxKnock = 0.54f;
 +
 +/// sign(x) |x|^20: a narrow spike at each peak of a sine
 +inline float spike(float x) {
@@ -482,48 +514,81 @@ index 000000000..15bee8807
 +	k.body.phase = 0;
 +}
 +
-+void renderKik(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& k = v.s_.kik;
++void prepareKik(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.kik;
 +	const float color = c.st.macro[0];
 +	const float shape = c.st.macro[1];
 +	const float sweepKnob = c.st.macro[2] * 127.f;
 +	const float contour = c.st.macro[3];
 +
-+	const float fEnd = c.hz * 0.25f;
-+	const float depth = expf(interp(kKikSweepKnob, kKikSweepDepth, sweepKnob)) - 1.f;
-+	const float pitchCoef = decayFor(interp(kKikSweepKnob, kKikSweepTime, sweepKnob) * 6.907755f
-+	                                     * sweepTimeScale(contour, kKikContourDefault),
-+	                                 c.sr);
-+	const float incPerHz = 4294967296.f / c.sr;
++	p.fEnd = c.hz * 0.25f;
++	p.depth = expf(interp(kKikSweepKnob, kKikSweepDepth, sweepKnob)) - 1.f;
++	p.pitchCoef = decayFor(interp(kKikSweepKnob, kKikSweepTime, sweepKnob) * 6.907755f
++	                           * sweepTimeScale(contour, kKikContourDefault),
++	                       c.sr);
++	p.incPerHz = 4294967296.f / c.sr;
++	p.maxHz = 0.45f * c.sr;
++	p.restInc = static_cast<uint32_t>(std::min(p.fEnd, p.maxHz) * p.incPerHz);
 +
 +	// Shape: spikes, then feedback
-+	const float spikeAmount = interp(kKikShapeKnob, kKikSpike, shape * 127.f);
-+	const float spikeNorm = 1.f / (1.f + spikeAmount);
-+	const float spikeNoise = interp(kKikShapeKnob, kKikSpikeNoise, shape * 127.f);
++	p.spikeAmount = interp(kKikShapeKnob, kKikSpike, shape * 127.f);
++	p.spikeNorm = 1.f / (1.f + p.spikeAmount);
++	p.spikeNoise = interp(kKikShapeKnob, kKikSpikeNoise, shape * 127.f);
++	// The spikes reach the output through Color's drive (up to 6 times) and the level
++	p.spikes = (std::abs(p.spikeAmount) + std::abs(p.spikeNoise)) * 1.05f * 6.f * kKikLevel >= goneFor(Kind::KIK);
 +	// Color: a blend from clean into a soft clipper driven harder as it comes in
-+	const float drive = 1.f + 5.f * color;
-+	const float driveNorm = color / softClip(drive);
-+	const float dry = 1.f - color;
++	p.drive = 1.f + 5.f * color;
++	p.driveNorm = color / softClip(p.drive);
++	p.dry = 1.f - color;
++	p.colored = color != 0.f;
 +	// Contour: knock level
-+	const float knock = 0.04f + 0.5f * contour * contour;
-+	const float clickCoef = decayFor(0.004f, c.sr);
-+	constexpr float kLevel = 0.23f;
++	p.knock = 0.04f + 0.5f * contour * contour;
++	p.clickCoef = decayFor(0.004f, c.sr);
++}
++
++void renderKik(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& k = v.s_.kik;
++	const auto& p = v.p_.e.kik;
++	if (k.pitchEnv * kKikMaxDepth < kSweepOver) {
++		k.pitchEnv = 0.f; // Over, at any Sweep
++	}
++	if (chunkStart && kKikMaxKnock * 2.f * k.clickEnv < goneFor(Kind::KIK)) {
++		k.clickEnv = 0.f; // The knock is gone
++	}
++	const bool sweeping = k.pitchEnv != 0.f;
++	const bool full = p.spikes || k.clickEnv != 0.f; // Spikes or knock, both riding on the noise
 +
 +	for (int32_t i = 0; i < n; i++) {
-+		const float hz = fEnd * (1.f + depth * k.pitchEnv);
-+		k.pitchEnv *= pitchCoef;
-+		k.body.phase += static_cast<uint32_t>(std::min(hz, 0.45f * c.sr) * incPerHz);
++		if (sweeping) {
++			const float hz = p.fEnd * (1.f + p.depth * k.pitchEnv);
++			k.pitchEnv *= p.pitchCoef;
++			k.body.phase += static_cast<uint32_t>(std::min(hz, p.maxHz) * p.incPerHz);
++		}
++		else {
++			k.body.phase += p.restInc;
++		}
 +		float x = sine(k.body.phase);
-+		const float nz = noise(v.common_.rng);
-+		const float sp = spike(x);
-+		x = (x + (spikeAmount + spikeNoise * nz) * sp) * spikeNorm;
-+		x = dry * x + softClip(drive * x) * driveNorm;
-+		// The knock: noise through a one-pole high pass, dying in a few ms
-+		const float hp = nz - k.fold;
-+		k.fold = nz;
-+		const float click = knock * k.clickEnv * hp;
-+		k.clickEnv *= clickCoef;
-+		out[i] = kLevel * x + click;
++		float click = 0.f;
++		if (full) {
++			const float nz = noise(v.common_.rng);
++			const float sp = spike(x);
++			x = (x + (p.spikeAmount + p.spikeNoise * nz) * sp) * p.spikeNorm;
++			// The knock: noise through a one-pole high pass, dying in a few ms
++			const float hp = nz - k.fold;
++			k.fold = nz;
++			click = p.knock * k.clickEnv * hp;
++			k.clickEnv *= p.clickCoef;
++		}
++		else {
++			x *= p.spikeNorm;
++		}
++		if (p.colored) {
++			x = p.dry * x + softClip(p.drive * x) * p.driveNorm;
++		}
++		out[i] = kKikLevel * x + click;
++	}
++	if (!full) {
++		skipNoise(v.common_.rng, n);
 +	}
 +}
 +
@@ -536,6 +601,14 @@ index 000000000..15bee8807
 +// - Sweep: depth and length of the body's pitch drop
 +// - Contour: how fast the rattle's noise dies away, leaving its tone ringing
 +
++constexpr float kSnrBody = 0.3f;
++constexpr float kSnrRattle = 0.035f;
++constexpr float kSnrNoise = 0.05f;
++constexpr float kSnrBurst = 0.045f;
++constexpr float kSnrMaxDepth = 2.5f;
++constexpr float kSnrMaxIndex = 1.2f;
++constexpr float kSnrMaxNoise = 3.f; ///< The most the high passed noise reaches
++
 +void startSnr(Voice& v, const Ctx& c) {
 +	auto& d = v.s_.snr;
 +	d = {};
@@ -545,48 +618,87 @@ index 000000000..15bee8807
 +	d.bodyEnv = 1.f;
 +}
 +
-+void renderSnr(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.snr;
++void prepareSnr(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.snr;
 +	const float color = c.st.macro[0];
 +	const float shape = c.st.macro[1];
 +	const float sweep = c.st.macro[2];
 +	const float contour = c.st.macro[3];
-+	const float incPerHz = 4294967296.f / c.sr;
++	p.incPerHz = 4294967296.f / c.sr;
++	p.maxHz = 0.45f * c.sr;
 +
-+	const float depth = 2.2f * powf(sweep, 0.8f);
-+	const float pitchCoef = decayFor(0.004f + 0.05f * sweep, c.sr);
-+	const uint32_t modInc = static_cast<uint32_t>(std::min(2.f * c.hz, 0.45f * c.sr) * incPerHz);
++	p.depth = 2.2f * powf(sweep, 0.8f);
++	p.pitchCoef = decayFor(0.004f + 0.05f * sweep, c.sr);
++	p.restInc = static_cast<uint32_t>(std::min(c.hz, p.maxHz) * p.incPerHz);
++	p.modInc = static_cast<uint32_t>(std::min(2.f * c.hz, p.maxHz) * p.incPerHz);
 +	const float ratio = 3.f * powf(2.f, powf(color, 1.4f));
-+	const uint32_t carInc = static_cast<uint32_t>(std::min(ratio * c.hz, 0.45f * c.sr) * incPerHz);
-+	const float index = 0.1f + 1.1f * shape * shape;
-+	const float noiseAmount = powf(shape, 1.5f);
++	p.carInc = static_cast<uint32_t>(std::min(ratio * c.hz, p.maxHz) * p.incPerHz);
++	p.index = 0.1f + 1.1f * shape * shape;
++	p.noiseAmount = powf(shape, 1.5f);
 +	// Contour: the rattle's index and noise fall away, from lasting the whole hit (0) to 70 ms (127)
-+	const float rattleCoef = (contour < 0.01f) ? 1.f : decayFor(0.07f / (contour * contour * 0.99f + 0.01f), c.sr);
++	p.rattleCoef = (contour < 0.01f) ? 1.f : decayFor(0.07f / (contour * contour * 0.99f + 0.01f), c.sr);
 +	// The body cracks and dies quickly; the rattle carries the tail
-+	const float bodyCoef = decayFor(0.045f + 0.05f * sweep, c.sr);
-+	const float attackStep = 1.f / (0.0015f * c.sr);
-+	const SvfCoefs hp = svfCoefs(500.f, 0.7f, c.sr);
-+	constexpr float kBody = 0.3f;
-+	constexpr float kRattle = 0.035f;
-+	constexpr float kNoise = 0.05f;
-+	constexpr float kBurst = 0.045f;
++	p.bodyCoef = decayFor(0.045f + 0.05f * sweep, c.sr);
++	p.attackStep = 1.f / (0.0015f * c.sr);
++	p.hp = svfCoefs(500.f, 0.7f, c.sr);
++}
++
++void renderSnr(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.snr;
++	const auto& p = v.p_.e.snr;
++	const float noteHz = v.p_.hz;
++	if (d.pitchEnv * kSnrMaxDepth < kSweepOver) {
++		d.pitchEnv = 0.f;
++	}
++	if (chunkStart) {
++		const float gone = goneFor(Kind::SNR);
++		if (kSnrBody * d.bodyEnv < gone) {
++			d.bodyEnv = 0.f; // The body is gone
++		}
++		// The rattle's modulation moves its phase by up to index * rattleEnv cycles; the noise on it is quieter still
++		if (kSnrRattle * 6.2831853f * kSnrMaxIndex * d.rattleEnv < gone) {
++			d.rattleEnv = 0.f;
++		}
++		if (kSnrBurst * kSnrMaxNoise * d.noiseEnv < gone) {
++			d.noiseEnv = 0.f;
++		}
++	}
++	const bool bodyOn = d.bodyEnv != 0.f;
++	const bool sweeping = d.pitchEnv != 0.f;
++	const bool rattleMod = d.rattleEnv != 0.f;
++	const bool noiseOn = (rattleMod && p.noiseAmount != 0.f) || d.noiseEnv != 0.f;
 +
 +	for (int32_t i = 0; i < n; i++) {
-+		const float hz = c.hz * (1.f + depth * d.pitchEnv);
-+		d.pitchEnv *= pitchCoef;
-+		d.body.phase += static_cast<uint32_t>(std::min(hz, 0.45f * c.sr) * incPerHz);
-+		d.attack = std::min(d.attack + attackStep, 1.f);
-+		const float body = sine(d.body.phase) * d.bodyEnv * d.attack;
-+		d.bodyEnv *= bodyCoef;
++		d.attack = std::min(d.attack + p.attackStep, 1.f);
++		float body = 0.f;
++		if (bodyOn) {
++			if (sweeping) {
++				const float hz = noteHz * (1.f + p.depth * d.pitchEnv);
++				d.pitchEnv *= p.pitchCoef;
++				d.body.phase += static_cast<uint32_t>(std::min(hz, p.maxHz) * p.incPerHz);
++			}
++			else {
++				d.body.phase += p.restInc;
++			}
++			body = sine(d.body.phase) * d.bodyEnv * d.attack;
++			d.bodyEnv *= p.bodyCoef;
++		}
 +
-+		d.mod.phase += modInc;
-+		d.rattle[0].phase += carInc;
-+		const float rattle = sine(d.rattle[0].phase + cycles(index * d.rattleEnv * sine(d.mod.phase)));
-+		const float nz = svf(d.noiseBp, hp, noise(v.common_.rng)).hp;
-+		const float noisy = (kNoise * noiseAmount * d.rattleEnv + kBurst * d.noiseEnv) * nz;
-+		d.rattleEnv *= rattleCoef;
-+		d.noiseEnv *= bodyCoef;
-+		out[i] = kBody * body + d.attack * (kRattle * rattle + noisy);
++		d.mod.phase += p.modInc;
++		d.rattle[0].phase += p.carInc;
++		const float rattle = rattleMod ? sine(d.rattle[0].phase + cycles(p.index * d.rattleEnv * sine(d.mod.phase)))
++		                               : sine(d.rattle[0].phase);
++		float noisy = 0.f;
++		if (noiseOn) {
++			const float nz = svf(d.noiseBp, p.hp, noise(v.common_.rng)).hp;
++			noisy = (kSnrNoise * p.noiseAmount * d.rattleEnv + kSnrBurst * d.noiseEnv) * nz;
++			d.noiseEnv *= p.bodyCoef;
++		}
++		d.rattleEnv *= p.rattleCoef;
++		out[i] = kSnrBody * body + d.attack * (kSnrRattle * rattle + noisy);
++	}
++	if (!noiseOn) {
++		skipNoise(v.common_.rng, n);
 +	}
 +}
 +
@@ -600,6 +712,7 @@ index 000000000..15bee8807
 +
 +constexpr std::array<float, 6> kMetalRatioLo{1.f, 1.3420f, 1.2001f, 1.6830f, 1.4513f, 2.1260f};
 +constexpr std::array<float, 6> kMetalRatioHi{1.f, 1.8137f, 1.5873f, 2.7461f, 2.2389f, 3.4317f};
++constexpr float kMetalMaxDepth = 1.f;
 +
 +void startMetal(Voice& v, const Ctx& c) {
 +	auto& m = v.s_.metal;
@@ -611,8 +724,8 @@ index 000000000..15bee8807
 +	}
 +}
 +
-+void renderMetal(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& m = v.s_.metal;
++void prepareMetal(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.metal;
 +	const float color = c.st.macro[0];
 +	const float shape = c.st.macro[1];
 +	const float sweep = c.st.macro[2];
@@ -620,42 +733,58 @@ index 000000000..15bee8807
 +	const float incPerHz = 4294967296.f / c.sr;
 +
 +	const float base = c.hz * 5.03f;
-+	std::array<float, 6> inc;
-+	for (size_t i = 0; i < inc.size(); i++) {
++	for (size_t i = 0; i < p.inc.size(); i++) {
 +		const float ratio = kMetalRatioLo[i] + color * (kMetalRatioHi[i] - kMetalRatioLo[i]);
-+		inc[i] = std::min(base * ratio, 0.49f * c.sr) * incPerHz;
++		p.inc[i] = std::min(base * ratio, 0.49f * c.sr) * incPerHz;
++		p.restInc[i] = static_cast<uint32_t>(p.inc[i]);
 +	}
-+	const float index = 0.25f + 1.1f * shape * shape;
-+	const float depth = 0.9f * sweep * sweep;
-+	const float pitchCoef = decayFor(0.02f + 0.06f * sweep, c.sr);
-+	const float brightCoef = (contour < 0.01f) ? 1.f : decayFor(0.03f / (contour * contour * 0.99f + 0.01f), c.sr);
-+	const SvfCoefs hp = svfCoefs(std::clamp(base * 1.5f, 300.f, 6000.f), 0.6f, c.sr);
-+	const SvfCoefs ring = svfCoefs(std::clamp(base * 2.5f, 500.f, 12000.f), 4.f, c.sr);
-+	constexpr float kLevel = 0.14f;
++	p.index = 0.25f + 1.1f * shape * shape;
++	p.depth = 0.9f * sweep * sweep;
++	p.pitchCoef = decayFor(0.02f + 0.06f * sweep, c.sr);
++	p.brightCoef = (contour < 0.01f) ? 1.f : decayFor(0.03f / (contour * contour * 0.99f + 0.01f), c.sr);
++	p.hp = svfCoefs(std::clamp(base * 1.5f, 300.f, 6000.f), 0.6f, c.sr);
++	p.ring = svfCoefs(std::clamp(base * 2.5f, 500.f, 12000.f), 4.f, c.sr);
 +	// Contour's low pass closes from open to about 5 kHz
-+	const float cutLo = 1.f - expf(-6.2831853f * 4000.f / c.sr);
-+	const float cutHi = 1.f - expf(-6.2831853f * std::min(15000.f, 0.4f * c.sr) / c.sr);
++	p.cutLo = 1.f - expf(-6.2831853f * 4000.f / c.sr);
++	p.cutHi = 1.f - expf(-6.2831853f * std::min(15000.f, 0.4f * c.sr) / c.sr);
++}
++
++void renderMetal(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& m = v.s_.metal;
++	const auto& p = v.p_.e.metal;
++	constexpr float kLevel = 0.14f;
++	if (m.pitchEnv * kMetalMaxDepth < kSweepOver) {
++		m.pitchEnv = 0.f;
++	}
++	const bool sweeping = m.pitchEnv != 0.f;
 +
 +	for (int32_t i = 0; i < n; i++) {
-+		const float bend = 1.f + depth * m.pitchEnv;
-+		m.pitchEnv *= pitchCoef;
-+		for (size_t k = 0; k < 6; k++) {
-+			m.osc[k].phase += static_cast<uint32_t>(inc[k] * bend);
++		if (sweeping) {
++			const float bend = 1.f + p.depth * m.pitchEnv;
++			m.pitchEnv *= p.pitchCoef;
++			for (size_t k = 0; k < 6; k++) {
++				m.osc[k].phase += static_cast<uint32_t>(p.inc[k] * bend);
++			}
++		}
++		else {
++			for (size_t k = 0; k < 6; k++) {
++				m.osc[k].phase += p.restInc[k];
++			}
 +		}
 +		// Pairs: 1 > 0, 3 > 2, 5 > 4, and each pair's output also rocks the next pair's modulator
-+		const float a = sine(m.osc[1].phase + cycles(0.5f * index * m.osc[4].last));
-+		const float x0 = sine(m.osc[0].phase + cycles(index * a));
-+		const float b = sine(m.osc[3].phase + cycles(0.5f * index * x0));
-+		const float x1 = sine(m.osc[2].phase + cycles(index * b));
-+		const float d = sine(m.osc[5].phase + cycles(0.5f * index * x1));
-+		const float x2 = sine(m.osc[4].phase + cycles(index * d));
++		const float a = sine(m.osc[1].phase + cycles(0.5f * p.index * m.osc[4].last));
++		const float x0 = sine(m.osc[0].phase + cycles(p.index * a));
++		const float b = sine(m.osc[3].phase + cycles(0.5f * p.index * x0));
++		const float x1 = sine(m.osc[2].phase + cycles(p.index * b));
++		const float d = sine(m.osc[5].phase + cycles(0.5f * p.index * x1));
++		const float x2 = sine(m.osc[4].phase + cycles(p.index * d));
 +		m.osc[4].last = x2;
 +		float x = (x0 + x1 + x2) * 0.4f;
-+		x = svf(m.hp, hp, x).hp;
-+		x += 0.35f * svf(m.ring, ring, x).bp; // the cymbal's ringing band
++		x = svf(m.hp, p.hp, x).hp;
++		x += 0.35f * svf(m.ring, p.ring, x).bp; // the cymbal's ringing band
 +		// Contour: a one-pole low pass closing from wide open, so the top dies first
-+		const float cut = cutLo + (cutHi - cutLo) * m.brightEnv;
-+		m.brightEnv *= brightCoef;
++		const float cut = p.cutLo + (p.cutHi - p.cutLo) * m.brightEnv;
++		m.brightEnv *= p.brightCoef;
 +		m.lp += cut * (x - m.lp);
 +		out[i] = kLevel * m.lp;
 +	}
@@ -674,6 +803,9 @@ index 000000000..15bee8807
 +constexpr std::array<float, 5> kPercSweepKnob{0.f, 32.f, 64.f, 100.f, 127.f};
 +constexpr std::array<float, 5> kPercSweepDepth{0.f, 0.4f, 0.75f, 0.35f, 1.2f};
 +constexpr std::array<float, 5> kPercSweepTime{0.05f, 0.2f, 0.2f, 0.025f, 0.012f};
++constexpr float kPercLevel = 0.1f;
++constexpr float kPercMaxDepth = 1.25f;
++constexpr float kPercMaxOvertone = 1.2f;
 +
 +void startPerc(Voice& v, const Ctx& c) {
 +	auto& d = v.s_.perc;
@@ -682,38 +814,64 @@ index 000000000..15bee8807
 +	d.indexEnv = 1.f;
 +}
 +
-+void renderPerc(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.perc;
++void preparePerc(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.perc;
 +	const float color = c.st.macro[0];
 +	const float shape = c.st.macro[1];
 +	const float sweepKnob = c.st.macro[2] * 127.f;
 +	const float contour = c.st.macro[3];
-+	const float incPerHz = 4294967296.f / c.sr;
++	p.incPerHz = 4294967296.f / c.sr;
++	p.maxHz = 0.45f * c.sr;
 +
-+	const float depth = interp(kPercSweepKnob, kPercSweepDepth, sweepKnob);
-+	const float pitchCoef = decayFor(interp(kPercSweepKnob, kPercSweepTime, sweepKnob) * 6.907755f
-+	                                     * sweepTimeScale(contour, kPercContourDefault),
-+	                                 c.sr);
-+	const float index = 0.24f * shape * shape;
-+	const float levelB = 0.9f * (1.f - 0.75f * shape);
-+	const float ratioC = 1.f + 6.f * powf(color, 1.3f);
-+	const float levelC = 1.2f * powf(color, 0.8f);
-+	const float overtoneCoef = decayFor(0.08f + 6.f * (1.f - contour) * (1.f - contour), c.sr);
-+	const float maxHz = 0.45f * c.sr;
-+	constexpr float kLevel = 0.1f;
++	p.depth = interp(kPercSweepKnob, kPercSweepDepth, sweepKnob);
++	p.pitchCoef = decayFor(interp(kPercSweepKnob, kPercSweepTime, sweepKnob) * 6.907755f
++	                           * sweepTimeScale(contour, kPercContourDefault),
++	                       c.sr);
++	p.index = 0.24f * shape * shape;
++	p.levelB = 0.9f * (1.f - 0.75f * shape);
++	p.ratioC = 1.f + 6.f * powf(color, 1.3f);
++	p.levelC = 1.2f * powf(color, 0.8f);
++	p.overtoneCoef = decayFor(0.08f + 6.f * (1.f - contour) * (1.f - contour), c.sr);
++	p.restInc[0] = static_cast<uint32_t>(std::min(c.hz, p.maxHz) * p.incPerHz);
++	p.restInc[1] = static_cast<uint32_t>(std::min(c.hz * 1.26f, p.maxHz) * p.incPerHz);
++	p.restInc[2] = static_cast<uint32_t>(std::min(c.hz * p.ratioC, p.maxHz) * p.incPerHz);
++	p.restInc[3] = static_cast<uint32_t>(std::min(c.hz * 0.52f, p.maxHz) * p.incPerHz);
++}
++
++void renderPerc(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.perc;
++	const auto& p = v.p_.e.perc;
++	const float noteHz = v.p_.hz;
++	if (d.pitchEnv * kPercMaxDepth < kSweepOver) {
++		d.pitchEnv = 0.f;
++	}
++	if (chunkStart && kPercLevel * kPercMaxOvertone * d.indexEnv < goneFor(Kind::PERC)) {
++		d.indexEnv = 0.f; // The overtone is gone
++	}
++	const bool sweeping = d.pitchEnv != 0.f;
++	const bool modulated = p.index != 0.f;
++	const bool overtone = p.levelC != 0.f && d.indexEnv != 0.f;
 +
 +	for (int32_t i = 0; i < n; i++) {
-+		const float hz = c.hz * (1.f + depth * d.pitchEnv);
-+		d.pitchEnv *= pitchCoef;
-+		d.car.phase += static_cast<uint32_t>(std::min(hz, maxHz) * incPerHz);
-+		d.mod.phase += static_cast<uint32_t>(std::min(hz * 1.26f, maxHz) * incPerHz);
-+		d.mod2.phase += static_cast<uint32_t>(std::min(hz * ratioC, maxHz) * incPerHz);
-+		d.sub.phase += static_cast<uint32_t>(std::min(hz * 0.52f, maxHz) * incPerHz);
-+		const float a = sine(d.car.phase + cycles(index * sine(d.sub.phase)));
++		if (sweeping) {
++			const float hz = noteHz * (1.f + p.depth * d.pitchEnv);
++			d.pitchEnv *= p.pitchCoef;
++			d.car.phase += static_cast<uint32_t>(std::min(hz, p.maxHz) * p.incPerHz);
++			d.mod.phase += static_cast<uint32_t>(std::min(hz * 1.26f, p.maxHz) * p.incPerHz);
++			d.mod2.phase += static_cast<uint32_t>(std::min(hz * p.ratioC, p.maxHz) * p.incPerHz);
++			d.sub.phase += static_cast<uint32_t>(std::min(hz * 0.52f, p.maxHz) * p.incPerHz);
++		}
++		else {
++			d.car.phase += p.restInc[0];
++			d.mod.phase += p.restInc[1];
++			d.mod2.phase += p.restInc[2];
++			d.sub.phase += p.restInc[3];
++		}
++		const float a = modulated ? sine(d.car.phase + cycles(p.index * sine(d.sub.phase))) : sine(d.car.phase);
 +		const float b = sine(d.mod.phase);
-+		const float ov = sine(d.mod2.phase + cycles(0.08f * a)) * d.indexEnv;
-+		d.indexEnv *= overtoneCoef;
-+		out[i] = kLevel * (a + levelB * b + levelC * ov);
++		const float ov = overtone ? sine(d.mod2.phase + cycles(0.08f * a)) * d.indexEnv : 0.f;
++		d.indexEnv *= p.overtoneCoef;
++		out[i] = kPercLevel * (a + p.levelB * b + p.levelC * ov);
 +	}
 +}
 +
@@ -734,6 +892,8 @@ index 000000000..15bee8807
 +constexpr float kToneFeedback = 0.127f;
 +constexpr std::array<float, 5> kToneContourKnob{0.f, 48.f, 64.f, 96.f, 127.f};
 +constexpr std::array<float, 5> kToneIndexTime{4.6f, 3.f, -1.2f, -3.5f, -4.6f}; ///< ln(seconds to fall 60 dB)
++constexpr float kToneLevel = 0.125f;
++constexpr float kToneMaxIndex = 1.2f; ///< The most of the index and of the burst
 +
 +void startTone(Voice& v, const Ctx& c) {
 +	auto& d = v.s_.tone;
@@ -742,8 +902,8 @@ index 000000000..15bee8807
 +	d.pitchEnv = 1.f; // the sweep's burst
 +}
 +
-+void renderTone(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.tone;
++void prepareTone(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.tone;
 +	const float colorKnob = c.st.macro[0] * 127.f;
 +	const float shapeKnob = c.st.macro[1] * 127.f;
 +	const float sweep = c.st.macro[2];
@@ -751,24 +911,51 @@ index 000000000..15bee8807
 +	const float incPerHz = 4294967296.f / c.sr;
 +	const float maxHz = 0.45f * c.sr;
 +
-+	const uint32_t carInc = static_cast<uint32_t>(std::min(c.hz, maxHz) * incPerHz);
-+	const uint32_t modInc = static_cast<uint32_t>(std::min(c.hz * colorKnob / 12.f, maxHz) * incPerHz);
-+	const float index = interp(kToneShapeKnob, kToneIndex, shapeKnob);
-+	const float indexCoef =
++	p.carInc = static_cast<uint32_t>(std::min(c.hz, maxHz) * incPerHz);
++	p.modInc = static_cast<uint32_t>(std::min(c.hz * colorKnob / 12.f, maxHz) * incPerHz);
++	p.index = interp(kToneShapeKnob, kToneIndex, shapeKnob);
++	p.indexCoef =
 +	    (contourKnob < 1.f) ? 1.f : decayFor(expf(interp(kToneContourKnob, kToneIndexTime, contourKnob)), c.sr);
-+	const float burst = interp(kToneSweepKnob, kToneBurst, sweep * 127.f);
-+	const float burstCoef = decayFor(interp(kToneSweepKnob, kToneBurstTime, sweep * 127.f), c.sr);
-+	constexpr float kLevel = 0.125f;
++	p.burst = interp(kToneSweepKnob, kToneBurst, sweep * 127.f);
++	p.burstCoef = decayFor(interp(kToneSweepKnob, kToneBurstTime, sweep * 127.f), c.sr);
++}
 +
-+	for (int32_t i = 0; i < n; i++) {
-+		d.car.phase += carInc;
-+		d.mod.phase += modInc;
-+		const float idx = index * d.indexEnv + burst * d.pitchEnv;
-+		d.indexEnv *= indexCoef;
-+		d.pitchEnv *= burstCoef;
-+		const float m = sine(d.mod.phase + cycles(kToneFeedback * d.mod.last));
-+		d.mod.last = m;
-+		out[i] = kLevel * sine(d.car.phase + cycles(idx * m));
++void renderTone(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.tone;
++	const auto& p = v.p_.e.tone;
++	if (chunkStart) {
++		// The modulation moves the carrier's phase by up to idx cycles
++		const float gone = goneFor(Kind::TONE) / (kToneLevel * 6.2831853f * kToneMaxIndex);
++		if (d.indexEnv < gone) {
++			d.indexEnv = 0.f;
++		}
++		if (d.pitchEnv < gone) {
++			d.pitchEnv = 0.f;
++		}
++	}
++	const bool modulated = (p.index != 0.f && d.indexEnv != 0.f) || (p.burst != 0.f && d.pitchEnv != 0.f);
++
++	if (modulated) {
++		for (int32_t i = 0; i < n; i++) {
++			d.car.phase += p.carInc;
++			d.mod.phase += p.modInc;
++			const float idx = p.index * d.indexEnv + p.burst * d.pitchEnv;
++			d.indexEnv *= p.indexCoef;
++			d.pitchEnv *= p.burstCoef;
++			const float m = sine(d.mod.phase + cycles(kToneFeedback * d.mod.last));
++			d.mod.last = m;
++			out[i] = kToneLevel * sine(d.car.phase + cycles(idx * m));
++		}
++	}
++	else {
++		// No index: just the carrier
++		for (int32_t i = 0; i < n; i++) {
++			d.car.phase += p.carInc;
++			d.indexEnv *= p.indexCoef;
++			d.pitchEnv *= p.burstCoef;
++			out[i] = kToneLevel * sine(d.car.phase);
++		}
++		d.mod.phase += p.modInc * static_cast<uint32_t>(n);
 +	}
 +}
 +
@@ -835,6 +1022,9 @@ index 000000000..15bee8807
 +    {0, 1, 1, 1},   // spread
 +}};
 +
++constexpr float kChordLevel = 0.045f;
++constexpr float kChordMaxWave = 0.22f + 0.12f; ///< The most of odd and fb together
++
 +void startChord(Voice& v, const Ctx& c) {
 +	auto& d = v.s_.chord;
 +	d = {};
@@ -844,8 +1034,8 @@ index 000000000..15bee8807
 +	}
 +}
 +
-+void renderChord(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.chord;
++void prepareChord(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.chord;
 +	const float colorKnob = c.st.macro[0] * 127.f;
 +	const int32_t shape =
 +	    std::clamp<int32_t>(static_cast<int32_t>(c.st.macro[1] * kNumChordShapes), 0, kNumChordShapes - 1);
@@ -855,35 +1045,43 @@ index 000000000..15bee8807
 +	const float maxHz = 0.45f * c.sr;
 +
 +	const int32_t voicing = std::clamp<int32_t>(static_cast<int32_t>(colorKnob / 16.f), 0, 7);
-+	std::array<uint32_t, 4> inc;
-+	std::array<uint32_t, 4> inc2;
 +	for (size_t i = 0; i < 4; i++) {
 +		const int32_t semis = (voicing == 0) ? 0 : kChords[shape][i] + 12 * kVoicings[voicing][i];
 +		// Unison spreads its voices by a few cents, so it's thick rather than just loud
 +		const float detune = (voicing == 0) ? (static_cast<float>(i) - 1.5f) * 0.004f : 0.f;
 +		const float hz = std::min(c.hz * exp2f(static_cast<float>(semis) / 12.f + detune), maxHz);
-+		inc[i] = static_cast<uint32_t>(hz * incPerHz);
-+		inc2[i] = static_cast<uint32_t>(std::min(2.f * hz, maxHz) * incPerHz);
++		p.inc[i] = static_cast<uint32_t>(hz * incPerHz);
++		p.inc2[i] = static_cast<uint32_t>(std::min(2.f * hz, maxHz) * incPerHz);
 +	}
 +	// Sweep: odd harmonics from a modulator at twice the pitch, then all of them from feedback
-+	const float odd = 0.22f * std::min(sweep * 2.f, 1.f) * std::min(sweep * 2.f, 1.f);
-+	const float fb = 0.12f * std::max(sweep - 0.3f, 0.f) / 0.7f;
-+	const float sweepCoef =
-+	    (contour < 0.2f) ? 1.f : decayFor(0.15f / ((contour - 0.2f) * (contour - 0.2f) + 0.002f), c.sr);
-+	constexpr float kLevel = 0.045f;
++	p.odd = 0.22f * std::min(sweep * 2.f, 1.f) * std::min(sweep * 2.f, 1.f);
++	p.fb = 0.12f * std::max(sweep - 0.3f, 0.f) / 0.7f;
++	p.sweepCoef = (contour < 0.2f) ? 1.f : decayFor(0.15f / ((contour - 0.2f) * (contour - 0.2f) + 0.002f), c.sr);
++}
++
++void renderChord(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.chord;
++	const auto& p = v.p_.e.chord;
++	// The wave moves each voice's phase by up to sweepEnv * (odd + fb) cycles
++	if (chunkStart && 4.f * kChordLevel * 6.2831853f * kChordMaxWave * d.sweepEnv < goneFor(Kind::CHORD)) {
++		d.sweepEnv = 0.f;
++	}
++	const bool shaped = d.sweepEnv != 0.f && (p.odd != 0.f || p.fb != 0.f);
 +
 +	for (int32_t i = 0; i < n; i++) {
 +		const float bright = d.sweepEnv;
-+		d.sweepEnv *= sweepCoef;
++		d.sweepEnv *= p.sweepCoef;
 +		float sum = 0.f;
 +		for (size_t k = 0; k < 4; k++) {
-+			d.osc[k].phase += inc[k];
-+			d.mod[k].phase += inc2[k];
-+			const float x = sine(d.osc[k].phase + cycles(bright * (odd * sine(d.mod[k].phase) + fb * d.osc[k].last)));
++			d.osc[k].phase += p.inc[k];
++			d.mod[k].phase += p.inc2[k];
++			const float x =
++			    shaped ? sine(d.osc[k].phase + cycles(bright * (p.odd * sine(d.mod[k].phase) + p.fb * d.osc[k].last)))
++			           : sine(d.osc[k].phase);
 +			d.osc[k].last = x;
 +			sum += x;
 +		}
-+		out[i] = kLevel * sum;
++		out[i] = kChordLevel * sum;
 +	}
 +}
 +
@@ -896,6 +1094,11 @@ index 000000000..15bee8807
 +// - Mod Envelope: depth and length of the body's modulation, the knock in the attack
 +
 +constexpr std::array<float, 4> kVsnrModes{2870.f, 3730.f, 4610.f, 5330.f};
++constexpr float kVsnrBody = 0.3f;
++constexpr float kVsnrMaxDepth = 1.f;
++constexpr float kVsnrMaxModDepth = 0.25f;
++/// The most the snares come to for each unit of their envelope: the top cluster level, four modes, and the noise
++constexpr float kVsnrMaxSnares = 0.15f * (0.25f * 4.f + 1.5f * 3.f);
 +
 +void startVsnr(Voice& v, const Ctx& c) {
 +	auto& d = v.s_.vsnr;
@@ -908,55 +1111,120 @@ index 000000000..15bee8807
 +	}
 +}
 +
-+void renderVsnr(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.vsnr;
++void prepareVsnr(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.vsnr;
 +	const float inharm = c.st.macro[0];
 +	const float complex = c.st.macro[1];
 +	const float sweep = c.st.macro[2];
 +	const float menv = c.st.macro[3];
-+	const float incPerHz = 4294967296.f / c.sr;
-+	const float maxHz = 0.45f * c.sr;
++	p.incPerHz = 4294967296.f / c.sr;
++	p.maxHz = 0.45f * c.sr;
 +
-+	const float depth = 0.75f * sweep * sweep;
-+	const float pitchCoef = decayFor(0.02f + 0.12f * sweep * sweep, c.sr);
-+	const float ratio = 1.f + 1.41f * inharm;
-+	const float modDepth = 0.25f * menv;
-+	const float modCoef = decayFor(0.01f + 0.15f * menv * menv, c.sr);
++	p.depth = 0.75f * sweep * sweep;
++	p.pitchCoef = decayFor(0.02f + 0.12f * sweep * sweep, c.sr);
++	p.ratio = 1.f + 1.41f * inharm;
++	p.modDepth = 0.25f * menv;
++	p.modCoef = decayFor(0.01f + 0.15f * menv * menv, c.sr);
++	p.restInc = static_cast<uint32_t>(std::min(c.hz, p.maxHz) * p.incPerHz);
++	p.restModInc = static_cast<uint32_t>(std::min(c.hz * p.ratio, p.maxHz) * p.incPerHz);
 +	// The body follows the amp decay. The snares have their own 0.25 s decay, and only feel the amp decay half as much,
 +	// so at short decays they ring past the body and at long ones the body rings past them. The common amp envelope is
-+	// applied after, so it's divided back out here.
-+	const float clusterCoef = decayFor(0.25f, c.sr);
-+	float amp = v.common_.amp;
-+	const float ampCoef = v.common_.ampCoef;
-+	std::array<uint32_t, 4> modeInc;
-+	for (size_t i = 0; i < 4; i++) {
-+		modeInc[i] = static_cast<uint32_t>(std::min(kVsnrModes[i], maxHz) * incPerHz);
++	// applied after, so it's divided back out here: sqrt(amp) and 1 / amp are followed as envelopes of their own.
++	p.clusterCoef = decayFor(0.25f, c.sr);
++	const float ampCoef = v.p_.ampCoef;
++	p.sqrtAmpCoef = sqrtf(ampCoef);
++	p.invAmpCoef = 1.f / ampCoef;
++	float coef64 = ampCoef;
++	for (int32_t i = 0; i < 6; i++) {
++		coef64 *= coef64;
 +	}
-+	const float clusterLevel = 0.15f * (0.25f + 0.75f * complex);
-+	const float roughness = 0.05f + 0.25f * complex;
-+	const SvfCoefs bp = svfCoefs(3500.f, 0.9f, c.sr);
-+	constexpr float kBody = 0.3f;
++	p.ampCoef64 = coef64;
++	for (size_t i = 0; i < 4; i++) {
++		p.modeInc[i] = static_cast<uint32_t>(std::min(kVsnrModes[i], p.maxHz) * p.incPerHz);
++	}
++	p.clusterLevel = 0.15f * (0.25f + 0.75f * complex);
++	p.roughness = 0.05f + 0.25f * complex;
++	p.bp = svfCoefs(3500.f, 0.9f, c.sr);
++}
++
++void renderVsnr(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.vsnr;
++	const auto& p = v.p_.e.vsnr;
++	const float noteHz = v.p_.hz;
++	if (d.pitchEnv * kVsnrMaxDepth < kSweepOver) {
++		d.pitchEnv = 0.f;
++	}
++	if (chunkStart) {
++		const float gone = goneFor(Kind::VSNR);
++		// The body's modulation moves its phase by up to modDepth * modEnv cycles
++		if (kVsnrBody * 6.2831853f * kVsnrMaxModDepth * d.modEnv < gone) {
++			d.modEnv = 0.f;
++		}
++		const float amp = v.common_.amp;
++		d.sqrtAmp = sqrtf(amp);
++		d.invAmp = 1.f / std::max(amp, 1e-5f);
++		// Once the amp envelope is on them, the snares come out at min(clusterEnv, sqrt(amp)) at most
++		if (kVsnrMaxSnares * std::min(d.clusterEnv, d.sqrtAmp) < gone) {
++			d.clusterEnv = 0.f;
++		}
++	}
++	const bool sweeping = d.pitchEnv != 0.f;
++	const bool modulated = d.modEnv != 0.f;
++	const bool snaresOn = d.clusterEnv != 0.f;
 +
 +	for (int32_t i = 0; i < n; i++) {
-+		const float hz = c.hz * (1.f + depth * d.pitchEnv);
-+		d.pitchEnv *= pitchCoef;
-+		d.body.phase += static_cast<uint32_t>(std::min(hz, maxHz) * incPerHz);
-+		d.bodyMod.phase += static_cast<uint32_t>(std::min(hz * ratio, maxHz) * incPerHz);
-+		const float body = sine(d.body.phase + cycles(modDepth * d.modEnv * sine(d.bodyMod.phase)));
-+		d.modEnv *= modCoef;
-+
-+		// The snares: four modes, each phase-jittered by band passed noise
-+		const float nz = svf(d.noiseBp, bp, noise(v.common_.rng)).bp;
-+		float cl = 0.f;
-+		for (size_t k = 0; k < 4; k++) {
-+			d.cluster[k].phase += modeInc[k];
-+			cl += sine(d.cluster[k].phase + cycles(roughness * nz * static_cast<float>(k + 1)));
++		if (sweeping) {
++			const float hz = noteHz * (1.f + p.depth * d.pitchEnv);
++			d.pitchEnv *= p.pitchCoef;
++			d.body.phase += static_cast<uint32_t>(std::min(hz, p.maxHz) * p.incPerHz);
++			if (modulated) {
++				d.bodyMod.phase += static_cast<uint32_t>(std::min(hz * p.ratio, p.maxHz) * p.incPerHz);
++			}
 +		}
-+		const float snares = std::min(d.clusterEnv, sqrtf(amp)) / std::max(amp, 1e-5f);
-+		out[i] = kBody * body + clusterLevel * snares * (0.25f * cl + 1.5f * nz);
-+		d.clusterEnv *= clusterCoef;
-+		amp *= ampCoef;
++		else {
++			d.body.phase += p.restInc;
++			d.bodyMod.phase += p.restModInc;
++		}
++		float body;
++		if (modulated) {
++			body = sine(d.body.phase + cycles(p.modDepth * d.modEnv * sine(d.bodyMod.phase)));
++			d.modEnv *= p.modCoef;
++		}
++		else {
++			body = sine(d.body.phase);
++		}
++
++		if (snaresOn) {
++			// The snares: four modes, each phase-jittered by band passed noise
++			const float nz = svf(d.noiseBp, p.bp, noise(v.common_.rng)).bp;
++			float cl = 0.f;
++			for (size_t k = 0; k < 4; k++) {
++				d.cluster[k].phase += p.modeInc[k];
++				cl += sine(d.cluster[k].phase + cycles(p.roughness * nz * static_cast<float>(k + 1)));
++			}
++			const float snares = std::min(d.clusterEnv, d.sqrtAmp) * d.invAmp;
++			out[i] = kVsnrBody * body + p.clusterLevel * snares * (0.25f * cl + 1.5f * nz);
++			d.clusterEnv *= p.clusterCoef;
++			d.sqrtAmp *= p.sqrtAmpCoef;
++			d.invAmp = std::min(d.invAmp * p.invAmpCoef, 1e5f);
++		}
++		else {
++			out[i] = kVsnrBody * body;
++		}
 +	}
++	if (!snaresOn) {
++		skipNoise(v.common_.rng, n);
++	}
++}
++
++/// Vtg Snr's level: its snares outlast the amp envelope at short decays. It ends no later than at the amp envelope's
++/// -100 dB, where every engine used to end.
++float vsnrLevel(const Voice& v) {
++	const float amp = v.common_.amp;
++	if (amp * v.p_.e.vsnr.ampCoef64 < 1e-5f) {
++		return amp;
++	}
++	return std::max(amp, std::min(v.s_.vsnr.clusterEnv, sqrtf(amp)));
 +}
 +
 +// clap eng ------------------------------------------------------------------------------------------------------------
@@ -981,54 +1249,107 @@ index 000000000..15bee8807
 +	v.common_.ampHold = static_cast<uint32_t>(spacing * kClapBursts * c.sr);
 +}
 +
-+void renderClap(Voice& v, const Ctx& c, float* out, int32_t n) {
-+	auto& d = v.s_.clap;
++void prepareClap(Voice& v, const Ctx& c) {
++	auto& p = v.p_.e.clap;
 +	const float bodyChar = c.st.macro[0];
 +	const float balance = c.st.macro[1];
 +	const float crunch = c.st.macro[2];
 +	const float bodyEnvKnob = c.st.macro[3];
 +	const float pitch = c.hz / 261.63f; // the note moves the filters, C4 = as measured
 +
-+	const int32_t spacing = static_cast<int32_t>((0.006f + 0.018f * crunch) * c.sr);
-+	const float burstCoef = decayFor(0.022f, c.sr);
-+	const SvfCoefs bp = svfCoefs(1000.f * pitch, 1.1f, c.sr);
-+	const SvfCoefs bp2 = svfCoefs(2400.f * pitch, 1.5f, c.sr);
-+	const SvfCoefs body = svfCoefs(900.f * pitch, 1.f + 9.f * bodyChar, c.sr);
-+	const float bodyGain = 1.f / (1.f + 4.f * bodyChar); // a band pass peaks at its Q
-+	const float darkCoef = decayFor(0.05f + 1.5f * (1.f - bodyEnvKnob) * (1.f - bodyEnvKnob), c.sr);
-+	const float burstLevel = 0.4f * (0.8f + 0.4f * balance);
-+	const float tailLevel = 0.4f * (1.f - balance * balance);
-+	const float burstBright = 0.3f + 1.5f * bodyChar * bodyChar;
-+	const float tailFastCoef = decayFor(0.2f, c.sr);        // the tail's first drop, before the amp decay takes over
++	p.spacing = static_cast<int32_t>((0.006f + 0.018f * crunch) * c.sr);
++	p.burstCoef = decayFor(0.022f, c.sr);
++	p.bp = svfCoefs(1000.f * pitch, 1.1f, c.sr);
++	p.bp2 = svfCoefs(2400.f * pitch, 1.5f, c.sr);
++	p.body = svfCoefs(900.f * pitch, 1.f + 9.f * bodyChar, c.sr);
++	p.bodyGain = 1.f / (1.f + 4.f * bodyChar); // a band pass peaks at its Q
++	p.darkCoef = decayFor(0.05f + 1.5f * (1.f - bodyEnvKnob) * (1.f - bodyEnvKnob), c.sr);
++	p.burstLevel = 0.4f * (0.8f + 0.4f * balance);
++	p.tailLevel = 0.4f * (1.f - balance * balance);
++	p.burstBright = 0.3f + 1.5f * bodyChar * bodyChar;
++	p.tailFastCoef = decayFor(0.2f, c.sr);                  // the tail's first drop, before the amp decay takes over
 +	const float grit = std::max(crunch - 0.4f, 0.f) * 1.6f; // sample-and-hold roughness
-+	const int32_t holdSamples = 1 + static_cast<int32_t>(grit * 6.f);
++	p.holdSamples = 1 + static_cast<int32_t>(grit * 6.f);
++}
++
++void renderClap(Voice& v, float* out, int32_t n, bool chunkStart) {
++	auto& d = v.s_.clap;
++	const auto& p = v.p_.e.clap;
 +
 +	for (int32_t i = 0; i < n; i++) {
 +		if (d.burstIndex < kClapBursts && --d.samplesToBurst <= 0) {
 +			d.burstEnv = 1.f;
 +			d.burstIndex++;
-+			d.samplesToBurst = spacing;
++			d.samplesToBurst = p.spacing;
 +		}
 +		if (d.body.phase-- == 0) {
 +			d.body.last = noise(v.common_.rng);
-+			d.body.phase = static_cast<uint32_t>(holdSamples - 1);
++			d.body.phase = static_cast<uint32_t>(p.holdSamples - 1);
 +		}
 +		const float nz = d.body.last;
-+		const auto b1 = svf(d.bp1, bp, nz);
-+		const auto b2 = svf(d.bp2, bp2, nz);
++		const auto b1 = svf(d.bp1, p.bp, nz);
++		const auto b2 = svf(d.bp2, p.bp2, nz);
 +		const float bright = b1.bp + 0.5f * b2.bp * d.bodyEnv;
-+		const float bursts = (d.burstIndex > 0) ? burstLevel * d.burstEnv * (b1.bp + burstBright * b2.bp) : 0.f;
-+		d.burstEnv *= burstCoef;
++		const float bursts = (d.burstIndex > 0) ? p.burstLevel * d.burstEnv * (b1.bp + p.burstBright * b2.bp) : 0.f;
++		d.burstEnv *= p.burstCoef;
 +		const bool tailOn = d.burstIndex >= kClapBursts;
 +		const float tail =
-+		    tailOn ? tailLevel * (0.2f + 0.8f * d.tailEnv) * (bright + bodyGain * svf(d.hp, body, bright).bp) : 0.f;
++		    tailOn ? p.tailLevel * (0.2f + 0.8f * d.tailEnv) * (bright + p.bodyGain * svf(d.hp, p.body, bright).bp)
++		           : 0.f;
 +		if (tailOn) {
-+			d.bodyEnv *= darkCoef;
-+			d.tailEnv *= tailFastCoef;
++			d.bodyEnv *= p.darkCoef;
++			d.tailEnv *= p.tailFastCoef;
 +		}
 +		out[i] = bursts + tail;
 +	}
 +}
++
++/// Level trim, then drive after the amp envelope (amp, sample by sample), so the tail cleans up as it dies away
++#if defined(__ARM_NEON)
++/// Four samples. The drive's divide is a reciprocal estimate and two Newton steps, to a couple of bits of float
++inline void output4(const float* in, const float* amp, int32_t* out, float trim, float gain, bool driven) {
++	float32x4_t x = vmulq_n_f32(vmulq_f32(vld1q_f32(in), vld1q_f32(amp)), trim);
++	if (driven) {
++		x = vmulq_n_f32(x, gain);
++		x = vminq_f32(vmaxq_f32(x, vdupq_n_f32(-3.f)), vdupq_n_f32(3.f));
++		const float32x4_t x2 = vmulq_f32(x, x);
++		const float32x4_t num = vmulq_f32(x, vaddq_f32(vdupq_n_f32(27.f), x2));
++		const float32x4_t den = vmlaq_n_f32(vdupq_n_f32(27.f), x2, 9.f);
++		float32x4_t r = vrecpeq_f32(den);
++		r = vmulq_f32(r, vrecpsq_f32(den, r));
++		r = vmulq_f32(r, vrecpsq_f32(den, r));
++		x = vmulq_f32(num, r);
++	}
++	x = vminq_f32(vmaxq_f32(x, vdupq_n_f32(-1.f)), vdupq_n_f32(1.f));
++	vst1q_s32(out, vcvtq_s32_f32(vmulq_n_f32(x, kFullScale)));
++}
++
++void output(const float* in, const float* amp, int32_t* out, int32_t n, float trim, float gain, bool driven) {
++	const int32_t whole = n & ~3;
++	for (int32_t i = 0; i < whole; i += 4) {
++		output4(in + i, amp + i, out + i, trim, gain, driven);
++	}
++	if (whole < n) {
++		// The last one to three, the same way, so they come out the same at any host block size
++		std::array<float, 4> inRest{}, ampRest{};
++		std::array<int32_t, 4> outRest;
++		std::copy(in + whole, in + n, inRest.begin());
++		std::copy(amp + whole, amp + n, ampRest.begin());
++		output4(inRest.data(), ampRest.data(), outRest.data(), trim, gain, driven);
++		std::copy(outRest.begin(), outRest.begin() + (n - whole), out + whole);
++	}
++}
++#else
++void output(const float* in, const float* amp, int32_t* out, int32_t n, float trim, float gain, bool driven) {
++	for (int32_t i = 0; i < n; i++) {
++		float x = in[i] * amp[i] * trim;
++		if (driven) {
++			x = driveCurve(x * gain);
++		}
++		out[i] = static_cast<int32_t>(std::clamp(x, -1.f, 1.f) * kFullScale);
++	}
++}
++#endif
 +
 +} // namespace
 +
@@ -1039,6 +1360,7 @@ index 000000000..15bee8807
 +	kind_ = Kind::NUM_KINDS;
 +	pendingTrigger_ = false;
 +	finished_ = true;
++	prepared_ = false;
 +}
 +
 +void Voice::start(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate) {
@@ -1049,6 +1371,7 @@ index 000000000..15bee8807
 +	common_.rng = (seed != 0) ? seed : 0x9E3779B9u;
 +	common_.amp = 1.f;
 +	common_.punchEnv = 1.f;
++	common_.level = 1.f;
 +	const Ctx c{settings, sampleRate, static_cast<float>(phaseIncrement) * kPhaseToCycles * sampleRate};
 +	switch (kind) {
 +	case Kind::KIK:
@@ -1080,6 +1403,61 @@ index 000000000..15bee8807
 +	}
 +}
 +
++bool Voice::preparedFor(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate) const {
++	return prepared_ && p_.kind == kind && p_.phaseIncrement == phaseIncrement && p_.sampleRate == sampleRate
++	       && p_.macro == settings.macro && p_.decay == settings.decay && p_.drive == settings.drive
++	       && p_.punch == settings.punch;
++}
++
++void Voice::prepare(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate) {
++	p_.macro = settings.macro;
++	p_.decay = settings.decay;
++	p_.drive = settings.drive;
++	p_.sampleRate = sampleRate;
++	p_.phaseIncrement = phaseIncrement;
++	p_.kind = kind;
++	p_.punch = settings.punch;
++	prepared_ = true;
++
++	p_.hz = static_cast<float>(phaseIncrement) * kPhaseToCycles * sampleRate;
++	const DecayCurve& curve = decayCurveFor(kind);
++	const bool hold = curve.holdsAtTop && settings.decay >= kHoldKnob;
++	const float punchStretch = settings.punch ? 1.25f : 1.f;
++	p_.ampCoef = hold ? 1.f : decayFor(ampDecayTime(curve, settings.decay * 127.f) * punchStretch, sampleRate);
++	p_.driveGain = driveGainFor(settings.drive);
++	p_.punchCoef = decayFor(0.18f, sampleRate);
++
++	const Ctx c{settings, sampleRate, p_.hz};
++	switch (kind) {
++	case Kind::KIK:
++		prepareKik(*this, c);
++		break;
++	case Kind::SNR:
++		prepareSnr(*this, c);
++		break;
++	case Kind::METAL:
++		prepareMetal(*this, c);
++		break;
++	case Kind::PERC:
++		preparePerc(*this, c);
++		break;
++	case Kind::TONE:
++		prepareTone(*this, c);
++		break;
++	case Kind::CHORD:
++		prepareChord(*this, c);
++		break;
++	case Kind::VSNR:
++		prepareVsnr(*this, c);
++		break;
++	case Kind::CLAP:
++		prepareClap(*this, c);
++		break;
++	case Kind::NUM_KINDS:
++		break;
++	}
++}
++
 +void Voice::render(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate, int32_t* out,
 +                   int32_t numSamples) {
 +	if (pendingTrigger_ || kind != kind_) {
@@ -1096,41 +1474,48 @@ index 000000000..15bee8807
 +		std::fill(out, out + numSamples, 0);
 +		return;
 +	}
++	if (!preparedFor(kind, settings, phaseIncrement, sampleRate)) {
++		prepare(kind, settings, phaseIncrement, sampleRate);
++	}
++	common_.ampCoef = p_.ampCoef;
 +
-+	const Ctx c{settings, sampleRate, static_cast<float>(phaseIncrement) * kPhaseToCycles * sampleRate};
-+	const DecayCurve& curve = decayCurveFor(kind);
-+	const bool hold = curve.holdsAtTop && settings.decay >= kHoldKnob;
-+	const float punchStretch = settings.punch ? 1.25f : 1.f;
-+	common_.ampCoef = hold ? 1.f : decayFor(ampDecayTime(curve, settings.decay * 127.f) * punchStretch, sampleRate);
-+
-+	constexpr int32_t kChunk = 64;
++	const float trim = kLevelTrim[static_cast<size_t>(kind)];
++	const bool driven = settings.drive > 0.f;
 +	float buf[kChunk];
 +	while (numSamples > 0) {
-+		const int32_t n = std::min(numSamples, kChunk);
++		// Chunks count from the start of the note, so a host block can start or end part way through one
++		const int32_t offset = static_cast<int32_t>(common_.pos % kChunk);
++		const int32_t n = std::min(numSamples, kChunk - offset);
++		const bool chunkStart = offset == 0;
++		// Below -72 dB the voice fades out over the next chunk, then it's done
++		if (chunkStart && common_.level < kEndLevel) {
++			common_.ending = true;
++		}
++
 +		switch (kind) {
 +		case Kind::KIK:
-+			renderKik(*this, c, buf, n);
++			renderKik(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::SNR:
-+			renderSnr(*this, c, buf, n);
++			renderSnr(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::METAL:
-+			renderMetal(*this, c, buf, n);
++			renderMetal(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::PERC:
-+			renderPerc(*this, c, buf, n);
++			renderPerc(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::TONE:
-+			renderTone(*this, c, buf, n);
++			renderTone(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::CHORD:
-+			renderChord(*this, c, buf, n);
++			renderChord(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::VSNR:
-+			renderVsnr(*this, c, buf, n);
++			renderVsnr(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::CLAP:
-+			renderClap(*this, c, buf, n);
++			renderClap(*this, buf, n, chunkStart);
 +			break;
 +		case Kind::NUM_KINDS:
 +			std::fill(buf, buf + n, 0.f);
@@ -1141,45 +1526,50 @@ index 000000000..15bee8807
 +		// about 60 ms, which squares up and lifts the attack like a compressor slamming. The amp decay also runs a
 +		// quarter longer.
 +		if (settings.punch) {
-+			const float punchCoef = decayFor(0.18f, sampleRate);
 +			float p = common_.punchEnv;
 +			for (int32_t i = 0; i < n; i++) {
 +				const float drive = 2.f + 2.f * p;
 +				buf[i] = softClip(buf[i] * drive) * (1.f + 0.5f * p) / drive;
-+				p *= punchCoef;
++				p *= p_.punchCoef;
 +			}
 +			common_.punchEnv = p;
 +		}
 +
-+		// Level trim, then drive after the amp envelope, so the tail cleans up as it dies away
++		// The amp envelope, which waits out any hold
++		float amps[kChunk];
++		const int32_t held = static_cast<int32_t>(std::min(common_.ampHold, static_cast<uint32_t>(n)));
++		common_.ampHold -= held;
 +		float amp = common_.amp;
-+		const float coef = common_.ampCoef;
-+		const float trim = kLevelTrim[static_cast<size_t>(kind)];
-+		const bool driven = settings.drive > 0.f;
-+		const float gain = driveGainFor(settings.drive);
-+		for (int32_t i = 0; i < n; i++) {
-+			// Below -100 dB the voice is done, at the same sample whatever the host's block size
-+			if (amp < 1e-5f) {
-+				std::fill(out + i, out + numSamples, 0);
-+				finished_ = true;
-+				common_.amp = 0.f;
-+				return;
-+			}
-+			float x = buf[i] * amp * trim;
-+			if (driven) {
-+				x = driveCurve(x * gain);
-+			}
-+			out[i] = static_cast<int32_t>(std::clamp(x, -1.f, 1.f) * kFullScale);
-+			if (common_.ampHold > 0) {
-+				common_.ampHold--;
-+			}
-+			else {
-+				amp *= coef;
-+			}
++		std::fill(amps, amps + held, amp);
++		for (int32_t i = held; i < n; i++) {
++			amps[i] = amp;
++			amp *= p_.ampCoef;
 +		}
 +		common_.amp = amp;
++		if (common_.ending) {
++			for (int32_t i = 0; i < n; i++) {
++				amps[i] *= static_cast<float>(kChunk - offset - i) * (1.f / kChunk);
++			}
++		}
++		output(buf, amps, out, n, trim, p_.driveGain, driven);
++		common_.pos += n;
 +		out += n;
 +		numSamples -= n;
++
++		const float level = (kind == Kind::VSNR) ? vsnrLevel(*this) : amp;
++		if (!common_.ending) {
++			common_.level = level;
++		}
++		else if (common_.pos % kChunk != 0) {
++			common_.level = level * static_cast<float>(kChunk - offset - n) * (1.f / kChunk);
++		}
++		else {
++			std::fill(out, out + numSamples, 0);
++			finished_ = true;
++			common_.amp = 0.f;
++			common_.level = 0.f;
++			return;
++		}
 +	}
 +}
 +
@@ -1194,10 +1584,10 @@ index 000000000..15bee8807
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/cyc.h b/src/deluge/dsp/drum_synth/cyc.h
 new file mode 100644
-index 000000000..6294f30ff
+index 000000000..806c2bfb1
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/cyc.h
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,239 @@
 +/*
 + * Cyc engines: eight drum and tone engines for the Deluge's drum synth, named after the Model:Cycles machines and the
 + * Syntakt machines that Modded-Cycles moved into it, which inspired them.
@@ -1275,14 +1665,20 @@ index 000000000..6294f30ff
 +
 +	/// True once the amp envelope has died away, so the Deluge voice can be freed
 +	[[nodiscard]] bool finished() const { return finished_; }
++	/// The voice's overall level, 0 to 1: the amp envelope (and, on Vtg Snr, the snares' own), through the fade at the
++	/// end. The voice ends once this falls below -72 dB.
++	[[nodiscard]] float level() const { return finished_ ? 0.f : common_.level; }
 +
 +	// Per-engine running state. Public for the engine functions in cyc.cpp; nothing else should touch them.
 +	struct Common {
 +		float amp;        ///< Amp envelope
 +		float ampCoef;    ///< Per sample amp decay multiplier
 +		float punchEnv;   ///< Punch's short boost
++		float level;      ///< What level() reports, as of the end of the last render
 +		uint32_t rng;     ///< Noise generator state
 +		uint32_t ampHold; ///< Samples before the amp decay starts
++		uint32_t pos;     ///< Samples since the note started. Work is done in chunks of 64 counted from here
++		bool ending;      ///< Fading out over the current chunk, then finished
 +	};
 +	struct Osc {
 +		uint32_t phase;
@@ -1290,6 +1686,9 @@ index 000000000..6294f30ff
 +	};
 +	struct Svf {
 +		float ic1, ic2;
++	};
++	struct SvfCoefs {
++		float a1, a2, a3, k;
 +	};
 +	struct KikState {
 +		Osc body, harm;
@@ -1326,6 +1725,7 @@ index 000000000..6294f30ff
 +		Osc body, bodyMod;
 +		std::array<Osc, 4> cluster;
 +		float pitchEnv, modEnv, clusterEnv;
++		float sqrtAmp, invAmp; ///< sqrt(amp) and 1 / amp, followed sample by sample from the start of each chunk
 +		Svf noiseBp;
 +	};
 +	struct ClapState {
@@ -1347,21 +1747,92 @@ index 000000000..6294f30ff
 +		ClapState clap;
 +	} s_;
 +
++	// What each engine's settings make, worked out again only when the settings or the note change. "rest" phase
++	// increments are the ones once the pitch sweep has died away.
++	struct KikCoefs {
++		float fEnd, depth, pitchCoef, incPerHz, maxHz;
++		float spikeAmount, spikeNorm, spikeNoise, drive, driveNorm, dry, knock, clickCoef;
++		uint32_t restInc;
++		bool spikes;  ///< Shape adds spikes (or noise on them) above -110 dB
++		bool colored; ///< Color is up at all
++	};
++	struct SnrCoefs {
++		float depth, pitchCoef, incPerHz, maxHz, index, noiseAmount, rattleCoef, bodyCoef, attackStep;
++		uint32_t modInc, carInc, restInc;
++		SvfCoefs hp;
++	};
++	struct MetalCoefs {
++		std::array<float, 6> inc;
++		std::array<uint32_t, 6> restInc;
++		float index, depth, pitchCoef, brightCoef, cutLo, cutHi;
++		SvfCoefs hp, ring;
++	};
++	struct PercCoefs {
++		float depth, pitchCoef, incPerHz, maxHz, index, levelB, ratioC, levelC, overtoneCoef;
++		std::array<uint32_t, 4> restInc; ///< car, mod, mod2, sub
++	};
++	struct ToneCoefs {
++		uint32_t carInc, modInc;
++		float index, indexCoef, burst, burstCoef;
++	};
++	struct ChordCoefs {
++		std::array<uint32_t, 4> inc, inc2;
++		float odd, fb, sweepCoef;
++	};
++	struct VsnrCoefs {
++		float depth, pitchCoef, incPerHz, maxHz, ratio, modDepth, modCoef, clusterCoef, clusterLevel, roughness;
++		float sqrtAmpCoef, invAmpCoef, ampCoef64;
++		std::array<uint32_t, 4> modeInc;
++		uint32_t restInc, restModInc;
++		SvfCoefs bp;
++	};
++	struct ClapCoefs {
++		int32_t spacing, holdSamples;
++		float burstCoef, bodyGain, darkCoef, burstLevel, tailLevel, burstBright, tailFastCoef;
++		SvfCoefs bp, bp2, body;
++	};
++	struct Prepared {
++		// What these were made from
++		std::array<float, kNumMacros> macro;
++		float decay, drive, sampleRate;
++		uint32_t phaseIncrement;
++		Kind kind;
++		bool punch;
++		// For every engine
++		float hz; ///< The note's frequency
++		float ampCoef, driveGain, punchCoef;
++		union {
++			KikCoefs kik;
++			SnrCoefs snr;
++			MetalCoefs metal;
++			PercCoefs perc;
++			ToneCoefs tone;
++			ChordCoefs chord;
++			VsnrCoefs vsnr;
++			ClapCoefs clap;
++		} e;
++	};
++	Prepared p_;
++
 +private:
 +	void start(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate);
++	void prepare(Kind kind, const Settings& settings, uint32_t phaseIncrement, float sampleRate);
++	[[nodiscard]] bool preparedFor(Kind kind, const Settings& settings, uint32_t phaseIncrement,
++	                               float sampleRate) const;
 +
 +	Kind kind_; ///< The engine s_ was started for
 +	bool pendingTrigger_;
 +	bool finished_;
++	bool prepared_; ///< p_ holds something
 +};
 +
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 000000000..f0b62aa1f
+index 000000000..d7210d845
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1352 @@
+@@ -0,0 +1,1403 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -1420,6 +1891,9 @@ index 000000000..f0b62aa1f
 +constexpr float kNoiseGain = 0.9f;
 +constexpr float kCutoffMin = 30.f;
 +constexpr float kCutoffMax = 16000.f;
++/// A voice is done once its own decay is 72 dB down, and counts as quiet for culling at 40 dB
++constexpr float kEndLevel = 2.5e-4f;
++constexpr float kQuietLevel = 0.01f;
 +
 +int32_t toQ31(float f) {
 +	return static_cast<int32_t>(std::clamp(f, -1.f, 1.f) * 2147483647.f);
@@ -1430,7 +1904,7 @@ index 000000000..f0b62aa1f
 +}
 +
 +/// Same as getSine() in util/waves.h: linear interpolation of the 256-point table, giving a full-range q31
-+int32_t sine(uint32_t phase) {
++[[gnu::always_inline]] inline int32_t sine(uint32_t phase) {
 +	const uint32_t index = phase >> 24;
 +	const int32_t strength2 = (phase >> 8) & 65535;
 +	const int32_t strength1 = 65536 - strength2;
@@ -1438,7 +1912,7 @@ index 000000000..f0b62aa1f
 +}
 +
 +/// Full-range triangle, starting at its lowest point
-+int32_t triangle(uint32_t phase) {
++[[gnu::always_inline]] inline int32_t triangle(uint32_t phase) {
 +	const uint32_t folded = std::min<uint32_t>((phase >= 0x80000000u) ? -phase : phase, 0x7FFFFFFFu);
 +	return static_cast<int32_t>((folded << 1) - 0x80000000u);
 +}
@@ -2090,6 +2564,13 @@ index 000000000..f0b62aa1f
 +// Voice ---------------------------------------------------------------------------------------------------------------
 +
 +void Voice::updateSettings(const Patch& patch, const DrumControls& controls) {
++	// Most buffers bring the same patch and controls as the last one
++	if (settingsValid_ && patch.bytes() == rawPatch_ && controls.values == rawControls_) {
++		return;
++	}
++	rawPatch_ = patch.bytes();
++	rawControls_ = controls.values;
++
 +	std::array<uint8_t, Patch::NUM_PARAMS> effective;
 +	for (uint8_t p = 0; p < Patch::NUM_PARAMS; p++) {
 +		const auto param = static_cast<Patch::Param>(p);
@@ -2137,6 +2618,9 @@ index 000000000..f0b62aa1f
 +	const float cutoff = kCutoffMin * powf(kCutoffMax / kCutoffMin, effective[Patch::NOISE_CUTOFF] / 127.f);
 +	s.filterG = tanf(3.14159265f * std::min(cutoff, 0.45f * kSampleRate) / kSampleRate);
 +	s.filterK = 2.f - 1.95f * (effective[Patch::NOISE_RESONANCE] / 127.f);
++	s.filterA1 = 1.f / (1.f + s.filterG * (s.filterG + s.filterK));
++	s.filterA2 = s.filterG * s.filterA1;
++	s.filterA3 = s.filterG * s.filterA2;
 +
 +	s.transientMode = effective[Patch::TRANS_MODE];
 +	s.transientVolume = effective[Patch::TRANS_VOLUME] / 127.f;
@@ -2182,7 +2666,7 @@ index 000000000..f0b62aa1f
 +	return static_cast<int32_t>(random_);
 +}
 +
-+int32_t Voice::step(Wave w, Osc& osc, uint32_t phaseOffset) {
++[[gnu::always_inline]] inline int32_t Voice::step(Wave w, Osc& osc, uint32_t phaseOffset) {
 +	const uint32_t phase = osc.phase + phaseOffset;
 +	const uint32_t next = osc.phase + osc.phaseIncrement;
 +	int32_t value;
@@ -2275,7 +2759,7 @@ index 000000000..f0b62aa1f
 +	transientLevel_ = toQ31(s.transientVolume);
 +}
 +
-+int32_t Voice::transientSample() {
++[[gnu::always_inline]] inline int32_t Voice::transientSample() {
 +	const uint8_t mode = settings_.transientMode;
 +	if (mode < kTransientSampleFirst || transientPhase_ >= kTransientEnd) {
 +		return 0;
@@ -2286,18 +2770,17 @@ index 000000000..f0b62aa1f
 +	return multiply_32x32_rshift32(t, transientLevel_); // q30
 +}
 +
-+int32_t Voice::filterNoise(int32_t input) {
++[[gnu::always_inline]] inline int32_t Voice::filterNoise(int32_t input) {
 +	const Settings& s = settings_;
 +	if (s.noiseFilter == NoiseFilter::OFF) {
 +		return input;
 +	}
 +
 +	// TPT state variable filter (Zavalishin, "The Art of VA Filter Design")
-+	const float g = s.filterG;
 +	const float k = s.filterK;
-+	const float a1 = 1.f / (1.f + g * (g + k));
-+	const float a2 = g * a1;
-+	const float a3 = g * a2;
++	const float a1 = s.filterA1;
++	const float a2 = s.filterA2;
++	const float a3 = s.filterA3;
 +
 +	const float x = input * (1.f / 2147483648.f);
 +	const float v3 = x - filterState2_;
@@ -2345,8 +2828,10 @@ index 000000000..f0b62aa1f
 +
 +void Voice::renderSnare(int32_t* out, int32_t n, int32_t& amplitude, int32_t amplitudeIncrement) {
 +	const Settings& s = settings_;
++	// No noise in the mix: skip its osc and filter
++	const bool noisy = modLevel_ != 0;
 +	for (int32_t i = 0; i < n; i++) {
-+		const int32_t noise = filterNoise(step(Wave::NOISE, noise_));
++		const int32_t noise = noisy ? filterNoise(step(Wave::NOISE, noise_)) : 0;
 +		const int32_t osc = step(s.oscWave, main_);
 +
 +		int32_t sample = multiply_32x32_rshift32(osc, mainLevel_) + multiply_32x32_rshift32(noise, modLevel_);
@@ -2359,10 +2844,14 @@ index 000000000..f0b62aa1f
 +void Voice::renderMetal(int32_t* out, int32_t n, int32_t& amplitude, int32_t amplitudeIncrement) {
 +	const Settings& s = settings_;
 +	constexpr int32_t kOne = 1 << 30; // q30
++	// The second mod at zero adds nothing: skip its osc
++	const bool mod2On = mod2Level_ != 0;
 +	for (int32_t i = 0; i < n; i++) {
 +		// The two mods sum and clip like the LXR's saturating int16 add
-+		int32_t mod = multiply_32x32_rshift32(step(s.modWave, mod_), modLevel_)
-+		              + multiply_32x32_rshift32(step(s.mod2Wave, mod2_), mod2Level_);
++		int32_t mod = multiply_32x32_rshift32(step(s.modWave, mod_), modLevel_);
++		if (mod2On) {
++			mod += multiply_32x32_rshift32(step(s.mod2Wave, mod2_), mod2Level_);
++		}
 +		mod = std::clamp(mod, -kOne, kOne);
 +
 +		// mod is q30 and fmDepth_ is index / 8: x 2^6 makes a full-scale mod move the phase by index cycles
@@ -2421,6 +2910,7 @@ index 000000000..f0b62aa1f
 +		lxrLevel_ = 1.f;
 +	}
 +	xiaFinished_ = false;
++	lxrQuiet_ = false;
 +
 +	// The LXR voices' drive and decay. Left at neutral (no drive, decay holding) they're skipped entirely.
 +	const float driveKnob = static_cast<float>(controls.value(DrumControls::LXR_DRIVE)) / 127.f;
@@ -2464,8 +2954,12 @@ index 000000000..f0b62aa1f
 +	constexpr float kQ30 = 1073741824.f;
 +	const float gain = cyc::driveGainFor(driveKnob);
 +	// Decay: 30 ms to 12 s to fall 60 dB across the knob, 127 holds
-+	const float coef =
-+	    (decayKnob >= 127) ? 1.f : expf(-6.907755f / (0.03f * powf(400.f, decayKnob / 126.f) * kSampleRate));
++	if (decayKnob != lxrDecayKnob_) {
++		lxrDecayKnob_ = decayKnob;
++		lxrDecayCoef_ =
++		    (decayKnob >= 127) ? 1.f : expf(-6.907755f / (0.03f * powf(400.f, decayKnob / 126.f) * kSampleRate));
++	}
++	const float coef = lxrDecayCoef_;
 +	std::array<int32_t, 64> scratch;
 +	int32_t* out = buffer;
 +	int32_t remaining = numSamples;
@@ -2502,8 +2996,36 @@ index 000000000..f0b62aa1f
 +		}
 +		out += n;
 +	}
-+	// Once the decay has died away, so has the voice
-+	xiaFinished_ = lxrLevel_ < 1e-5f;
++	// Once the decay has died away, so has the voice: 72 dB down, counting the drive's gain
++	const float level = lxrLevel_ * std::max(gain, 1.f);
++	xiaFinished_ = level < kEndLevel;
++	lxrQuiet_ = level < kQuietLevel;
++}
++
++bool Voice::quiet() const {
++	if (xiaFinished_) {
++		return true;
++	}
++	if (pendingTrigger_) {
++		return false;
++	}
++	if (isGin(settings_.engine)) {
++		return ginReady_ && xia_.gin.quiet();
++	}
++	if (isCyc(settings_.engine)) {
++		return cycReady_ && xia_.cyc.level() < kQuietLevel;
++	}
++	if (isXia(settings_.engine)) {
++		constexpr int32_t kQuietQ31 = static_cast<int32_t>(kQuietLevel * 2147483648.f);
++		if (xiaEngine_ == Engine::TIA) {
++			return xia_.tia.envelope < kQuietQ31;
++		}
++		if (xiaEngine_ == Engine::IIA) {
++			return xia_.iia.envelope < kQuietQ31 && xia_.iia.strike < kQuietQ31;
++		}
++		return false;
++	}
++	return lxrQuiet_;
 +}
 +
 +// XIA engines ---------------------------------------------------------------------------------------------------------
@@ -2716,10 +3238,10 @@ index 000000000..f0b62aa1f
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 000000000..c4614ba00
+index 000000000..7b27f9d73
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,461 @@
+@@ -0,0 +1,472 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -3034,6 +3556,7 @@ index 000000000..c4614ba00
 +
 +	/// Raw bytes, for saving and loading. Out of range values are clamped when read.
 +	std::array<uint8_t, NUM_PARAMS>& bytes() { return params_; }
++	[[nodiscard]] const std::array<uint8_t, NUM_PARAMS>& bytes() const { return params_; }
 +	void clampAll();
 +
 +	/// Load the 12 bytes saved by the first, kick-and-tom-only version of the drum synth
@@ -3095,6 +3618,8 @@ index 000000000..c4614ba00
 +
 +	/// True once an XIA or Cyc engine's own envelope has finished, so the Deluge voice can be freed
 +	[[nodiscard]] bool finished() const { return xiaFinished_; }
++	/// True once the engine's own decay has fallen 40 dB, so culling can treat the voice like a releasing one
++	[[nodiscard]] bool quiet() const;
 +
 +private:
 +	/// Patch values after knob offsets, turned into the numbers the render loop wants
@@ -3109,6 +3634,7 @@ index 000000000..c4614ba00
 +		uint32_t noisePhaseIncrement;
 +		NoiseFilter noiseFilter;
 +		float filterG, filterK;
++		float filterA1, filterA2, filterA3; ///< The noise filter's coefficients, from filterG and filterK
 +		uint8_t transientMode;
 +		float transientVolume, transientPitch;
 +		uint32_t transientPhaseIncrement;
@@ -3146,6 +3672,9 @@ index 000000000..c4614ba00
 +	Settings settings_{};
 +	std::array<uint8_t, Patch::NUM_PARAMS> settingsFrom_{}; ///< Effective bytes settings_ was built from
 +	bool settingsValid_ = false;
++	// The patch and controls settingsFrom_ came from, so an unchanged buffer skips working the bytes out again
++	std::array<uint8_t, Patch::NUM_PARAMS> rawPatch_{};
++	std::array<int32_t, DrumControls::NUM_SLOTS> rawControls_{};
 +
 +	Osc main_, mod_, mod2_, noise_;
 +	uint32_t transientPhase_ = 0;
@@ -3175,6 +3704,10 @@ index 000000000..c4614ba00
 +	bool cycReady_ = false;           ///< xia_ holds a Cyc engine's state
 +	bool ginReady_ = false;           ///< xia_ holds GIN's state
 +	float lxrLevel_ = 1.f;            ///< The LXR voices' decay
++	float lxrGain_ = 1.f;             ///< The LXR voices' drive gain, last render
++	int32_t lxrDecayKnob_ = -1;       ///< The decay knob lxrDecayCoef_ was worked out for
++	float lxrDecayCoef_ = 1.f;
++	bool lxrQuiet_ = false; ///< The LXR voices' decay has fallen 40 dB
 +	bool xiaTrigger_ = false;
 +	bool xiaFinished_ = false;
 +	bool pendingTrigger_ = false;
@@ -4634,10 +5167,10 @@ index 000000000..233eb2584
 +    }};
 diff --git a/src/deluge/dsp/drum_synth/gin.cpp b/src/deluge/dsp/drum_synth/gin.cpp
 new file mode 100644
-index 000000000..6c44c0ad2
+index 000000000..81f5e984a
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin.cpp
-@@ -0,0 +1,451 @@
+@@ -0,0 +1,471 @@
 +/*
 + * GIN drum voice. See gin.h for what this is, where it comes from, and the MIT notices of the code it is derived from.
 + *
@@ -4663,8 +5196,10 @@ index 000000000..6c44c0ad2
 +
 +constexpr float kEnvFloor = 0.001f; ///< Envelopes run from here to 1 and back: 60 dB
 +constexpr float kEnvSpan = 1.f / kEnvFloor;
-+/// Envelope time for 80 dB rather than 60: where the voice is called finished
-+constexpr float kEndScale = 4.f / 3.f;
++/// Envelope time for 72 dB rather than 60: where the voice is called finished
++constexpr float kEndScale = 72.f / 60.f;
++/// And for 40 dB, where culling treats it like a releasing voice
++constexpr float kQuietScale = 40.f / 60.f;
 +constexpr float kOneThird = 1.f / 3.f;
 +constexpr float kTwoThirds = 2.f / 3.f;
 +
@@ -4881,6 +5416,7 @@ index 000000000..6c44c0ad2
 +	const float maxHz = 0.45f * kSampleRate;
 +	noiseFilter_ =
 +	    noiseFilterFor(s.noiseFilter, std::min(paramToHz(s.noiseFreq), maxHz), 0.1f * std::pow(100000.f, s.noiseQ));
++	filterNoise_ = s.noiseFilter != NoiseFilter::OFF;
 +
 +	// A boost takes half its dB off the whole channel
 +	const float eqDb = (s.eqGain - 0.5f) * 80.f;
@@ -4908,15 +5444,20 @@ index 000000000..6c44c0ad2
 +		distBias_ = -11.f / 27.f;
 +	}
 +
-+	// Done once each layer that can be heard is 80 dB down
++	// Done once each layer that can be heard is 72 dB down, and quiet at 40 dB
 +	float end = 0.f;
++	float quiet = 0.f;
 +	if (oscGain_ > 0.f) {
 +		end = oscAtk_ + oscDcy_ * kEndScale;
++		quiet = oscAtk_ + oscDcy_ * kQuietScale;
 +	}
 +	if (noiseGain_ > 0.f) {
-+		end = std::max(end, (s.noiseEnv == NoiseEnv::LINEAR) ? linAtk_ + linDcy_ : nAtk_ + nDcy_ * kEndScale);
++		const bool linear = s.noiseEnv == NoiseEnv::LINEAR;
++		end = std::max(end, linear ? linAtk_ + linDcy_ : nAtk_ + nDcy_ * kEndScale);
++		quiet = std::max(quiet, linear ? linAtk_ + linDcy_ * 0.99f : nAtk_ + nDcy_ * kQuietScale);
 +	}
 +	endTime_ = end;
++	quietTime_ = quiet;
 +}
 +
 +void Voice::render(const Settings& s, uint32_t phaseIncrement, int32_t* out, int32_t numSamples) {
@@ -5062,7 +5603,15 @@ index 000000000..6c44c0ad2
 +			break;
 +		}
 +
-+		const float noise = noiseOn ? process(noiseFilter_, nz1_, nz2_, randomUnit(rand_) * 2.f - 1.f) * nEnv : 0.f;
++		float noise = 0.f;
++		if (noiseOn) {
++			noise = randomUnit(rand_) * 2.f - 1.f;
++			// With the filter off its biquad passes the noise straight through, so skip it
++			if (filterNoise_) {
++				noise = process(noiseFilter_, nz1_, nz2_, noise);
++			}
++			noise *= nEnv;
++		}
 +		float x = osc * oscGain_ + noise * noiseGain_;
 +
 +		if (distort) {
@@ -5088,13 +5637,17 @@ index 000000000..6c44c0ad2
 +	finished_ = static_cast<float>(n_) * kInvSampleRate > endTime_;
 +}
 +
++bool Voice::quiet() const {
++	return finished_ || static_cast<float>(n_) * kInvSampleRate > quietTime_;
++}
++
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/gin.h b/src/deluge/dsp/drum_synth/gin.h
 new file mode 100644
-index 000000000..d9afab7ef
+index 000000000..007ece0a3
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/gin.h
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,135 @@
 +/*
 + * GIN: the drum synth from SquareWave Studio's GIN for the OP-1, on the Deluge's drum synth. GIN's synthesis core is
 + * built on Eric Lewis's libpo32, a PO-32 style drum voice: one oscillator with a pitch modulator, and a filtered noise
@@ -5190,6 +5743,8 @@ index 000000000..d9afab7ef
 +
 +	/// True once both envelopes have died away, so the Deluge voice can be freed
 +	[[nodiscard]] bool finished() const { return finished_; }
++	/// True once every layer is 40 dB down
++	[[nodiscard]] bool quiet() const;
 +
 +	struct Biquad {
 +		float b0, b1, b2, a1, a2;
@@ -5211,7 +5766,9 @@ index 000000000..d9afab7ef
 +	float oscGain_, noiseGain_, level_;
 +	float distDrive_, distGain_, distClip_, distBias_;
 +	bool useEq_;
-+	float endTime_; ///< Seconds after the hit when both envelopes are 80 dB down
++	bool filterNoise_; ///< The noise filter is on (off, its biquad passes the noise straight through)
++	float endTime_;    ///< Seconds after the hit when both envelopes are 72 dB down
++	float quietTime_;  ///< And 40 dB down
 +	Biquad noiseFilter_, eq_;
 +
 +	// Running state
@@ -5647,10 +6204,10 @@ index 000000000..b1fd5cb2b
 +} // namespace deluge::dsp::drum_synth::gin
 diff --git a/src/deluge/dsp/drum_synth/xia.cpp b/src/deluge/dsp/drum_synth/xia.cpp
 new file mode 100644
-index 000000000..eed64c28a
+index 000000000..14dd48640
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/xia.cpp
-@@ -0,0 +1,680 @@
+@@ -0,0 +1,682 @@
 +/*
 + * The TIA and IIA engines (DXIA and DIIA on the Deluge), from the XIA engine set for the Model:Cycles. See xia.h.
 + *
@@ -5683,6 +6240,8 @@ index 000000000..eed64c28a
 +
 +constexpr int32_t kMax = std::numeric_limits<int32_t>::max();
 +constexpr int32_t kKnobMax = 0x7F00;
++/// A voice is done once its envelope is 72 dB down (q31)
++constexpr int32_t kEndEnvelope = 0x80000;
 +constexpr int32_t kPitchMax = 0x870000;
 +
 +/// The EMAC's signed fractional multiply-accumulate into a clear accumulator, then read with saturation
@@ -6017,7 +6576,7 @@ index 000000000..eed64c28a
 +	post(p, buffer, s.lowPass);
 +	output(buffer, mul(envelope, declick), mul(newEnvelope, newDeclick), t.punch != 0, out);
 +
-+	if (t.decay < kKnobMax && s.envelope < 0x8000 && !trigger && !s.held) {
++	if (t.decay < kKnobMax && s.envelope < kEndEnvelope && !trigger && !s.held) {
 +		s.active = 0;
 +	}
 +}
@@ -6325,7 +6884,7 @@ index 000000000..eed64c28a
 +	output(buffer, gain, gainEnd, t.punch != 0, out);
 +
 +	s.noiseSeed = seed;
-+	if (s.envelope < 0x8000 && s.strike < 0x8000 && !trigger && !s.held) {
++	if (s.envelope < kEndEnvelope && s.strike < kEndEnvelope && !trigger && !s.held) {
 +		s.active = 0;
 +	}
 +}
@@ -7316,10 +7875,10 @@ index 000000000..ce8acd265
 +} // namespace deluge::dsp
 diff --git a/src/deluge/dsp/tb303/open303.cpp b/src/deluge/dsp/tb303/open303.cpp
 new file mode 100644
-index 000000000..a4de95816
+index 000000000..c463ce0ae
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.cpp
-@@ -0,0 +1,538 @@
+@@ -0,0 +1,583 @@
 +/*
 + * Copyright © 2026 Synthstrom Audible Limited
 + *
@@ -7342,6 +7901,7 @@ index 000000000..a4de95816
 +#include "definitions.h"
 +#include "dsp/drum_synth/cyc.h"
 +#include <algorithm>
++#include <bit>
 +#include <cmath>
 +#include <complex>
 +
@@ -7359,6 +7919,26 @@ index 000000000..a4de95816
 +/// Open303's AnalogEnvelope coefficient for a stage time in ms
 +float envelopeCoeff(float timeMs, float sampleRate) {
 +	return (timeMs > 0.f) ? 1.f - std::exp(-1.f / (sampleRate * 0.001f * timeMs)) : 1.f;
++}
++
++/// 2 to the x, to within 2e-7: the whole part straight into the exponent, and a polynomial for the fraction
++[[gnu::always_inline]] inline float fastExp2(float x) {
++	x = std::clamp(x, -126.f, 126.f);
++	int32_t whole = (int32_t)x;
++	whole -= (x < (float)whole) ? 1 : 0; // Round down rather than towards zero
++	float f = x - (float)whole;
++	float p = 1.8775767e-3f;
++	p = p * f + 8.9893406e-3f;
++	p = p * f + 5.5826318e-2f;
++	p = p * f + 2.4015361e-1f;
++	p = p * f + 6.9315308e-1f;
++	p = p * f + 9.9999994e-1f;
++	return p * std::bit_cast<float>((whole + 127) << 23);
++}
++
++/// Linear interpolation into a wavetable
++[[gnu::always_inline]] inline float readTable(const float* table, int32_t index, float frac) {
++	return table[index] + frac * (table[index + 1] - table[index]);
 +}
 +} // namespace
 +
@@ -7521,65 +8101,30 @@ index 000000000..a4de95816
 +	b2 = (float)scale;
 +}
 +
-+float AntiAliasFilter::process(float in) {
-+	// b0, b1, b2, -a1, -a2 for each section. The product of these is Open303's filter to within 3e-7.
-+	static constexpr float kSections[6][5] = {
-+	    {0.016780659926151895f, 0.022947305659324117f, 0.016780659926151933f, 1.5863116558748012f,
-+	     -0.6428202813864291f},
-+	    {0.09459763035184697f, -0.035133895460929543f, 0.09459763035184561f, 1.5620957226926269f, -0.7161570879353899f},
-+	    {0.29069484193705036f, -0.29936460675402321f, 0.290694841937152f, 1.5310700890181974f, -0.81309516613837662f},
-+	    {0.52578571778729133f, -0.66650721431468896f, 0.52578571778628858f, 1.5080939966772393f, -0.89315821793613026f},
-+	    {0.70505069759938288f, -0.96089912665161337f, 0.70505069760221728f, 1.4983265489464017f, -0.9475288174963884f},
-+	    {0.79922266095877925f, -1.117333033909587f, 0.79922266095683048f, 1.5032624520096824f, -0.98437474001570513f},
-+	};
-+	float x = in;
-+	for (int32_t s = 0; s < 6; s++) {
-+		// Transposed direct form II
-+		const float* c = kSections[s];
-+		std::array<float, 2>& z = state[s];
-+		float y = c[0] * x + z[0];
-+		z[0] = c[1] * x + c[3] * y + z[1];
-+		z[1] = c[2] * x + c[4] * y;
-+		x = y;
-+	}
-+	return x;
-+}
-+
 +void TeeBeeFilter::setSampleRate(float sampleRate) {
 +	twoPiOverSampleRate = 2.f * kPiF / sampleRate;
 +	feedbackHighpass.setup(OnePole::HIGHPASS, 150.f, sampleRate);
-+	calculateCoefficients();
 +}
 +
 +void TeeBeeFilter::setResonance(float percent) {
 +	float r = 0.01f * percent;
 +	resonanceSkewed = (1.f - std::exp(-3.f * r)) / (1.f - std::exp(-3.f));
-+	calculateCoefficients();
 +}
 +
-+void TeeBeeFilter::setCutoff(float cutoff) {
-+	cutoff = std::clamp(cutoff, 200.f, 20000.f);
-+	if (cutoff != cutoff_) {
-+		cutoff_ = cutoff;
-+		calculateCoefficients();
-+	}
-+}
-+
-+void TeeBeeFilter::calculateCoefficients() {
-+	float wc = twoPiOverSampleRate * cutoff_;
++TeeBeeFilter::Coefficients TeeBeeFilter::coefficientsFor(float cutoff) const {
++	float wc = twoPiOverSampleRate * std::clamp(cutoff, 200.f, 20000.f);
 +	float r = resonanceSkewed;
 +
 +	if (classic_) {
 +		// Ala mystran and kunn, from the KVR thread
 +		float fx = wc * (0.70710678f / (2.f * kPiF));
-+		b0 = (0.00045522346f + 6.1922189f * fx) / (1.f + 12.358354f * fx + 4.4156345f * (fx * fx));
-+		k = fx * (fx * (fx * (fx * (fx * (fx + 7198.6997f) - 5837.7917f) - 476.47308f) + 614.95611f) + 213.87126f)
-+		    + 16.998792f;
-+		g = k * (1.f / 17.f);
++		float b0 = (0.00045522346f + 6.1922189f * fx) / (1.f + 12.358354f * fx + 4.4156345f * (fx * fx));
++		float k = fx * (fx * (fx * (fx * (fx * (fx + 7198.6997f) - 5837.7917f) - 476.47308f) + 614.95611f) + 213.87126f)
++		          + 16.998792f;
++		float g = k * (1.f / 17.f);
 +		g = (g - 1.f) * r + 1.f;
 +		g = g * (1.f + r);
-+		k = k * r;
-+		return;
++		return {b0, 0.f, k * r, g};
 +	}
 +
 +	// 12th order polynomial for the one-pole coefficient, and 8th order for the resonance scale
@@ -7589,15 +8134,13 @@ index 000000000..a4de95816
 +	tmp = wc2 * tmp + 7.529691648678890e-01f * wc + -8.249882473764324e-01f;
 +	tmp = wc2 * tmp + 8.736418933533319e-01f * wc + -9.164580250284832e-01f;
 +	tmp = wc2 * tmp + 9.583192455599817e-01f * wc + -9.999994950291231e-01f;
-+	a1 = wc2 * tmp + 9.999999927726119e-01f * wc + -9.999999999857464e-01f;
-+	b0 = 1.f + a1;
++	float a1 = wc2 * tmp + 9.999999927726119e-01f * wc + -9.999999999857464e-01f;
 +
 +	tmp = wc2 * -4.554677015609929e-05f + -2.022131730719448e-05f * wc + 2.784706718370008e-03f;
 +	tmp = wc2 * tmp + 2.079921151733780e-03f * wc + -8.333236384240325e-02f;
 +	tmp = wc2 * tmp + -1.666668203490468e-01f * wc + 1.000000012124230e+00f;
 +	tmp = wc2 * tmp + 3.999999999650040e+00f * wc + 4.000000000000113e+00f;
-+	k = r * tmp;
-+	g = 1.f;
++	return {1.f + a1, a1, r * tmp, 1.f};
 +}
 +
 +void TeeBeeFilter::reset() {
@@ -7623,6 +8166,12 @@ index 000000000..a4de95816
 +
 +void Open303::setControls(Controls const& newControls) {
 +	bool resonanceChanged = newControls.resonance != controls.resonance;
++	// Open303 applies these at once, so the filter jumps to them rather than gliding. The cutoff knob counts too, as it
++	// moves the envelope's scaling and offset.
++	if (resonanceChanged || newControls.cutoff != controls.cutoff || newControls.envMod != controls.envMod
++	    || newControls.classicFilter != controls.classicFilter) {
++		filterJump = true;
++	}
 +	controls = newControls;
 +	if (resonanceChanged || !sounding) {
 +		filter.setResonance(controls.resonance);
@@ -7661,6 +8210,8 @@ index 000000000..a4de95816
 +	// Accented notes have a fixed 200 ms filter decay
 +	mainEnvCoeff = std::exp(-1.f / (0.001f * (accent ? 200.f : controls.decay) * kSampleRate));
 +	ampReleaseCoeff = envelopeCoeff(accent ? 50.f : 1.f, kSampleRate);
++	// The accent's jump in envelope, or a new note's, lands at once, as on Open303
++	filterJump = true;
 +}
 +
 +void Open303::triggerNote(int32_t note, bool accent) {
@@ -7759,77 +8310,11 @@ index 000000000..a4de95816
 +	ampDeClicker.reset();
 +}
 +
-+inline float Open303::oscillator() {
-+	// Like Open303: choose the table from the increment, two octaves of headroom
-+	int32_t octave = (31 - __builtin_clz(phaseIncrement | 1)) - (32 - wavetables::kLengthMagnitude);
-+	int32_t table = std::clamp<int32_t>(octave + 2, 0, wavetables::kNumTables - 1);
-+
-+	constexpr int32_t fracBits = 32 - wavetables::kLengthMagnitude;
-+	int32_t index = phase >> fracBits;
-+	float frac = (float)(phase & ((1u << fracBits) - 1)) * (1.f / (1u << fracBits));
-+	phase += phaseIncrement;
-+
-+	float blend = controls.waveform;
-+	const float* saw = wavetables::get(wavetables::SAW, table) + index;
-+	const float* square = wavetables::get(wavetables::SQUARE, table) + index;
-+	float sawValue = saw[0] + frac * (saw[1] - saw[0]);
-+	float squareValue = square[0] + frac * (square[1] - square[0]);
-+	return (1.f - blend) * sawValue + blend * 0.5f * squareValue;
-+}
-+
-+float Open303::renderSample() {
-+	// Oscillator pitch, through the slide
-+	pitchSlew = oscFreq + pitchSlewCoeff * (pitchSlew - oscFreq);
-+	if (pitchSlew > 0.f && pitchSlew < 20000.f) {
-+		phaseIncrement = (uint32_t)(pitchSlew * (4294967296.f / (kSampleRate * kOversampling)));
-+	}
-+
-+	// Cutoff, from the main envelope and, on accents, its smoothed copy
-+	mainEnv *= mainEnvCoeff;
-+	float mainEnvOut = mainEnv;
-+	rc2 = ((accentGain > 0.f) ? mainEnvOut : 0.f) * (1.f - rc2Coeff) + rc2Coeff * rc2;
-+	float envAmount = envScaler * (mainEnvOut - envOffset) + accentGain * rc2;
-+	filter.setCutoff(cutoffNow * std::exp2(envAmount));
-+
-+	// Amplitude
-+	if (ampAttackPending) {
-+		ampEnv = 1.f;
-+		ampAttackPending = false;
-+	}
-+	else if (ampNoteOn) {
-+		ampEnv += ampDecayCoeff * (controls.ampSustain - ampEnv);
-+	}
-+	else {
-+		ampEnv -= ampReleaseCoeff * ampEnv;
-+	}
-+	float amp = ampEnv;
-+	if (ampNoteOn) {
-+		amp += (0.45f + 4.f * accentGain) * mainEnvOut;
-+	}
-+	amp = ampDeClicker.process(amp);
-+	lastAmp = amp;
-+
-+	float out = 0.f;
-+	for (int32_t i = 0; i < kOversampling; i++) {
-+		out = -oscillator();
-+		out = highpass1.process(out);
-+		out = filter.process(out);
-+		out = antiAlias.process(out);
-+	}
-+	out = allpass.process(out);
-+	out = highpass2.process(out);
-+	out = notch.process(out);
-+	return out * amp;
-+}
-+
-+void Open303::render(std::span<int32_t> buffer, float gain) {
-+	if (!sounding || !wavetables::built()) {
-+		return;
-+	}
-+
++template <bool classic>
++void Open303::renderVoice(std::span<int32_t> buffer, float gain) {
 +	// Glide the cutoff across the buffer so turning the knob doesn't zipper
-+	float cutoffStart = cutoffNow;
-+	float cutoffStep = (controls.cutoff - cutoffStart) / (float)buffer.size();
++	const int32_t size = (int32_t)buffer.size();
++	const float cutoffStep = (controls.cutoff - cutoffNow) / (float)size;
 +
 +	// Drive, the drum synth engines' curve. A plain note peaks near 1 and an accent near 3, so a quarter of that into
 +	// the clipper keeps plain notes clean at low settings and lets accents bite first. Half the drive gain is taken
@@ -7840,16 +8325,135 @@ index 000000000..a4de95816
 +	const float driveIn = kDriveIn * driveGain;
 +	const float driveOut = 1.f / (kDriveIn * std::sqrt(driveGain));
 +
-+	for (int32_t& sample : buffer) {
-+		cutoffNow += cutoffStep;
-+		float out = renderSample();
-+		if (driven) {
-+			out = drum_synth::cyc::driveCurve(out * driveIn) * driveOut;
++	// Fully saw or fully square only needs the one wavetable
++	const float blend = controls.waveform;
++	const bool sawOnly = blend == 0.f;
++	const bool squareOnly = blend == 1.f;
++	const float sawLevel = 1.f - blend;
++	const float squareLevel = 0.5f * blend;
++
++	// The state the oversampled loop works on, in locals so it can stay in registers. It goes back at the end.
++	uint32_t phaseNow = phase;
++	uint32_t increment = phaseIncrement;
++	OnePole inputHighpass = highpass1;
++	TeeBeeFilter ladder = filter;
++	AntiAliasFilter decimator = antiAlias;
++	float amp = lastAmp;
++
++	constexpr int32_t fracBits = 32 - wavetables::kLengthMagnitude;
++	int32_t* sample = buffer.data();
++	for (int32_t done = 0; done < size;) {
++		const int32_t n = std::min(kControlInterval, size - done);
++
++		// The cutoff, from the main envelope and, on accents, its smoothed copy, through the block. It moves slowly, so
++		// the filter coefficients are worked out for the block's last sample only, and glide there from the last
++		// block's.
++		std::array<float, kControlInterval> envelope;
++		float firstCutoff = 0.f;
++		for (int32_t i = 0; i < n; i++) {
++			cutoffNow += cutoffStep;
++			mainEnv *= mainEnvCoeff;
++			rc2 = ((accentGain > 0.f) ? mainEnv : 0.f) * (1.f - rc2Coeff) + rc2Coeff * rc2;
++			envelope[i] = mainEnv;
++			if (i == 0 && filterJump) {
++				firstCutoff = cutoffNow * fastExp2(envScaler * (mainEnv - envOffset) + accentGain * rc2);
++			}
 +		}
-+		out *= gain;
-+		sample += (int32_t)std::clamp(out, -2147483520.f, 2147483520.f);
++		done += n;
++		const float lastCutoff = cutoffNow * fastExp2(envScaler * (mainEnv - envOffset) + accentGain * rc2);
++
++		// Asked of filter rather than ladder, which has the same settings, so ladder never has its address taken
++		TeeBeeFilter::Coefficients target = filter.coefficientsFor(lastCutoff);
++		if (filterJump) {
++			ladder.jumpTo(filter.coefficientsFor(firstCutoff), target, n);
++			filterJump = false;
++		}
++		else {
++			ladder.glideTo(target, n);
++		}
++
++		for (int32_t i = 0; i < n; i++) {
++			// Oscillator pitch, through the slide
++			pitchSlew = oscFreq + pitchSlewCoeff * (pitchSlew - oscFreq);
++			if (pitchSlew > 0.f && pitchSlew < 20000.f) {
++				increment = (uint32_t)(pitchSlew * (4294967296.f / (kSampleRate * kOversampling)));
++			}
++
++			// Amplitude
++			if (ampAttackPending) {
++				ampEnv = 1.f;
++				ampAttackPending = false;
++			}
++			else if (ampNoteOn) {
++				ampEnv += ampDecayCoeff * (controls.ampSustain - ampEnv);
++			}
++			else {
++				ampEnv -= ampReleaseCoeff * ampEnv;
++			}
++			amp = ampEnv;
++			if (ampNoteOn) {
++				amp += (0.45f + 4.f * accentGain) * envelope[i];
++			}
++			amp = ampDeClicker.process(amp);
++
++			// Like Open303: choose the table from the increment, two octaves of headroom
++			int32_t octave = (31 - __builtin_clz(increment | 1)) - (32 - wavetables::kLengthMagnitude);
++			int32_t table = std::clamp<int32_t>(octave + 2, 0, wavetables::kNumTables - 1);
++			const float* saw = wavetables::tables[wavetables::SAW][table];
++			const float* square = wavetables::tables[wavetables::SQUARE][table];
++
++			ladder.step();
++			float out = 0.f;
++			for (int32_t j = 0; j < kOversampling; j++) {
++				int32_t index = phaseNow >> fracBits;
++				float frac = (float)(phaseNow & ((1u << fracBits) - 1)) * (1.f / (1u << fracBits));
++				phaseNow += increment;
++				if (sawOnly) {
++					out = readTable(saw, index, frac);
++				}
++				else if (squareOnly) {
++					out = 0.5f * readTable(square, index, frac);
++				}
++				else {
++					out = sawLevel * readTable(saw, index, frac) + squareLevel * readTable(square, index, frac);
++				}
++				out = inputHighpass.process(-out);
++				out = ladder.process<classic>(out);
++				out = decimator.process(out);
++			}
++			out = allpass.process(out);
++			out = highpass2.process(out);
++			out = notch.process(out);
++			out *= amp;
++
++			if (driven) {
++				out = drum_synth::cyc::driveCurve(out * driveIn) * driveOut;
++			}
++			out *= gain;
++			*sample++ += (int32_t)std::clamp(out, -2147483520.f, 2147483520.f);
++		}
 +	}
++
++	phase = phaseNow;
++	phaseIncrement = increment;
++	highpass1 = inputHighpass;
++	filter = ladder;
++	antiAlias = decimator;
++	lastAmp = amp;
 +	cutoffNow = controls.cutoff;
++}
++
++void Open303::render(std::span<int32_t> buffer, float gain) {
++	if (!sounding || !wavetables::built()) {
++		return;
++	}
++
++	if (filter.isClassic()) {
++		renderVoice<true>(buffer, gain);
++	}
++	else {
++		renderVoice<false>(buffer, gain);
++	}
 +
 +	// Gone quiet, so stop rendering until the next note
 +	if (!ampNoteOn && ampEnv < 1e-5f && std::abs(lastAmp) < 1e-5f) {
@@ -7860,10 +8464,10 @@ index 000000000..a4de95816
 +} // namespace deluge::dsp::tb303
 diff --git a/src/deluge/dsp/tb303/open303.h b/src/deluge/dsp/tb303/open303.h
 new file mode 100644
-index 000000000..3e9b8cf81
+index 000000000..defd39cb9
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.h
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,300 @@
 +/*
 + * Copyright © 2026 Synthstrom Audible Limited
 + *
@@ -7940,7 +8544,7 @@ index 000000000..3e9b8cf81
 +public:
 +	enum Mode : uint8_t { HIGHPASS, ALLPASS };
 +	void setup(Mode mode, float cutoff, float sampleRate);
-+	inline float process(float in) {
++	[[gnu::always_inline]] inline float process(float in) {
 +		y1 = b0 * in + b1 * x1 + a1 * y1;
 +		x1 = in;
 +		return y1;
@@ -7956,7 +8560,7 @@ index 000000000..3e9b8cf81
 +public:
 +	void setupLowpass(float frequency, float q, float sampleRate);
 +	void setupNotch(float frequency, float bandwidthOctaves, float sampleRate);
-+	inline float process(float in) {
++	[[gnu::always_inline]] inline float process(float in) {
 +		float y = b0 * in + b1 * x1 + b2 * x2 + a1 * y1 + a2 * y2;
 +		x2 = x1;
 +		x1 = in;
@@ -7974,43 +8578,97 @@ index 000000000..3e9b8cf81
 +/// Open303's 12th order elliptic quarter-band lowpass, split into biquads so it holds up in single precision
 +class AntiAliasFilter {
 +public:
-+	float process(float in);
++	[[gnu::always_inline]] inline float process(float in) {
++		float x = in;
++#pragma GCC unroll 6
++		for (int32_t s = 0; s < 6; s++) {
++			// Transposed direct form II
++			const float* c = kSections[s];
++			std::array<float, 2>& z = state[s];
++			float y = c[0] * x + z[0];
++			z[0] = c[1] * x + c[3] * y + z[1];
++			z[1] = c[2] * x + c[4] * y;
++			x = y;
++		}
++		return x;
++	}
 +	void reset() { state = {}; }
 +
 +private:
++	// b0, b1, b2, -a1, -a2 for each section. The product of these is Open303's filter to within 3e-7.
++	static constexpr float kSections[6][5] = {
++	    {0.016780659926151895f, 0.022947305659324117f, 0.016780659926151933f, 1.5863116558748012f,
++	     -0.6428202813864291f},
++	    {0.09459763035184697f, -0.035133895460929543f, 0.09459763035184561f, 1.5620957226926269f, -0.7161570879353899f},
++	    {0.29069484193705036f, -0.29936460675402321f, 0.290694841937152f, 1.5310700890181974f, -0.81309516613837662f},
++	    {0.52578571778729133f, -0.66650721431468896f, 0.52578571778628858f, 1.5080939966772393f, -0.89315821793613026f},
++	    {0.70505069759938288f, -0.96089912665161337f, 0.70505069760221728f, 1.4983265489464017f, -0.9475288174963884f},
++	    {0.79922266095877925f, -1.117333033909587f, 0.79922266095683048f, 1.5032624520096824f, -0.98437474001570513f},
++	};
 +	std::array<std::array<float, 2>, 6> state{};
 +};
 +
 +/// Open303's TeeBeeFilter: a ladder with a highpass in its feedback path
 +class TeeBeeFilter {
 +public:
++	struct Coefficients {
++		float b0, a1, k, g;
++	};
++
 +	void setSampleRate(float sampleRate);
 +	void setResonance(float percent);
 +	void setClassic(bool classic) { classic_ = classic; }
-+	void setCutoff(float cutoff);
-+	inline float process(float in) {
-+		if (classic_) {
-+			float y0 = in - feedbackHighpass.process(k * y4);
-+			y1 += 2.f * b0 * (y0 - y1 + y2);
-+			y2 += b0 * (y1 - 2.f * y2 + y3);
-+			y3 += b0 * (y2 - 2.f * y3 + y4);
-+			y4 += b0 * (y3 - 2.f * y4);
-+			return 2.f * g * y4;
++	bool isClassic() const { return classic_; }
++	Coefficients coefficientsFor(float cutoff) const;
++
++	/// Glides the coefficients from where they are to target over the next numSamples calls to step()
++	[[gnu::always_inline]] inline void glideTo(Coefficients const& target, int32_t numSamples) {
++		float scale = 1.f / (float)numSamples;
++		step_ = {(target.b0 - now.b0) * scale, (target.a1 - now.a1) * scale, (target.k - now.k) * scale,
++		         (target.g - now.g) * scale};
++	}
++	/// Like glideTo(), but the first step() lands on first rather than carrying on from where the coefficients are
++	[[gnu::always_inline]] inline void jumpTo(Coefficients const& first, Coefficients const& target,
++	                                          int32_t numSamples) {
++		now = first;
++		if (numSamples > 1) {
++			glideTo(target, numSamples - 1);
 +		}
-+		float y0 = 0.125f * in - feedbackHighpass.process(k * y4);
-+		y1 = y0 + a1 * (y0 - y1);
-+		y2 = y1 + a1 * (y1 - y2);
-+		y3 = y2 + a1 * (y2 - y3);
-+		y4 = y3 + a1 * (y3 - y4);
-+		return 8.f * y3;
++		else {
++			step_ = {};
++		}
++		now = {now.b0 - step_.b0, now.a1 - step_.a1, now.k - step_.k, now.g - step_.g};
++	}
++	/// Once per output sample, before it's processed
++	[[gnu::always_inline]] inline void step() {
++		now = {now.b0 + step_.b0, now.a1 + step_.a1, now.k + step_.k, now.g + step_.g};
++	}
++
++	template <bool classic>
++	[[gnu::always_inline]] inline float process(float in) {
++		if constexpr (classic) {
++			float y0 = in - feedbackHighpass.process(now.k * y4);
++			y1 += 2.f * now.b0 * (y0 - y1 + y2);
++			y2 += now.b0 * (y1 - 2.f * y2 + y3);
++			y3 += now.b0 * (y2 - 2.f * y3 + y4);
++			y4 += now.b0 * (y3 - 2.f * y4);
++			return 2.f * now.g * y4;
++		}
++		else {
++			float y0 = 0.125f * in - feedbackHighpass.process(now.k * y4);
++			y1 = y0 + now.a1 * (y0 - y1);
++			y2 = y1 + now.a1 * (y1 - y2);
++			y3 = y2 + now.a1 * (y2 - y3);
++			y4 = y3 + now.a1 * (y3 - y4);
++			return 8.f * y3;
++		}
 +	}
 +	void reset();
 +
 +private:
-+	void calculateCoefficients();
-+	float b0 = 0.f, a1 = 0.f, k = 0.f, g = 1.f;
++	Coefficients now{0.f, 0.f, 0.f, 1.f};
++	Coefficients step_{};
 +	float y1 = 0.f, y2 = 0.f, y3 = 0.f, y4 = 0.f;
-+	float cutoff_ = 1000.f;
 +	float resonanceSkewed = 0.f;
 +	float twoPiOverSampleRate = 0.f;
 +	bool classic_ = true;
@@ -8021,6 +8679,8 @@ index 000000000..3e9b8cf81
 +public:
 +	static constexpr float kSampleRate = 44100.f;
 +	static constexpr int32_t kOversampling = 4;
++	/// Output samples between filter coefficient updates. They glide in between, so the envelope doesn't zipper.
++	static constexpr int32_t kControlInterval = 4;
 +
 +	Open303();
 +
@@ -8051,14 +8711,14 @@ index 000000000..3e9b8cf81
 +	void render(std::span<int32_t> buffer, float gain);
 +
 +private:
-+	float renderSample();
++	template <bool classic>
++	void renderVoice(std::span<int32_t> buffer, float gain);
 +	void triggerNote(int32_t note, bool accent);
 +	void slideToNote(int32_t note, bool accent);
 +	void releaseNote();
 +	void setAccentState(bool accent);
 +	void calculateEnvModScalerAndOffset();
 +	float noteToFrequency(int32_t note) const;
-+	inline float oscillator();
 +
 +	Controls controls;
 +
@@ -8075,6 +8735,7 @@ index 000000000..3e9b8cf81
 +	float envOffset = 0.f;
 +	float accentGain = 0.f;
 +	bool sounding = false;
++	bool filterJump = true; // The next coefficient update jumps rather than glides: a new note, accent or knob move
 +
 +	// Oscillator: one phase for both waves, in fractions of a cycle
 +	uint32_t phase = 0;
@@ -10016,10 +10677,10 @@ index 49b15e92c..0633bdc77 100644
  	STRING_FOR_HPF_TO_LPF,
 diff --git a/src/deluge/gui/menu_item/cpu/load.h b/src/deluge/gui/menu_item/cpu/load.h
 new file mode 100644
-index 000000000..266b0581b
+index 000000000..6d686b098
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/cpu/load.h
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,161 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -10138,6 +10799,7 @@ index 000000000..266b0581b
 +	void startTimer() { uiTimerManager.setTimer(TimerName::UI_SPECIFIC, kRefreshIntervalMs); }
 +
 +	void takeSnapshot() {
++		cpu_meter::rendersToTimeVoices = cpu_meter::kRendersPerRefresh;
 +		last_audio_ = cpu_meter::audio;
 +		last_voices_ = cpu_meter::voices;
 +		last_drum_ = cpu_meter::drumSynth;
@@ -18174,7 +18836,7 @@ index 000000000..6c4f55856
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index ccc3f332f..e0827d08f 100644
+index ccc3f332f..66adfb00b 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -18696,13 +19358,19 @@ index ccc3f332f..e0827d08f 100644
  					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
  					// accurate
  					if (loopingType != LoopType::NONE) {
-@@ -2444,6 +2822,33 @@ dontUseCache: {}
+@@ -2444,6 +2822,40 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
 +		}
 +		else if (sound.sources[s].oscType == OscType::DRUM_SYNTH) {
-+			uint32_t startTicks = getSystemTicks();
++			deluge::dsp::drum_synth::Voice* drumVoice = unisonParts[u].sources[s].drumVoice;
++			// Switched to a drum synth while this note was already going: it has no engine, so it stops
++			if (drumVoice == nullptr) {
++				goto instantUnassign;
++			}
++			const bool timing = deluge::cpu_meter::timingVoices();
++			uint32_t startTicks = timing ? getSystemTicks() : 0;
 +
 +			int32_t* renderBuffer = oscBuffer;
 +			if (stereoBuffer) {
@@ -18710,9 +19378,8 @@ index ccc3f332f..e0827d08f 100644
 +				memset(renderBuffer, 0, SSI_TX_BUFFER_NUM_SAMPLES * sizeof(int32_t));
 +			}
 +
-+			unisonParts[u].sources[s].drumVoice.render(sound.sources[s].drumPatch,
-+			                                           modulatedDrumControls(*paramManager, sourceValues), renderBuffer,
-+			                                           numSamples, phaseIncrement, sourceAmplitude, amplitudeIncrement);
++			drumVoice->render(sound.sources[s].drumPatch, modulatedDrumControls(*paramManager, sourceValues),
++			                  renderBuffer, numSamples, phaseIncrement, sourceAmplitude, amplitudeIncrement);
 +
 +			if (stereoBuffer) {
 +				for (int32_t i = 0; i < numSamples; i++) {
@@ -18721,17 +19388,61 @@ index ccc3f332f..e0827d08f 100644
 +				}
 +			}
 +
-+			deluge::cpu_meter::drumSynth.add(startTicks, getSystemTicks(), numSamples);
++			if (timing) {
++				deluge::cpu_meter::drumSynth.add(startTicks, getSystemTicks(), numSamples);
++			}
 +
 +			// The XIA engines have their own amp envelope: once it's done, so is this part of the voice
-+			if (unisonParts[u].sources[s].drumVoice.finished()) {
++			if (drumVoice->finished()) {
 +				goto instantUnassign;
 +			}
  
  			// Or regular wave
  		}
+@@ -2559,6 +2971,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
+ static_assert(kNumVoicePriorities < 4, "Too many priority options");
+ 
+ // Higher numbers are lower priority. 1 is top priority. Will never return 0, because nextVoiceState starts at 1
++// A drum synth voice whose own decay has fallen 40 dB ranks like a releasing one, so culling takes it before notes that
++// can still be heard. Its Deluge envelope is still in its decay, as the release is fitted well past the engine's tail.
++uint32_t Voice::stateForPriority() const {
++	const auto state = util::to_underlying(envelopes[0].state);
++	constexpr auto kRelease = util::to_underlying(EnvelopeStage::RELEASE);
++	if (state >= kRelease) {
++		return state;
++	}
++	bool anyDrum = false;
++	for (int32_t s = 0; s < kNumSources; s++) {
++		for (int32_t u = 0; u < sound.numUnison; u++) {
++			const VoiceUnisonPartSource& source = unisonParts[u].sources[s];
++			if (source.drumVoice != nullptr) {
++				if (!source.drumVoice->quiet()) {
++					return state;
++				}
++				anyDrum = true;
++			}
++			else if (source.active) {
++				return state; // Another oscillator still playing
++			}
++		}
++	}
++	return anyDrum ? kRelease : state;
++}
++
+ uint32_t Voice::getPriorityRating() const {
+ 	return
+ 	    // Bits 30-31 - manual priority setting
+@@ -2571,7 +3009,7 @@ uint32_t Voice::getPriorityRating() const {
+ 	    + ((uint32_t)std::min<size_t>(sound.numActiveVoices(), 7) << 27)
+ 
+ 	    // Bits 24-26 - envelope state
+-	    + ((uint32_t)envelopes[0].state << 24)
++	    + ((uint32_t)stateForPriority() << 24)
+ 
+ 	    // Bits  0-23 - time entered
+ 	    + ((uint32_t)(-envelopes[0].timeEnteredState) & (0xFFFFFFFF >> 8));
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e25..e512bdec4 100644
+index 33be91e25..3425fbad6 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
 @@ -18,7 +18,9 @@
@@ -18758,7 +19469,16 @@ index 33be91e25..e512bdec4 100644
  
  	int32_t filterGainLastTime;
  	bool doneFirstRender;
-@@ -159,4 +163,5 @@ private:
+@@ -109,6 +113,8 @@ public:
+ 	bool hasReleaseStage();
+ 	void unassignStuff(bool deletingSong);
+ 	[[nodiscard]] uint32_t getPriorityRating() const;
++	/// The envelope state getPriorityRating() ranks by
++	[[nodiscard]] uint32_t stateForPriority() const;
+ 	void expressionEventImmediate(const Sound& sound, int32_t voiceLevelValue, int32_t s);
+ 	void expressionEventSmooth(int32_t newValue, int32_t s);
+ 
+@@ -159,4 +165,5 @@ private:
  	bool areAllUnisonPartsInactive(ModelStackWithSoundFlags& modelStack) const;
  	void setupPorta(const Sound& sound);
  	int32_t combineExpressionValues(const Sound& sound, int32_t expressionDimension) const;
@@ -19053,10 +19773,19 @@ index 1640f0db3..25458b22b 100644
 +	uint8_t loopWrapPhase{0};                 // 0=normal, 1=loopStart->sampleEnd, 2=sampleStart->loopEnd
  };
 diff --git a/src/deluge/model/voice/voice_unison_part_source.cpp b/src/deluge/model/voice/voice_unison_part_source.cpp
-index ad8bb93d2..f5e5c6659 100644
+index ad8bb93d2..0e4541171 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.cpp
 +++ b/src/deluge/model/voice/voice_unison_part_source.cpp
-@@ -61,7 +61,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+@@ -29,6 +29,8 @@
+ #include "processing/source.h"
+ #include "storage/multi_range/multisample_range.h"
+ 
++using DrumVoicePool = deluge::memory::ObjectPool<deluge::dsp::drum_synth::Voice, deluge::memory::fast_allocator>;
++
+ VoiceUnisonPartSource::~VoiceUnisonPartSource() {
+ 	unassign(false);
+ }
+@@ -61,7 +63,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
  		if (samplesLate != 0u) {
  			return true; // We're finished in this case
  		}
@@ -19073,18 +19802,37 @@ index ad8bb93d2..f5e5c6659 100644
  	}
  
  	if (synthMode != SynthMode::FM
-@@ -80,6 +88,9 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+@@ -80,6 +90,16 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
  		DxPatch* patch = source->ensureDxPatch();
  		dxVoice->init(*patch, voice->noteCodeAfterArpeggiation, velocity);
  	}
 +	else if (synthMode != SynthMode::FM && source->oscType == OscType::DRUM_SYNTH) {
-+		drumVoice.trigger(source->drumPatch);
++		if (drumVoice == nullptr) { // We might already have one, and just be restarting this voice
++			try {
++				drumVoice = DrumVoicePool::get().acquire().release();
++			} catch (deluge::exception e) {
++				return false;
++			}
++		}
++		drumVoice->trigger(source->drumPatch);
 +	}
  	else {
  		if (oscRetriggerPhase != 0xFFFFFFFF) {
  			oscPos = getOscInitialPhaseForZero(source->oscType) + oscRetriggerPhase;
+@@ -106,6 +126,11 @@ void VoiceUnisonPartSource::unassign(bool deletingSong) {
+ 		dxVoice = nullptr;
+ 	}
+ 
++	if (drumVoice != nullptr) {
++		DrumVoicePool::recycle(drumVoice);
++		drumVoice = nullptr;
++	}
++
+ 	if (livePitchShifter != nullptr) {
+ 		livePitchShifter->~LivePitchShifter();
+ 		delugeDealloc(livePitchShifter);
 diff --git a/src/deluge/model/voice/voice_unison_part_source.h b/src/deluge/model/voice/voice_unison_part_source.h
-index c14b3f729..92a547150 100644
+index c14b3f729..f76c65ea2 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.h
 +++ b/src/deluge/model/voice/voice_unison_part_source.h
 @@ -18,6 +18,7 @@
@@ -19095,11 +19843,12 @@ index c14b3f729..92a547150 100644
  #include "model/sample/sample.h"
  #include <gsl/gsl>
  
-@@ -48,4 +49,5 @@ public:
+@@ -48,4 +49,6 @@ public:
  	VoiceSample* voiceSample = nullptr;
  	LivePitchShifter* livePitchShifter = nullptr;
  	gsl::owner<DxVoice*> dxVoice = nullptr;
-+	deluge::dsp::drum_synth::Voice drumVoice;
++	// Only drum synth sources get one, from a pool, so every other voice stays small
++	gsl::owner<deluge::dsp::drum_synth::Voice*> drumVoice = nullptr;
  };
 diff --git a/src/deluge/modulation/envelope.cpp b/src/deluge/modulation/envelope.cpp
 index feba895ba..d690ec9d4 100644
@@ -20310,7 +21059,7 @@ index 98ff45ddd..1943aaffa 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 100ddc92c..b225aa950 100644
+index 100ddc92c..be5f6e7c3 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -48,6 +48,7 @@
@@ -20346,22 +21095,25 @@ index 100ddc92c..b225aa950 100644
  	                              | std::views::transform(&Sound::getLowestPriorityVoice);
  	auto it = std::ranges::max_element(lowest_priority_voices, [](const auto& a, const auto& b) {
  		return a->getPriorityRating() < b->getPriorityRating();
-@@ -792,7 +797,9 @@ bool calledFromScheduler = false;
+@@ -792,7 +797,12 @@ bool calledFromScheduler = false;
  
  	numSamplesLastTime = numSamples;
  
 +	uint32_t renderStartTicks = getSystemTicks();
  	renderAudio(numSamples);
 +	cpu_meter::audio.add(renderStartTicks, getSystemTicks(), numSamples);
++	if (cpu_meter::rendersToTimeVoices > 0) {
++		cpu_meter::rendersToTimeVoices--;
++	}
  
  	scheduleMidiGateOutISR(numSamples);
  
 diff --git a/src/deluge/processing/engines/cpu_meter.h b/src/deluge/processing/engines/cpu_meter.h
 new file mode 100644
-index 000000000..cbe8ba1ea
+index 000000000..c6b505e0c
 --- /dev/null
 +++ b/src/deluge/processing/engines/cpu_meter.h
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,56 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -20404,6 +21156,15 @@ index 000000000..cbe8ba1ea
 +inline Counter voices;
 +/// The drum synth oscillator alone. samples = voice-samples.
 +inline Counter drumSynth;
++
++/// Timing every voice reads the timer twice per voice per render, so voices and drumSynth only count while the CPU
++/// load menu keeps asking for them: it tops this up, and each render takes one off.
++inline int32_t rendersToTimeVoices = 0;
++[[nodiscard]] inline bool timingVoices() {
++	return rendersToTimeVoices > 0;
++}
++/// Enough renders to last until the menu's next refresh, even at the smallest buffers
++constexpr int32_t kRendersPerRefresh = 8192;
 +
 +constexpr uint32_t kTicksPerSecond = 33330000;
 +constexpr uint32_t kSampleRate = 44100;
@@ -20605,7 +21366,7 @@ index 000000000..031dfcaa1
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce447..649186bf2 100644
+index 8dd1ce447..c48e618d0 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -21173,19 +21934,22 @@ index 8dd1ce447..649186bf2 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2952,11 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2952,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
-+			uint32_t startTicks = getSystemTicks();
++			const bool timing = deluge::cpu_meter::timingVoices();
++			uint32_t startTicks = timing ? getSystemTicks() : 0;
  			bool stillGoing =
  			    voice->render(modelStackWithSoundFlags, sound_mono.data(), sound_mono.size(), voice_rendered_in_stereo,
  			                  applyingPanAtVoiceLevel, sourcesChanged, doLPF, doHPF, pitchAdjust);
-+			deluge::cpu_meter::voices.add(startTicks, getSystemTicks(), sound_mono.size());
++			if (timing) {
++				deluge::cpu_meter::voices.add(startTicks, getSystemTicks(), sound_mono.size());
++			}
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +3020,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +3023,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -21194,7 +21958,7 @@ index 8dd1ce447..649186bf2 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3306,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3309,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -21230,7 +21994,7 @@ index 8dd1ce447..649186bf2 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3412,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3415,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -21246,7 +22010,7 @@ index 8dd1ce447..649186bf2 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3489,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3492,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -21267,7 +22031,7 @@ index 8dd1ce447..649186bf2 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3547,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3550,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -21360,7 +22124,7 @@ index 8dd1ce447..649186bf2 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3746,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3749,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -21369,7 +22133,7 @@ index 8dd1ce447..649186bf2 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3939,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3942,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -21391,7 +22155,7 @@ index 8dd1ce447..649186bf2 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3973,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3976,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -21402,7 +22166,7 @@ index 8dd1ce447..649186bf2 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4187,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4190,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -21412,7 +22176,7 @@ index 8dd1ce447..649186bf2 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4314,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4317,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -21424,7 +22188,7 @@ index 8dd1ce447..649186bf2 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4408,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4411,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -21439,7 +22203,7 @@ index 8dd1ce447..649186bf2 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4598,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4601,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -21460,7 +22224,7 @@ index 8dd1ce447..649186bf2 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4691,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4694,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -21472,7 +22236,7 @@ index 8dd1ce447..649186bf2 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4710,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4713,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -21482,7 +22246,7 @@ index 8dd1ce447..649186bf2 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4761,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4764,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -21492,7 +22256,7 @@ index 8dd1ce447..649186bf2 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +5023,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +5026,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -21515,7 +22279,7 @@ index 8dd1ce447..649186bf2 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5546,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5549,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -22861,10 +23625,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..217884617
+index 000000000..2c144741c
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,341 @@
+@@ -0,0 +1,345 @@
 +---
 +title: Drum Synth
 +---
@@ -23176,7 +23940,7 @@ index 000000000..217884617
 +- Velocity sets level through the Deluge's usual velocity patch, not GIN's per-layer velocity settings.
 +- There's no A / B morph: parameter locks and automation do that job.
 +- Settings follow the knobs while a hit plays, where GIN fixes them at the hit.
-+- A hit ends once both layers are 80 dB down.
++- A hit ends once both layers are 72 dB down (80 dB before v1.17).
 +
 +## CPU load
 +
@@ -23188,6 +23952,10 @@ index 000000000..217884617
 +- **Drum**: average nanoseconds per sample for the drum synth oscillator alone.
 +
 +One sample lasts 22,676 ns, so a Voice reading of 900 means each playing voice uses about 4% of the CPU. Measured on hardware, a kick / tom drum synth voice costs about as much as a sample voice.
++
++Voice and Drum are only measured while this page is open, so timing them costs nothing the rest of the time.
++
++**How long a hit lasts (from v1.17).** A drum synth voice keeps running until its own decay is 72 dB down, then stops (Cyc engines fade out over the last 64 samples). Before v1.17 they ran to 100 dB down, so long tails (cymbals, open hats, toms, Chord, Tone) kept a voice busy for about a third longer than you could hear. Once a hit is 40 dB down, the Deluge treats it like a releasing note when it runs short of CPU, so it cuts that tail before notes you can still hear. A Decay of 127 still holds for as long as the note does.
 +
 +## Compatibility
 +

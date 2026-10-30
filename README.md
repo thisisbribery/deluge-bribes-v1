@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.16.3
+# BRIBELUGE: Deluge Bribes FW v1.17
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -24,11 +24,20 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **Status: experimental.** Tested on a 7-segment Deluge. The OLED screens are written but not yet tested on hardware. Back up your SD card before installing.
 
+**New in v1.17: lighter on the CPU.** Earlier versions ran out of CPU much sooner than the community beta once drum synth kits or a 303 were playing, so the Deluge started cutting notes, even on old, ordinary patches. v1.17 brings that back down without changing the sound:
+
+- **Every voice is smaller.** Each voice carried room for the drum synth engines whether it used them or not, which made it about seven times the size of a stock voice. Now only drum synth rows get that memory, so ordinary synth and sample voices are back to normal size, and the Deluge's fast internal memory has its room back.
+- **The drum synths and the 303 do the same work for less.** Settings are worked out when they change instead of on every sample, and parts of a hit that can no longer be heard are skipped. The sound stays the same.
+- **Drum synth hits stop when you can no longer hear them.** A hit now ends once it's 72 dB down, where it used to run on to 100 dB. Long tails (cymbals, open hats, toms, Chord, Tone) end about a quarter sooner, and that difference is far too quiet to hear. A Decay of 127 still holds for as long as the note does.
+- **Quiet tails are cut first.** When the CPU does run short, a drum synth hit that's already 40 dB down is cut before notes you can still hear.
+
+Running more than one drum synth kit at once can still use up the CPU.
+
 ## Download
 
-[`firmware/deluge-bribes-v1.16.3.bin`](firmware/deluge-bribes-v1.16.3.bin)
+[`firmware/deluge-bribes-v1.17.bin`](firmware/deluge-bribes-v1.17.bin)
 
-SHA-256: `2fdebbe7c2fa0c44b776dcf81bdb037dfa935ba2b44695c3fe9e8adb6d463f3a`
+SHA-256: `5bd953ad9bf304e04a58764ffc998a351658adfcc798cebf71ba4b214f7f9a9f`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -36,7 +45,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.16.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.17.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -487,6 +496,7 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 
 - The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
+- **From v1.17** each hit ends once it's 72 dB down (it was 100 dB, 80 on GIN). The Cyc engines fade out over the last few samples. When the CPU runs short, a hit that's 40 dB down is cut before notes you can still hear. See [New in v1.17](#readme-top) at the top.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
 - Fixed in v1.15: CUSTOM 1 tunes rows loaded from preset kit files too (it was on portamento).
 - Kits with drum synth rows won't play those rows on firmware without them.
@@ -598,6 +608,7 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
 - In automation view the 303's controls sit on the FM pads they're saved on, so OSC1 FEEDBACK there is Accent and MOD2 FEEDBACK is Drive, unlike the shortcut pads.
 - **Fixed in v1.16.3:** with a 303 sounding, a busy song that ran out of CPU could scramble memory and freeze (any error code, often after notes moved around on their own). The Deluge now cuts only real voices when it's overloaded. The 303 itself is never cut, so it still uses CPU that the other voices compete for.
+- **From v1.17** the 303 works out its filter every 4 samples instead of every sample, gliding in between, and skips work it doesn't need, so it uses less CPU for the same sound.
 
 [Back to top](#readme-top)
 
