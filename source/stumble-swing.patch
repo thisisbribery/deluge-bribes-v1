@@ -22,10 +22,10 @@ index 0c5a8e055..5b4f3f1cc 100644
  constexpr int32_t SAMPLE_MAX_TRANSPOSE = 24;
  constexpr int32_t SAMPLE_MIN_TRANSPOSE = (-96);
 diff --git a/src/deluge/dsp/CMakeLists.txt b/src/deluge/dsp/CMakeLists.txt
-index 1cbefef8a..31b02346a 100644
+index 1cbefef8a..3d3c4a961 100644
 --- a/src/deluge/dsp/CMakeLists.txt
 +++ b/src/deluge/dsp/CMakeLists.txt
-@@ -8,6 +8,13 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
+@@ -8,6 +8,15 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
  
  add_library(deluge_dsp STATIC ${deluge_dsp_SOURCES})
  
@@ -33,6 +33,8 @@ index 1cbefef8a..31b02346a 100644
 +set_source_files_properties(
 +  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/gin.cpp
 +  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/gin_kits.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/ultrakik.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/ultrakik_presets.cpp
 +  PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
 +)
 +
@@ -1869,10 +1871,10 @@ index 000000000..245b810c1
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 000000000..d7210d845
+index 000000000..0c8a9d768
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1403 @@
+@@ -0,0 +1,1540 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -2012,6 +2014,7 @@ index 000000000..d7210d845
 +	params_[GIN_EQ_FREQ] = 64;
 +	params_[GIN_EQ_GAIN] = 64;
 +	params_[GIN_LEVEL] = 102;
++	setUltrakikBytes(ultrakik::kPresets[ultrakik::kDefaultPreset]);
 +
 +	switch (preset) {
 +	case Preset::KICK:
@@ -2102,6 +2105,20 @@ index 000000000..d7210d845
 +	params_[XIA_PUNCH] = xiaPresetFor(engine, params_[XIA_VARIANT]).punch ? 1 : 0;
 +}
 +
++void Patch::setUltrakikBytes(const ultrakik::Preset& preset) {
++	params_[UK_WAVE] = static_cast<uint8_t>(preset.wave);
++	params_[UK_DRIVE_TYPE] = static_cast<uint8_t>(preset.driveType);
++	params_[UK_CLICK_TYPE] = static_cast<uint8_t>(preset.clickType);
++	params_[UK_CRUSH] = preset.crush;
++	params_[UK_BEND_TIME] = preset.bendTime;
++	params_[UK_SNAP] = preset.snap;
++}
++
++void Patch::setUltrakikPreset(int32_t preset) {
++	params_[ENGINE] = static_cast<uint8_t>(Engine::ULTRAKIK);
++	setUltrakikBytes(ultrakik::kPresets[std::clamp<int32_t>(preset, 0, ultrakik::kNumPresets - 1)]);
++}
++
 +void Patch::setCycPreset(Engine engine) {
 +	params_[ENGINE] = static_cast<uint8_t>(engine);
 +	params_[XIA_PUNCH] = 0;
@@ -2151,6 +2168,18 @@ index 000000000..d7210d845
 +	return c;
 +}
 +
++DrumControls ultrakikControlsFor(int32_t preset) {
++	static_assert(static_cast<int32_t>(DrumControls::UK_SWEEP) == ultrakik::SWEEP
++	                  && static_cast<int32_t>(DrumControls::UK_SUB) == ultrakik::SUB,
++	              "ULTRAKIK's presets list their knobs in slot order");
++	const ultrakik::Preset& p = ultrakik::kPresets[std::clamp<int32_t>(preset, 0, ultrakik::kNumPresets - 1)];
++	DrumControls c;
++	for (int32_t i = 0; i < ultrakik::NUM_KNOBS; i++) {
++		c.values[i] = DrumControls::fromValue(p.knobs[i]);
++	}
++	return c;
++}
++
 +RowSetup rowSetupForGinSound(const gin::KitSound& sound, bool choke) {
 +	// Kit rows play at middle C
 +	const float semitones = 12.f * log2f(sound.hz / 261.6256f);
@@ -2192,6 +2221,7 @@ index 000000000..d7210d845
 +    {24, 25, 46, 37, 56},                // clap eng
 +}};
 +constexpr int32_t kCycDefaultDrive = 100;
++
 +} // namespace
 +
 +DrumControls DrumControls::defaultsFor(Engine engine) {
@@ -2200,6 +2230,9 @@ index 000000000..d7210d845
 +		return ginControlsFor(gin::defaultSound());
 +	}
 +	DrumControls c;
++	if (isUltrakik(engine)) {
++		return ultrakikControlsFor(ultrakik::kDefaultPreset);
++	}
 +	if (isCyc(engine)) {
 +		// The Cyc engines start where the originals do, their own amp decay included
 +		const auto& d = kCycDefaults[static_cast<size_t>(cycKind(engine))];
@@ -2260,6 +2293,12 @@ index 000000000..d7210d845
 +		return static_cast<uint8_t>(gin::ModMode::NUM_MODES) - 1;
 +	case GIN_NOISE_ENV:
 +		return static_cast<uint8_t>(gin::NoiseEnv::NUM_ENVS) - 1;
++	case UK_WAVE:
++		return static_cast<uint8_t>(ultrakik::Wave::NUM_WAVES) - 1;
++	case UK_DRIVE_TYPE:
++		return static_cast<uint8_t>(ultrakik::DriveType::NUM_TYPES) - 1;
++	case UK_CLICK_TYPE:
++		return static_cast<uint8_t>(ultrakik::Click::NUM_CLICKS) - 1;
 +	case XIA_PUNCH:
 +	case SNAPPY_DECAY:
 +	case CONTROLS_VERSION:
@@ -2316,6 +2355,13 @@ index 000000000..d7210d845
 +		return isGin(engine);
 +	case GIN_EQ_FREQ: // Now a control
 +		return false;
++	case UK_WAVE:
++	case UK_DRIVE_TYPE:
++	case UK_CLICK_TYPE:
++	case UK_CRUSH:
++	case UK_BEND_TIME:
++	case UK_SNAP:
++		return isUltrakik(engine);
 +	default:
 +		return isXia(engine);
 +	}
@@ -2403,6 +2449,9 @@ index 000000000..d7210d845
 +		shared = {DrumControls::GIN_MOD_AMOUNT, DrumControls::GIN_MOD_RATE, DrumControls::GIN_MIX,
 +		          DrumControls::GIN_NOISE_FREQ};
 +		break;
++	case Engine::ULTRAKIK:
++		shared = {DrumControls::UK_SWEEP, DrumControls::UK_SWEEP_TIME, DrumControls::UK_FOLD, DrumControls::UK_GRIT};
++		break;
 +	default: // The Cyc engines: Sweep, Contour, Color, Shape
 +		shared = {DrumControls::CYC_MACRO3, DrumControls::CYC_MACRO4, DrumControls::CYC_MACRO1,
 +		          DrumControls::CYC_MACRO2};
@@ -2469,6 +2518,17 @@ index 000000000..d7210d845
 +
 +float lxrDecaySeconds(int32_t knob) {
 +	return (knob >= 127) ? 1000.f : 0.03f * powf(400.f, static_cast<float>(knob) / 126.f);
++}
++
++int8_t ultrakikEnvelopeRelease(int32_t decayKnob, int32_t holdKnob) {
++	const float decay = ultrakik::ampDecaySeconds(static_cast<float>(decayKnob) / 127.f);
++	return envelopeReleaseFor(decay + ultrakik::holdSeconds(static_cast<float>(holdKnob) / 127.f));
++}
++
++RowSetup rowSetupForUltrakik(int32_t preset) {
++	const ultrakik::Preset& p = ultrakik::kPresets[std::clamp<int32_t>(preset, 0, ultrakik::kNumPresets - 1)];
++	return {p.transpose, 30, -1, false,
++	        5,           0,  50, ultrakikEnvelopeRelease(p.knobs[ultrakik::DECAY], p.knobs[ultrakik::HOLD])};
 +}
 +
 +int8_t cycEnvelopeRelease(Engine engine, int32_t decayKnob, bool punch) {
@@ -2559,6 +2619,9 @@ index 000000000..d7210d845
 +	}
 +	if (isGin(engine)) {
 +		return rowSetupForGinSound(gin::defaultSound(), false);
++	}
++	if (isUltrakik(engine)) {
++		return rowSetupForUltrakik(ultrakik::kDefaultPreset);
 +	}
 +	return xiaPresetFor(engine, variant).row;
 +}
@@ -2907,10 +2970,26 @@ index 000000000..d7210d845
 +void Voice::render(const Patch& patch, const DrumControls& controls, int32_t* buffer, int32_t numSamples,
 +                   uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement) {
 +	updateSettings(patch, controls);
++	if (isUltrakik(settings_.engine)) {
++		if (!ultrakikReady_) {
++			xia_.ultrakik.reset();
++			ultrakikReady_ = true;
++			ginReady_ = false;
++			cycReady_ = false;
++			xiaEngine_ = Engine::DRUM;
++		}
++		if (pendingTrigger_) {
++			pendingTrigger_ = false;
++			xia_.ultrakik.trigger();
++		}
++		renderUltrakik(settingsFrom_, controls, buffer, numSamples, basePhaseIncrement, amplitude, amplitudeIncrement);
++		return;
++	}
 +	if (isGin(settings_.engine)) {
 +		if (!ginReady_) {
 +			xia_.gin.reset();
 +			ginReady_ = true;
++			ultrakikReady_ = false;
 +			cycReady_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
@@ -2926,6 +3005,7 @@ index 000000000..d7210d845
 +			xia_.cyc.reset();
 +			cycReady_ = true;
 +			ginReady_ = false;
++			ultrakikReady_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
 +		if (pendingTrigger_) {
@@ -3049,6 +3129,9 @@ index 000000000..d7210d845
 +	if (pendingTrigger_) {
 +		return false;
 +	}
++	if (isUltrakik(settings_.engine)) {
++		return ultrakikReady_ && xia_.ultrakik.level() < kQuietLevel;
++	}
 +	if (isGin(settings_.engine)) {
 +		return ginReady_ && xia_.gin.quiet();
 +	}
@@ -3104,6 +3187,7 @@ index 000000000..d7210d845
 +	xiaEngine_ = engine;
 +	cycReady_ = false;
 +	ginReady_ = false;
++	ultrakikReady_ = false;
 +	if (engine == Engine::TIA) {
 +		xia::reset(xia_.tia);
 +	}
@@ -3276,12 +3360,67 @@ index 000000000..d7210d845
 +}
 +
 +} // namespace deluge::dsp::drum_synth
++
++// ULTRAKIK ------------------------------------------------------------------------------------------------------------
++
++namespace deluge::dsp::drum_synth {
++
++ultrakik::Settings ultrakikSettings(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls) {
++	auto knob = [&](int32_t slot) {
++		return static_cast<float>(std::clamp<int32_t>(DrumControls::toKnob(controls.values[slot]), 0, 0x7F00)) / 0x7F00;
++	};
++	ultrakik::Settings s;
++	s.sweep = knob(DrumControls::UK_SWEEP);
++	s.sweepTime = knob(DrumControls::UK_SWEEP_TIME);
++	s.fold = knob(DrumControls::UK_FOLD);
++	s.grit = knob(DrumControls::UK_GRIT);
++	s.drive = knob(DrumControls::UK_DRIVE);
++	s.click = knob(DrumControls::UK_CLICK);
++	s.clickTone = knob(DrumControls::UK_CLICK_TONE);
++	const int32_t bend = std::clamp<int32_t>(DrumControls::toKnob(controls.values[DrumControls::UK_BEND]), 0, 0x7F00);
++	s.bend = static_cast<float>(bend - 0x4000) / ((bend < 0x4000) ? 0x4000 : 0x3F00);
++	s.punch = knob(DrumControls::UK_PUNCH);
++	s.decay = knob(DrumControls::UK_DECAY);
++	s.hold = knob(DrumControls::UK_HOLD);
++	s.sub = knob(DrumControls::UK_SUB);
++	s.crush = static_cast<float>(p[Patch::UK_CRUSH]) / 127.f;
++	s.bendTime = static_cast<float>(p[Patch::UK_BEND_TIME]) / 127.f;
++	s.snap = static_cast<float>(p[Patch::UK_SNAP]) / 127.f;
++	s.wave = static_cast<ultrakik::Wave>(p[Patch::UK_WAVE]);
++	s.driveType = static_cast<ultrakik::DriveType>(p[Patch::UK_DRIVE_TYPE]);
++	s.clickType = static_cast<ultrakik::Click>(p[Patch::UK_CLICK_TYPE]);
++	return s;
++}
++
++void Voice::renderUltrakik(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls,
++                           int32_t* buffer, int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude,
++                           int32_t amplitudeIncrement) {
++	const ultrakik::Settings s = ultrakikSettings(p, controls);
++	constexpr int32_t kChunk = 64;
++	std::array<int32_t, kChunk> chunk;
++	int32_t* out = buffer;
++	int32_t remaining = numSamples;
++	while (remaining > 0) {
++		const int32_t n = std::min(remaining, kChunk);
++		xia_.ultrakik.render(s, basePhaseIncrement, static_cast<float>(kSampleRate), chunk.data(), n);
++		for (int32_t i = 0; i < n; i++) {
++			amplitude += amplitudeIncrement;
++			// Halved like the Cyc engines, which leaves it q30 like the LXR engines'
++			out[i] += multiply_32x32_rshift32(chunk[i] >> 1, amplitude) << 2;
++		}
++		out += n;
++		remaining -= n;
++	}
++	xiaFinished_ = xia_.ultrakik.finished();
++}
++
++} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 000000000..7b27f9d73
+index 000000000..64e78c987
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,472 @@
+@@ -0,0 +1,526 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -3299,6 +3438,8 @@ index 000000000..7b27f9d73
 +#include "dsp/drum_synth/cyc.h"
 +#include "dsp/drum_synth/gin.h"
 +#include "dsp/drum_synth/gin_kits.h"
++#include "dsp/drum_synth/ultrakik.h"
++#include "dsp/drum_synth/ultrakik_presets.h"
 +#include "dsp/drum_synth/xia.h"
 +#include <algorithm>
 +#include <array>
@@ -3308,7 +3449,8 @@ index 000000000..7b27f9d73
 +namespace deluge::dsp::drum_synth {
 +
 +/// The three LXR voice structures, then two engines from the XIA set for the Model:Cycles (see xia.h), then the Cyc
-+/// engines (see cyc.h), then GIN (see gin.h). New engines go on the end: the number is saved with the sound.
++/// engines (see cyc.h), then GIN (see gin.h), then ULTRAKIK (see ultrakik.h). New engines go on the end: the number is
++/// saved with the sound.
 +enum class Engine : uint8_t {
 +	DRUM,  ///< Kick and toms: main osc, FM or mixed mod osc, pitch envelope
 +	SNARE, ///< Pitched osc with pitch envelope, plus filtered sample-and-hold noise
@@ -3323,7 +3465,8 @@ index 000000000..7b27f9d73
 +	CYC_CHORD,
 +	VTG_SNR,
 +	CLAP_ENG,
-+	GIN, ///< The PO-32 style drum voice from SquareWave Studio's GIN for the OP-1
++	GIN,      ///< The PO-32 style drum voice from SquareWave Studio's GIN for the OP-1
++	ULTRAKIK, ///< The kick engine: thump, grit, 808 bends, 909 punch, destruction
 +	NUM_ENGINES,
 +};
 +
@@ -3340,6 +3483,11 @@ index 000000000..7b27f9d73
 +/// Whether an engine is GIN
 +constexpr bool isGin(Engine engine) {
 +	return engine == Engine::GIN;
++}
++
++/// Whether an engine is ULTRAKIK
++constexpr bool isUltrakik(Engine engine) {
++	return engine == Engine::ULTRAKIK;
 +}
 +
 +/// Whether an engine is one of the three LXR voices
@@ -3392,6 +3540,20 @@ index 000000000..7b27f9d73
 +		GIN_TONE_ATTACK = 8,
 +		GIN_TONE_DECAY = 10,
 +		GIN_EQ_FREQ = 11, ///< Peak EQ frequency. Added after GIN, on a param only a sample oscillator reads.
++		// ULTRAKIK's continuous settings (see ultrakik::Settings). Drive and decay share the Cyc engines' slots. Its
++		// choices, crush, bend time and snap stay in the Patch.
++		UK_SWEEP = 0,      ///< Pitch envelope depth: mod depth knob
++		UK_SWEEP_TIME = 1, ///< Pitch envelope time: mod rate knob
++		UK_FOLD = 2,       ///< Wavefolder: Custom 2
++		UK_GRIT = 3,       ///< Custom 3
++		UK_DRIVE = 4,
++		UK_CLICK = 5,
++		UK_CLICK_TONE = 6,
++		UK_BEND = 7, ///< 64 = none
++		UK_PUNCH = 8,
++		UK_DECAY = 9,
++		UK_HOLD = 10,
++		UK_SUB = 11,
 +		NUM_SLOTS = 12,
 +	};
 +	/// Raw Deluge param values: the whole int32 range, centre 0
@@ -3423,9 +3585,9 @@ index 000000000..7b27f9d73
 +/// Every engine has a drive and a decay, on the same pads and gold knobs, though they live on different slots: the
 +/// XIA engines kept theirs where they were first saved
 +constexpr int32_t driveSlot(Engine engine) {
-+	return isXia(engine)                      ? DrumControls::DRIVE
-+	       : (isCyc(engine) || isGin(engine)) ? DrumControls::CYC_DRIVE
-+	                                          : DrumControls::LXR_DRIVE;
++	return isXia(engine)                                            ? DrumControls::DRIVE
++	       : (isCyc(engine) || isGin(engine) || isUltrakik(engine)) ? DrumControls::CYC_DRIVE
++	                                                                : DrumControls::LXR_DRIVE;
 +}
 +constexpr int32_t decaySlot(Engine engine) {
 +	return isXia(engine) ? DrumControls::ENGINE_DECAY : DrumControls::COMMON_DECAY;
@@ -3443,8 +3605,11 @@ index 000000000..7b27f9d73
 +	CHARACTER_A,      ///< The Cyc engines' Color
 +	CHARACTER_B,      ///< The Cyc engines' Shape
 +	NUM_SHARED,
-+	EXTRA_1 = NUM_SHARED, ///< Extras 1 to 9: each engine's own settings
-+	NUM_SLOTS = 16,
++	EXTRA_1 = NUM_SHARED, ///< Extras 1 to 9: each engine's own settings, on MOD1 and MOD2
++	NUM_MOD_SLOTS = 16,
++	OSC1_EXTRA_1 = NUM_MOD_SLOTS, ///< Four more, on the OSC1 column pads a drum synth has no use for (pulse width,
++	                              ///< retrigger phase, feedback, wave index): only ULTRAKIK fills them
++	NUM_SLOTS = 20,
 +};
 +
 +enum class Wave : uint8_t { SINE, TRIANGLE, SAW, SQUARE, NOISE, NUM_WAVES };
@@ -3500,6 +3665,12 @@ index 000000000..7b27f9d73
 +	RowSetup row;
 +};
 +XiaPreset xiaPresetFor(Engine engine, uint8_t variant);
++
++/// Envelope 1 release (a user value, 0 to 50) for ULTRAKIK at its own decay and hold knobs (see envelopeReleaseFor)
++int8_t ultrakikEnvelopeRelease(int32_t decayKnob, int32_t holdKnob);
++
++/// An ULTRAKIK preset's row: tuned to the preset's note on a kit row, with the release fitted to its decay
++RowSetup rowSetupForUltrakik(int32_t preset);
 +
 +/// Envelope 1 release (a user value, 0 to 50) for a Cyc engine at its own decay knob (see envelopeReleaseFor)
 +int8_t cycEnvelopeRelease(Engine engine, int32_t decayKnob, bool punch);
@@ -3569,6 +3740,13 @@ index 000000000..7b27f9d73
 +		GIN_EQ_GAIN,    ///< Peak EQ gain, 64 = flat, 0 / 127 = 40 dB cut / boost
 +		GIN_LEVEL,      ///< GIN's level before its clipper. 102 is about -2 dB.
 +		GIN_EQ_CONTROL, ///< 1 once GIN's EQ frequency is a control. Sounds saved before have no byte for it.
++		// ULTRAKIK. Its continuous settings are on Deluge params: see DrumControls.
++		UK_WAVE,       ///< ultrakik::Wave
++		UK_DRIVE_TYPE, ///< ultrakik::DriveType
++		UK_CLICK_TYPE, ///< ultrakik::Click
++		UK_CRUSH,      ///< 0-127
++		UK_BEND_TIME,  ///< 0-127: 40 ms to 4 s
++		UK_SNAP,       ///< 0-127: start phase 0 to 90 degrees
 +		NUM_PARAMS,
 +	};
 +
@@ -3583,6 +3761,9 @@ index 000000000..7b27f9d73
 +	void setXiaPreset(Engine engine, uint8_t variant);
 +	/// Switch to a Cyc engine. Its continuous settings are on Deluge params: see DrumControls.
 +	void setCycPreset(Engine engine);
++	/// Switch to ULTRAKIK, with a preset's choices (see ultrakik_presets.h). Its continuous settings are on Deluge
++	/// params: see ultrakikControlsFor().
++	void setUltrakikPreset(int32_t preset = ultrakik::kDefaultPreset);
 +	/// Switch to GIN, with a kit sound's choices, EQ and level. Its continuous settings are on Deluge params: see
 +	/// ginControlsFor().
 +	void setGinSound(const gin::KitSound& sound);
@@ -3617,6 +3798,8 @@ index 000000000..7b27f9d73
 +	void clearNeedsControlDefaults() { savedBeforeControls_ = savedBeforeGinEqControl_ = false; }
 +
 +private:
++	void setUltrakikBytes(const ultrakik::Preset& preset);
++
 +	std::array<uint8_t, NUM_PARAMS> params_{};
 +	bool savedBeforeControls_ = false;     ///< Not saved
 +	bool savedBeforeGinEqControl_ = false; ///< Not saved
@@ -3639,8 +3822,14 @@ index 000000000..7b27f9d73
 +/// The controls a patch starts from: its LXR settings, or an XIA engine's defaults
 +DrumControls controlsFromPatch(const Patch& patch);
 +
++/// ULTRAKIK's settings from its controls and patch
++ultrakik::Settings ultrakikSettings(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls);
++
 +/// A GIN kit sound's continuous settings, as controls
 +DrumControls ginControlsFor(const gin::KitSound& sound);
++
++/// An ULTRAKIK preset's continuous settings, as controls
++DrumControls ultrakikControlsFor(int32_t preset);
 +
 +/// Copy the LXR settings back from the controls into the patch, so switching engine and back keeps them
 +void storeControlsInPatch(const DrumControls& controls, Patch& patch);
@@ -3696,6 +3885,8 @@ index 000000000..7b27f9d73
 +	               int32_t amplitudeIncrement);
 +	void renderGin(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
 +	               int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
++	void renderUltrakik(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
++	                    int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
 +
 +	void updateSettings(const Patch& patch, const DrumControls& controls);
 +	void startLxr();
@@ -3737,12 +3928,14 @@ index 000000000..7b27f9d73
 +		xia::IiaState iia;
 +		cyc::Voice cyc;
 +		gin::Voice gin;
++		ultrakik::Voice ultrakik;
 +	} xia_{};
 +	std::array<int32_t, xia::kBlockSize> xiaBlock_{};
 +	int32_t xiaBlockPos_ = xia::kBlockSize;
 +	Engine xiaEngine_ = Engine::DRUM; ///< The XIA engine xia_ holds, or DRUM for none
 +	bool cycReady_ = false;           ///< xia_ holds a Cyc engine's state
 +	bool ginReady_ = false;           ///< xia_ holds GIN's state
++	bool ultrakikReady_ = false;      ///< xia_ holds ULTRAKIK's state
 +	float lxrLevel_ = 1.f;            ///< The LXR voices' decay
 +	float lxrGain_ = 1.f;             ///< The LXR voices' drive gain, last render
 +	int32_t lxrDecayKnob_ = -1;       ///< The decay knob lxrDecayCoef_ was worked out for
@@ -6242,6 +6435,855 @@ index 000000000..b1fd5cb2b
 +}
 +
 +} // namespace deluge::dsp::drum_synth::gin
+diff --git a/src/deluge/dsp/drum_synth/ultrakik.cpp b/src/deluge/dsp/drum_synth/ultrakik.cpp
+new file mode 100644
+index 000000000..41bfc85cc
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/ultrakik.cpp
+@@ -0,0 +1,547 @@
++/*
++ * Copyright © 2026 thisisbribery.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "dsp/drum_synth/ultrakik.h"
++#include <algorithm>
++#include <cmath>
++
++namespace deluge::dsp::drum_synth::ultrakik {
++
++namespace {
++
++// The body is an integer phase, 2^32 to the cycle, read from a q31 sine table like the Cyc engines'. Everything after
++// it is float, a sample at a time, with the work that doesn't change worked out once per chunk or per settings change.
++
++constexpr int32_t kSineBits = 10; ///< 1024 steps to the cycle, linear interpolation: good to about -106 dB
++constexpr int32_t kSineSize = 1 << kSineBits;
++
++constexpr double taylorSine(double x) {
++	double term = x;
++	double sum = x;
++	for (int32_t n = 1; n < 30; n++) {
++		term *= -x * x / static_cast<double>((2 * n) * (2 * n + 1));
++		sum += term;
++	}
++	return sum;
++}
++
++constexpr std::array<int32_t, kSineSize + 1> makeSineTable() {
++	std::array<int32_t, kSineSize + 1> table{};
++	constexpr double kPi = 3.14159265358979323846;
++	for (int32_t i = 0; i <= kSineSize; i++) {
++		const int32_t folded = (i <= kSineSize / 2) ? i : i - kSineSize; // into [-pi, pi]
++		const double y = taylorSine(2. * kPi * folded / kSineSize) * 2147483647.;
++		table[i] = static_cast<int32_t>(y + ((y >= 0.) ? 0.5 : -0.5));
++	}
++	return table;
++}
++constexpr std::array<int32_t, kSineSize + 1> kSineTable = makeSineTable();
++
++/// sin(2 pi phase / 2^32), -1 to 1
++[[gnu::always_inline]] inline float sine(uint32_t phase) {
++	const uint32_t i = phase >> (32 - kSineBits);
++	const int32_t a = kSineTable[i];
++	const int32_t b = kSineTable[i + 1];
++	const int32_t f = static_cast<int32_t>((phase << kSineBits) >> 1);
++	const int32_t s = a + 2 * static_cast<int32_t>((static_cast<int64_t>(b - a) * f) >> 32);
++	return static_cast<float>(s) * (1.f / 2147483648.f);
++}
++
++/// A phase offset in cycles, under 8 either way, wrapped into the cycle
++[[gnu::always_inline]] inline uint32_t cyclesOffset(float c) {
++	return static_cast<uint32_t>(static_cast<int32_t>(c * 268435456.f)) << 4;
++}
++
++[[gnu::always_inline]] inline float noise(uint32_t& state) {
++	state ^= state << 13;
++	state ^= state >> 17;
++	state ^= state << 5;
++	return static_cast<float>(static_cast<int32_t>(state)) * (1.f / 2147483648.f);
++}
++
++/// Per sample multiplier that falls by 60 dB in t60 seconds
++inline float decayFor(float t60, float sampleRate) {
++	return (t60 <= 0.f) ? 0.f : expf(-6.907755f / (t60 * sampleRate));
++}
++
++/// Per sample multiplier for a time constant (falls to 1/e) in seconds
++inline float timeConstant(float tau, float sampleRate) {
++	return expf(-1.f / (tau * sampleRate));
++}
++
++/// One pole low pass coefficient for a cutoff
++inline float onePole(float hz, float sampleRate) {
++	return 1.f - expf(-6.2831853f * hz / sampleRate);
++}
++
++/// Cubic soft clip: unity slope at zero, flat at +-1 from +-1 on
++[[gnu::always_inline]] inline float cubicClip(float x) {
++	x = std::clamp(x, -1.f, 1.f);
++	return x * (1.5f - 0.5f * x * x);
++}
++
++constexpr int32_t kChunk = 64;
++constexpr float kEndLevel = 2.5118864e-4f; ///< -72 dB
++constexpr float kHoldDecay = 0.995f;       ///< Decay at or above this holds
++constexpr float kGone = 1e-5f;             ///< An envelope below this is off: -100 dB
++constexpr float kLevel = 0.891f;           ///< -1 dB: the loudest any setting peaks
++
++} // namespace
++
++float ampDecaySeconds(float decay) {
++	return (decay >= kHoldDecay) ? 1000.f : 0.04f * powf(200.f, decay);
++}
++
++float holdSeconds(float hold) {
++	return 0.2f * hold * hold;
++}
++
++void Voice::reset() {
++	*this = Voice{};
++	finished_ = true;
++	level_ = 0.f;
++}
++
++void Voice::start(const Settings& settings, uint32_t phaseIncrement, float sampleRate) {
++	if (!prepared_ || !(p_.settings == settings) || p_.sampleRate != sampleRate) {
++		prepare(settings, phaseIncrement, sampleRate);
++	}
++	phase_ = p_.startPhase;
++	crushPhase_ = 0;
++	if (rng_ == 0) {
++		rng_ = 0x2545F491u;
++		clickRng_ = 0x9E3779B9u;
++	}
++	pos_ = 0;
++	pitchEnv_ = 1.f;
++	punchEnv_ = 1.f;
++	bendPos_ = 0.f;
++	bendMul_ = 1.f;
++	bendStep_ = 0.f;
++	amp_ = 1.f;
++	holdLeft_ = p_.holdSamples;
++	clickEnv_ = 1.f;
++	zapEnv_ = 1.f;
++	zapPhase_ = 0;
++	clickLpState_ = clickHpState_ = gritLp_ = 0.f;
++	dcIn_ = dcOut_ = 0.f;
++	crushHeld_ = 0.f;
++	level_ = 1.f;
++	ending_ = false;
++	finished_ = false;
++	started_ = true;
++}
++
++void Voice::prepare(const Settings& s, uint32_t phaseIncrement, float sr) {
++	Prepared& p = p_;
++	p.settings = s;
++	p.phaseIncrement = phaseIncrement;
++	p.sampleRate = sr;
++	prepared_ = true;
++
++	p.incPerHz = 4294967296.f / sr;
++	p.maxInc = 0.45f * 4294967296.f;
++	p.baseInc = static_cast<float>(phaseIncrement);
++
++	// Sweep: up to 5 octaves above the note, falling with a time constant of 2 to 250 ms
++	p.depth = exp2f(5.f * s.sweep) - 1.f;
++	p.pitchCoef = timeConstant(0.002f * powf(125.f, s.sweepTime), sr);
++	// Punch: the first few ms jump far above the sweep, the hit of the beater rather than a sweep you hear
++	p.punchDepth = exp2f(4.f * s.punch) - 1.f;
++	p.punchCoef = timeConstant(0.0012f + 0.0025f * s.punch, sr);
++	p.startPhase = static_cast<uint32_t>(s.snap * 1073741824.f);
++
++	// Bend: up to 24 semitones either way, over 40 ms to 4 s
++	p.bendSemis = 24.f * s.bend;
++	p.bendPerChunk = static_cast<float>(kChunk) / (0.04f * powf(100.f, s.bendTime) * sr);
++
++	p.ampCoef = (s.decay >= kHoldDecay) ? 1.f : decayFor(ampDecaySeconds(s.decay), sr);
++	p.holdSamples = static_cast<uint32_t>(holdSeconds(s.hold) * sr);
++
++	// Fold: in from nothing, a quarter cycle of sine (rounding the peaks) up to two cycles (folding over many times)
++	p.foldGain = 0.25f + 1.75f * s.fold * std::sqrt(s.fold);
++	p.foldMix = std::min(1.f, s.fold * 6.f);
++
++	p.grit = 0.7f * s.grit;
++
++	// Drive: 0 to 36 dB, levelled so a full scale input peaks at full scale. Crossfaded in from clean at the bottom.
++	p.driveGain = exp2f(6.f * s.drive);
++	p.tubeBias = 0.2f;
++	p.tubeOffset = cubicClip(p.tubeBias);
++	{
++		const float g = p.driveGain;
++		float peak;
++		switch (s.driveType) {
++		case DriveType::TUBE:
++			peak = std::max(std::abs(cubicClip(g + p.tubeBias) - p.tubeOffset),
++			                std::abs(cubicClip(-g + p.tubeBias) - p.tubeOffset));
++			break;
++		case DriveType::WARM:
++			peak = cubicClip(g);
++			break;
++		default:
++			peak = 1.f;
++			break;
++		}
++		p.driveNorm = 1.f / std::max(peak, 0.05f);
++	}
++
++	// Sub: a clean sine of the body under the driven body
++	p.sub = s.sub;
++	p.bodyMix = 1.f - 0.6f * s.sub;
++
++	// Click
++	const float tone = s.clickTone;
++	switch (s.clickType) {
++	case Click::THUD:
++		p.clickLevel = 5.f * s.click;
++		p.clickCoef = timeConstant(0.012f - 0.008f * tone, sr);
++		p.clickLp = onePole(700.f * powf(8.f, tone), sr);
++		break;
++	case Click::TICK:
++		p.clickLevel = 2.4f * s.click;
++		p.clickCoef = timeConstant(0.0015f - 0.00125f * tone, sr);
++		break;
++	case Click::NOISE:
++		p.clickLevel = 1.8f * s.click;
++		p.clickCoef = timeConstant(0.02f - 0.015f * tone, sr);
++		p.clickHp = onePole(800.f * powf(8.f, tone), sr);
++		break;
++	default: // ZAP
++		p.clickLevel = 1.2f * s.click;
++		p.clickCoef = timeConstant(0.004f, sr);
++		p.zapDepth = (1500.f * powf(6.f, tone)) * p.incPerHz;
++		p.zapCoef = timeConstant(0.0012f, sr);
++		break;
++	}
++
++	// Crush: sample and hold from 44.1 kHz down to about 700 Hz, and 16 bits down to 3
++	p.crushing = s.crush > 0.f;
++	p.crushInc = exp2f(-6.f * s.crush) * 4294967295.f;
++	p.crushStep = exp2f(-(15.f - 12.f * s.crush));
++	p.crushInvStep = 1.f / p.crushStep;
++
++	p.outGain = kLevel / (p.bodyMix + p.sub);
++	p.dcCoef = 1.f - 6.2831853f * 6.f / sr;
++}
++
++void Voice::render(const Settings& s, uint32_t phaseIncrement, float sr, int32_t* out, int32_t numSamples) {
++	if (pendingTrigger_) {
++		pendingTrigger_ = false;
++		start(s, phaseIncrement, sr);
++	}
++	if (finished_ || !started_) {
++		std::fill(out, out + numSamples, 0);
++		return;
++	}
++	if (!(p_.settings == s) || p_.sampleRate != sr) {
++		prepare(s, phaseIncrement, sr);
++	}
++	else if (p_.phaseIncrement != phaseIncrement) {
++		// Only the note moved (a glide, a bend, envelope 2 on pitch): nothing else to work out
++		p_.phaseIncrement = phaseIncrement;
++		p_.baseInc = static_cast<float>(phaseIncrement);
++	}
++	const Prepared& p = p_;
++
++	while (numSamples > 0) {
++		const int32_t offset = static_cast<int32_t>(pos_ % kChunk);
++		const int32_t n = std::min(numSamples, kChunk - offset);
++		const bool driven = p.settings.drive > 0.f;
++		// What changes as the hit goes on is looked at once a chunk, the chunks counted from the start of the note, so
++		// a hit sounds the same whatever size the host's buffers are
++		if (offset == 0) {
++			if (level_ < kEndLevel) {
++				ending_ = true;
++			}
++			sweeping_ = pitchEnv_ * p.depth > 1e-5f || punchEnv_ * p.punchDepth > 1e-5f;
++			if (!sweeping_) {
++				pitchEnv_ = punchEnv_ = 0.f;
++			}
++			clicking_ = clickEnv_ > kGone && p.clickLevel > 0.f;
++			if (!clicking_) {
++				clickEnv_ = 0.f;
++			}
++			// Grit rides on the body squared: once the driven body is under -26 dB it's under -55 dB, so it stops
++			gritty_ = p.grit > 0.f && amp_ * (driven ? p.driveGain * p.driveNorm : 1.f) > 0.05f;
++			// The bend, followed in straight lines from one chunk boundary to the next
++			if (p.bendSemis == 0.f) {
++				bendMul_ = 1.f;
++				bendStep_ = 0.f;
++			}
++			else if (bendPos_ < 1.f) {
++				bendPos_ = std::min(1.f, bendPos_ + p.bendPerChunk);
++				const float nextMul = exp2f(p.bendSemis * bendPos_ * bendPos_ * (1.f / 12.f));
++				bendStep_ = (nextMul - bendMul_) * (1.f / kChunk);
++			}
++			else {
++				bendStep_ = 0.f;
++			}
++		}
++		const bool sweeping = sweeping_;
++		const bool clicking = clicking_;
++		const bool gritty = gritty_;
++		const float bendStep = bendStep_;
++		float bendMul = bendMul_;
++		const bool folding = p.foldMix > 0.f;
++		const float driveMix = std::min(1.f, p.settings.drive * 10.f);
++		const Wave wave = p.settings.wave;
++		const DriveType driveType = p.settings.driveType;
++		const Click clickType = p.settings.clickType;
++
++		// Each stage runs over the chunk in its own pass: the samples of a pass don't depend on each other, so an
++		// in-order FPU can overlap them (and the drive can go four at a time), where one long chain per sample would
++		// stall on every step. State the passes carry lives in locals.
++		float body[kChunk];
++		float sub[kChunk];
++		float amp = amp_;
++		uint32_t rng = rng_;
++
++		// Oscillator, pitch and amp envelope
++		{
++			float pitchEnv = pitchEnv_;
++			float punchEnv = punchEnv_;
++			uint32_t holdLeft = holdLeft_;
++			uint32_t phase = phase_;
++			const bool moving = sweeping || bendStep != 0.f;
++			const uint32_t restInc = static_cast<uint32_t>(std::min(p.baseInc * bendMul, p.maxInc));
++			for (int32_t i = 0; i < n; i++) {
++				uint32_t inc = restInc;
++				if (moving) {
++					// The note, bent, swept down from above
++					const float incF =
++					    p.baseInc * bendMul * (1.f + p.depth * pitchEnv) * (1.f + p.punchDepth * punchEnv);
++					inc = static_cast<uint32_t>(std::min(incF, p.maxInc));
++					pitchEnv *= p.pitchCoef;
++					punchEnv *= p.punchCoef;
++					bendMul += bendStep;
++				}
++				phase += inc;
++				// Hold, then the decay. It sits before the folder and the drive, as a VCA into a pedal: the more drive,
++				// the longer the body stays full
++				if (holdLeft != 0) {
++					holdLeft--;
++				}
++				else {
++					amp *= p.ampCoef;
++				}
++				const float s = sine(phase) * amp;
++				sub[i] = s;
++				float x;
++				switch (wave) {
++				case Wave::ROUND: {
++					const float t = 1.f
++					                - std::abs(static_cast<float>(static_cast<int32_t>(phase - 0x40000000u)))
++					                      * (1.f / 1073741824.f);
++					x = t * (1.35f - 0.35f * t * t) * amp;
++					break;
++				}
++				case Wave::TRI:
++					x = (1.f
++					     - std::abs(static_cast<float>(static_cast<int32_t>(phase - 0x40000000u)))
++					           * (1.f / 1073741824.f))
++					    * amp;
++					break;
++				case Wave::SAW: {
++					// Rising through zero at the start of the cycle, the jump half way, smoothed by a polyBLEP
++					const uint32_t h = phase + 0x80000000u; // 0 at the jump
++					float y = static_cast<float>(static_cast<int32_t>(phase)) * (1.f / 2147483648.f);
++					const float dt = static_cast<float>(inc) * (1.f / 4294967296.f);
++					const float t = static_cast<float>(h) * (1.f / 4294967296.f);
++					if (t < dt) {
++						const float u = t / dt;
++						y -= u + u - u * u - 1.f;
++					}
++					else if (t > 1.f - dt) {
++						const float u = (t - 1.f) / dt;
++						y -= u * u + u + u + 1.f;
++					}
++					x = y * amp;
++					break;
++				}
++				default:
++					x = s;
++					break;
++				}
++				body[i] = x;
++			}
++			pitchEnv_ = pitchEnv;
++			punchEnv_ = punchEnv;
++			holdLeft_ = holdLeft;
++			phase_ = phase;
++			bendMul_ = bendMul;
++		}
++
++		if (folding) {
++			for (int32_t i = 0; i < n; i++) {
++				const float x = body[i];
++				body[i] = x + p.foldMix * (sine(cyclesOffset(x * p.foldGain)) - x);
++			}
++		}
++
++		if (driven) {
++			const float g = p.driveGain;
++			const float norm = p.driveNorm;
++			switch (driveType) {
++			case DriveType::HARD:
++				for (int32_t i = 0; i < n; i++) {
++					const float x = body[i];
++					body[i] = x + driveMix * (std::clamp(x * g, -1.f, 1.f) * norm - x);
++				}
++				break;
++			case DriveType::TUBE:
++				for (int32_t i = 0; i < n; i++) {
++					const float x = body[i];
++					body[i] = x + driveMix * ((cubicClip(x * g + p.tubeBias) - p.tubeOffset) * norm - x);
++				}
++				break;
++			case DriveType::FUZZ:
++				for (int32_t i = 0; i < n; i++) {
++					const float x = body[i];
++					const float u = x * g;
++					body[i] = x + driveMix * (std::clamp(u + 0.8f * (std::abs(u) - 0.5f), -1.f, 1.f) * norm - x);
++				}
++				break;
++			default:
++				for (int32_t i = 0; i < n; i++) {
++					const float x = body[i];
++					body[i] = x + driveMix * (cubicClip(x * g) * norm - x);
++				}
++				break;
++			}
++		}
++
++		if (gritty) {
++			// Darkened noise riding on the driven body's peaks: the louder the body, the more it rattles, like a
++			// speaker pushed past what it can take
++			float gritLp = gritLp_;
++			for (int32_t i = 0; i < n; i++) {
++				gritLp += 0.6f * (noise(rng) - gritLp);
++				const float x = body[i];
++				body[i] = x + p.grit * gritLp * x * x;
++			}
++			gritLp_ = gritLp;
++		}
++
++		// The click goes in after the drive, so it stays sharp however hard the body is driven
++		if (clicking) {
++			float clickEnv = clickEnv_;
++			uint32_t clickRng = clickRng_;
++			switch (clickType) {
++			case Click::THUD: {
++				float lp = clickLpState_;
++				for (int32_t i = 0; i < n; i++) {
++					lp += p.clickLp * (noise(clickRng) - lp);
++					body[i] += p.clickLevel * clickEnv * lp;
++					clickEnv *= p.clickCoef;
++				}
++				clickLpState_ = lp;
++				break;
++			}
++			case Click::TICK:
++				for (int32_t i = 0; i < n; i++) {
++					body[i] += p.clickLevel * clickEnv;
++					clickEnv *= p.clickCoef;
++				}
++				break;
++			case Click::NOISE: {
++				float hp = clickHpState_;
++				for (int32_t i = 0; i < n; i++) {
++					const float nz = noise(clickRng);
++					hp += p.clickHp * (nz - hp);
++					body[i] += p.clickLevel * clickEnv * (nz - hp);
++					clickEnv *= p.clickCoef;
++				}
++				clickHpState_ = hp;
++				break;
++			}
++			default: { // ZAP: a sine of its own, falling from kHz to the body's pitch in a few ms
++				float zapEnv = zapEnv_;
++				uint32_t zapPhase = zapPhase_;
++				const uint32_t restInc = static_cast<uint32_t>(std::min(p.baseInc, p.maxInc));
++				for (int32_t i = 0; i < n; i++) {
++					zapPhase += static_cast<uint32_t>(p.zapDepth * zapEnv) + restInc;
++					zapEnv *= p.zapCoef;
++					body[i] += p.clickLevel * clickEnv * sine(zapPhase);
++					clickEnv *= p.clickCoef;
++				}
++				zapEnv_ = zapEnv;
++				zapPhase_ = zapPhase;
++				break;
++			}
++			}
++			clickEnv_ = clickEnv;
++			clickRng_ = clickRng;
++		}
++		rng_ = rng;
++
++		if (p.crushing) {
++			uint32_t crushPhase = crushPhase_;
++			float crushHeld = crushHeld_;
++			const uint32_t crushInc = static_cast<uint32_t>(p.crushInc);
++			const bool every = p.crushInc >= 4294967040.f;
++			for (int32_t i = 0; i < n; i++) {
++				const uint32_t before = crushPhase;
++				crushPhase += crushInc;
++				if (crushPhase < before || every) {
++					const float q = body[i] * p.crushInvStep;
++					crushHeld = static_cast<float>(static_cast<int32_t>(q + std::copysign(0.5f, q))) * p.crushStep;
++				}
++				body[i] = crushHeld;
++			}
++			crushPhase_ = crushPhase;
++			crushHeld_ = crushHeld;
++		}
++
++		// DC blocker on the body (the tube, fuzz, saw and click all leave some), the clean sine under it, then a soft
++		// knee above -1 dB towards full scale to catch the click and grit on top of a full body
++		{
++			float dcIn = dcIn_;
++			float dcOut = dcOut_;
++			const float bodyGain = p.bodyMix * p.outGain;
++			const float subGain = p.sub * p.outGain;
++			for (int32_t i = 0; i < n; i++) {
++				const float x = body[i];
++				dcOut = x - dcIn + p.dcCoef * dcOut;
++				dcIn = x;
++				float y = bodyGain * dcOut + subGain * sub[i];
++				const float a = std::abs(y);
++				if (a > kLevel) {
++					const float z = (a - kLevel) * (1.f / (1.f - kLevel));
++					y = std::copysign(kLevel + (1.f - kLevel) * z / (1.f + z), y);
++				}
++				out[i] = static_cast<int32_t>(std::min(y, 0.99999994f) * 2147483648.f);
++			}
++			dcIn_ = dcIn;
++			dcOut_ = dcOut;
++		}
++		amp_ = amp;
++
++		if (ending_) {
++			for (int32_t i = 0; i < n; i++) {
++				const float f = static_cast<float>(kChunk - offset - i) * (1.f / kChunk);
++				out[i] = static_cast<int32_t>(static_cast<float>(out[i]) * f);
++			}
++		}
++		pos_ += n;
++		out += n;
++		numSamples -= n;
++
++		// The level counts the drive's gain, so a driven tail isn't cut while it can still be heard
++		const float gain = driven ? std::max(1.f, p.driveGain * p.driveNorm * driveMix) : 1.f;
++		const float level = amp * gain;
++		if (!ending_) {
++			level_ = level;
++		}
++		else if (pos_ % kChunk == 0) {
++			std::fill(out, out + numSamples, 0);
++			finished_ = true;
++			level_ = 0.f;
++			return;
++		}
++	}
++}
++
++} // namespace deluge::dsp::drum_synth::ultrakik
+diff --git a/src/deluge/dsp/drum_synth/ultrakik.h b/src/deluge/dsp/drum_synth/ultrakik.h
+new file mode 100644
+index 000000000..d09007b96
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/ultrakik.h
+@@ -0,0 +1,161 @@
++/*
++ * ULTRAKIK: a kick drum engine for the Deluge's drum synth.
++ *
++ * Copyright © 2026 thisisbribery.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * A new engine, written from general kick synthesis principles (and what Plaits' bass drums, the 808 and 909 circuits,
++ * Noise Engineering's BIA and Ohm Force's Bohm do with theirs): one oscillator swept down from above by a fast pitch
++ * spike (the punch) and a slower sweep, with a slow bend over the hit for 808 slides, starting at a set phase (the
++ * snap). Then, a stage a pass over each chunk: amp hold and decay, a sine wavefolder, the drive (warm, hard, tube or
++ * fuzz), grit riding on the driven peaks, the click, a crusher, a DC blocker, and a clean sine of the body mixed under
++ * it all so the low end survives anything above it.
++ *
++ * Starts as a thick, low thump with drive and grit already on and a short tail, and bends into long gliding 808s, hard
++ * 909s and fully broken kicks.
++ */
++
++#pragma once
++
++#include <array>
++#include <cstdint>
++
++namespace deluge::dsp::drum_synth::ultrakik {
++
++/// The body oscillator's wave, before folding and drive
++enum class Wave : uint8_t {
++	SINE,  ///< Clean sine: 808s, subs
++	ROUND, ///< A triangle rounded towards a sine, as the 909's VCO is shaped: a sine with a knock in it
++	TRI,   ///< Triangle: hollow, woody, more knock
++	SAW,   ///< Saw: buzzy, hardstyle and gabber bodies
++	NUM_WAVES,
++};
++
++/// What the drive stage does
++enum class DriveType : uint8_t {
++	WARM, ///< Soft clip: rounds the body towards a square, adds odd harmonics
++	HARD, ///< Hard clip: a square-ish body at high drive, the loudest
++	TUBE, ///< Asymmetric soft clip: even harmonics, thicker and warmer
++	FUZZ, ///< Full wave fuzz: the body's octave up mixed into a hard clip, ragged and broken
++	NUM_TYPES,
++};
++
++/// The transient at the start of each hit
++enum class Click : uint8_t {
++	THUD,  ///< A low passed noise thump, the beater hitting the skin
++	TICK,  ///< A short pulse, the 808 / 909 attack
++	NOISE, ///< A bright noise burst
++	ZAP,   ///< A very fast falling sine, the modern laser click
++	NUM_CLICKS,
++};
++
++/// Continuous settings, 0 to 1 (knob / 127). Bend is -1 to 1 around its centre.
++struct Settings {
++	float sweep = 0.f;     ///< Pitch envelope depth: none to 5 octaves above the note
++	float sweepTime = 0.f; ///< Pitch envelope time: 2 ms to 250 ms
++	float punch = 0.f;     ///< A very fast pitch spike on top of the sweep: none to 4 octaves, over about 3 ms
++	float fold = 0.f;      ///< Wavefolder: 0 clean, a little rounds the peaks, then folding into bright harmonics
++	float grit = 0.f;      ///< Noise riding on the body's peaks, the gritty rattle of a driven speaker
++	float drive = 0.f;     ///< Gain into the drive stage, 0 to 36 dB
++	float click = 0.f;     ///< Transient level
++	float clickTone = 0.f; ///< Transient colour: dark and long to bright and short
++	float bend = 0.f;      ///< Slow pitch bend over the hit, -1 to 1: 24 semitones down or up
++	float bendTime = 0.f;  ///< How long the bend takes: 40 ms to 4 s
++	float decay = 0.f;     ///< Amp decay: 40 ms to 8 s to fall 60 dB. The top holds, for gated 808s
++	float hold = 0.f;      ///< Amp hold at full level before the decay starts: 0 to 200 ms
++	float sub = 0.f;       ///< Clean sine of the body, mixed in after the drive to keep the low end
++	float crush = 0.f;     ///< Sample rate and bit depth reduction after the drive
++	float snap = 0.f;      ///< Start phase, 0 to 90 degrees: the further round, the harder the first edge hits
++	Wave wave = Wave::SINE;
++	DriveType driveType = DriveType::WARM;
++	Click clickType = Click::THUD;
++
++	bool operator==(const Settings&) const = default;
++};
++
++/// How long the amp decay takes to fall 60 dB at a decay setting (0 to 1), in seconds. 1000 s where it holds.
++float ampDecaySeconds(float decay);
++/// The hold before it, in seconds
++float holdSeconds(float hold);
++
++/// One voice's state between renders. Trivially constructible, so it can share memory with the other engines' state:
++/// call reset() before first use.
++class Voice {
++public:
++	void reset();
++	/// Start a note on the next render
++	void trigger() { pendingTrigger_ = true; }
++
++	/// Render numSamples into out, replacing what is there, q31, peaking a little under full scale at the defaults.
++	/// phaseIncrement is the note's pitch, 2^32 = one cycle per sample.
++	void render(const Settings& settings, uint32_t phaseIncrement, float sampleRate, int32_t* out, int32_t numSamples);
++
++	[[nodiscard]] bool finished() const { return finished_; }
++	/// The amp envelope, 0 to 1. The voice ends once this falls below -72 dB.
++	[[nodiscard]] float level() const { return finished_ ? 0.f : level_; }
++
++private:
++	/// What the settings make, worked out again only when they or the note change
++	struct Prepared {
++		Settings settings;
++		uint32_t phaseIncrement;
++		float sampleRate;
++
++		float incPerHz, maxInc;
++		float baseInc;   ///< The note's phase increment, as a float
++		float depth;     ///< Pitch envelope: the start's ratio over the note, minus 1
++		float pitchCoef; ///< Per sample pitch envelope multiplier
++		float punchDepth, punchCoef;
++		uint32_t startPhase;
++		float bendSemis;    ///< The bend's full depth, semitones
++		float bendPerChunk; ///< How far through the bend a chunk moves, 0 to 1
++		float ampCoef;      ///< Per sample amp decay multiplier
++		uint32_t holdSamples;
++		float foldGain; ///< Into the folder, in quarter cycles of the sine it reads
++		float foldMix;
++		float grit;
++		float driveGain, driveNorm;
++		float tubeBias, tubeOffset;
++		float sub, bodyMix;
++		float clickLevel, clickCoef, clickLp, clickHp;
++		float zapDepth, zapCoef;
++		float crushInc; ///< Crusher's sample and hold rate, 2^32 = every sample
++		float crushStep, crushInvStep;
++		bool crushing;
++		float outGain; ///< Overall level, so every setting peaks near full scale
++		float dcCoef;
++	};
++
++	void start(const Settings& settings, uint32_t phaseIncrement, float sampleRate);
++	void prepare(const Settings& settings, uint32_t phaseIncrement, float sampleRate);
++
++	Prepared p_;
++	uint32_t phase_;
++	uint32_t crushPhase_;
++	uint32_t rng_;      ///< Grit's noise
++	uint32_t clickRng_; ///< The click's, so the passes draw the same noise however a chunk is split
++	uint32_t pos_;      ///< Samples since the note started
++	float pitchEnv_;
++	float punchEnv_;
++	float bendPos_;  ///< Through the bend, 0 to 1
++	float bendMul_;  ///< The bend's pitch multiplier, now
++	float bendStep_; ///< How much it moves each sample of this chunk
++	float amp_;
++	uint32_t holdLeft_;
++	float clickEnv_;
++	float zapEnv_;
++	uint32_t zapPhase_;
++	float clickLpState_, clickHpState_;
++	float gritLp_;
++	float dcIn_, dcOut_;
++	float crushHeld_;
++	float level_;
++	bool ending_;
++	bool sweeping_, clicking_, gritty_; ///< As of the start of this chunk
++	bool started_;
++	bool pendingTrigger_;
++	bool finished_;
++	bool prepared_;
++};
++
++} // namespace deluge::dsp::drum_synth::ultrakik
+diff --git a/src/deluge/dsp/drum_synth/ultrakik_presets.cpp b/src/deluge/dsp/drum_synth/ultrakik_presets.cpp
+new file mode 100644
+index 000000000..5f22f6c8d
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/ultrakik_presets.cpp
+@@ -0,0 +1,59 @@
++/*
++ * ULTRAKIK's presets.
++ *
++ * Copyright © 2026 thisisbribery.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "dsp/drum_synth/ultrakik_presets.h"
++
++namespace deluge::dsp::drum_synth::ultrakik {
++
++// clang-format off
++const std::array<Preset, kNumPresets> kPresets{{
++    //                Sweep Time  Fold  Grit Drive Click  Tone  Bend Punch  Decay  Hold  Sub  Wave         Drive            Click         Cr  BT  Snap Note
++    {"DEEP 808",     {35,   55,   8,    0,   38,   20,    50,   64,  40,    92,    55,   75}, Wave::SINE,  DriveType::TUBE, Click::TICK,  0,  90,  24,  -36},
++    {"GRIME SLIDE",  {30,   60,   10,   8,   45,   15,    45,   32,  35,    100,   40,   70}, Wave::SINE,  DriveType::TUBE, Click::TICK,  0,  95,  20,  -24},
++    {"BOOM ROOM",    {80,   75,   15,   15,  50,   30,    40,   64,  50,    70,    60,   55}, Wave::SINE,  DriveType::WARM, Click::THUD,  0,  64,  64,  -36},
++    {"909 THUMP",    {60,   30,   15,   15,  55,   55,    85,   64,  75,    50,    30,   40}, Wave::ROUND, DriveType::WARM, Click::TICK,  0,  64,  110, -24},
++    {"ULTRA",        {70,   40,   20,   25,  60,   45,    60,   64,  60,    52,    50,   45}, Wave::SINE,  DriveType::WARM, Click::THUD,  0,  64,  64,  -24},
++    {"CLUB 909",     {60,   30,   20,   25,  75,   70,    90,   64,  85,    50,    25,   35}, Wave::ROUND, DriveType::HARD, Click::TICK,  0,  64,  127, -24},
++    {"TUBE FAT",     {65,   45,   35,   40,  80,   50,    55,   64,  60,    58,    55,   50}, Wave::TRI,   DriveType::TUBE, Click::THUD,  0,  64,  64,  -24},
++    {"TRAP KNOCK",   {45,   45,   25,   35,  85,   40,    70,   64,  55,    85,    45,   60}, Wave::SINE,  DriveType::TUBE, Click::TICK,  0,  70,  64,  -36},
++    {"HARDSTYLE",    {55,   70,   45,   30,  100,  50,    60,   64,  60,    75,    55,   45}, Wave::SAW,   DriveType::WARM, Click::THUD,  0,  64,  64,  -24},
++    {"DISTORTO",     {70,   30,   45,   60,  105,  75,    100,  64,  90,    55,    35,   35}, Wave::ROUND, DriveType::HARD, Click::NOISE, 0,  64,  127, -24},
++    {"RUMBLE",       {70,   50,   40,   80,  85,   40,    40,   64,  60,    75,    60,   50}, Wave::SINE,  DriveType::WARM, Click::THUD,  0,  64,  64,  -24},
++    {"GABBER",       {75,   35,   65,   70,  127,  70,    95,   64,  95,    60,    70,   30}, Wave::ROUND, DriveType::HARD, Click::TICK,  0,  64,  127, -24},
++    {"BITCRUSHER",   {85,   40,   60,   95,  110,  70,    100,  64,  100,   60,    50,   40}, Wave::SAW,   DriveType::HARD, Click::ZAP,   80, 64,  64,  -24},
++    {"FUZZ BOMB",    {80,   40,   70,   110, 120,  60,    70,   64,  100,   60,    50,   35}, Wave::TRI,   DriveType::FUZZ, Click::NOISE, 20, 64,  64,  -24},
++    {"FOLD STORM",   {85,   45,   115,  90,  110,  60,    80,   64,  90,    58,    45,   40}, Wave::SINE,  DriveType::WARM, Click::ZAP,   0,  64,  64,  -24},
++    {"ANNIHILATE",   {110,  50,   127,  127, 127,  110,   110,  32,  110,   65,    60,   40}, Wave::SAW,   DriveType::FUZZ, Click::ZAP,   60, 50,  127, -24},
++}};
++// clang-format on
++
++Settings settingsFor(const Preset& preset) {
++	auto knob = [&](Knob k) { return static_cast<float>(preset.knobs[k]) / 127.f; };
++	Settings s;
++	s.sweep = knob(SWEEP);
++	s.sweepTime = knob(SWEEP_TIME);
++	s.fold = knob(FOLD);
++	s.grit = knob(GRIT);
++	s.drive = knob(DRIVE);
++	s.click = knob(CLICK);
++	s.clickTone = knob(CLICK_TONE);
++	const int32_t bend = preset.knobs[BEND];
++	s.bend = static_cast<float>(bend - 64) / ((bend < 64) ? 64.f : 63.f);
++	s.punch = knob(PUNCH);
++	s.decay = knob(DECAY);
++	s.hold = knob(HOLD);
++	s.sub = knob(SUB);
++	s.crush = static_cast<float>(preset.crush) / 127.f;
++	s.bendTime = static_cast<float>(preset.bendTime) / 127.f;
++	s.snap = static_cast<float>(preset.snap) / 127.f;
++	s.wave = preset.wave;
++	s.driveType = preset.driveType;
++	s.clickType = preset.clickType;
++	return s;
++}
++
++} // namespace deluge::dsp::drum_synth::ultrakik
+diff --git a/src/deluge/dsp/drum_synth/ultrakik_presets.h b/src/deluge/dsp/drum_synth/ultrakik_presets.h
+new file mode 100644
+index 000000000..aa5a18975
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/ultrakik_presets.h
+@@ -0,0 +1,58 @@
++/*
++ * ULTRAKIK's presets: sixteen big kicks, clean and deep first, then crunchier and more broken down the list. All tuned
++ * to C on a kit row, and the two that bend dive a whole octave, so they land on C too.
++ *
++ * Copyright © 2026 thisisbribery.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "dsp/drum_synth/ultrakik.h"
++#include <array>
++#include <cstdint>
++
++namespace deluge::dsp::drum_synth::ultrakik {
++
++/// The knobs, 0-127, in the order of their DrumControls slots (UK_SWEEP to UK_SUB)
++enum Knob : uint8_t {
++	SWEEP,
++	SWEEP_TIME,
++	FOLD,
++	GRIT,
++	DRIVE,
++	CLICK,
++	CLICK_TONE,
++	BEND,
++	PUNCH,
++	DECAY,
++	HOLD,
++	SUB,
++	NUM_KNOBS
++};
++
++struct Preset {
++	char const* name;
++	std::array<uint8_t, NUM_KNOBS> knobs;
++	Wave wave;
++	DriveType driveType;
++	Click clickType;
++	uint8_t crush;    ///< 0-127
++	uint8_t bendTime; ///< 0-127
++	uint8_t snap;     ///< 0-127
++	int8_t transpose; ///< On a kit row, semitones from the kit's middle C: -24 is C2 (65 Hz), -36 is C1 (33 Hz)
++};
++
++inline constexpr int32_t kNumPresets = 16;
++/// ULTRA, what the engine starts on: a thick, low thump with colour and grit on. A 2.9 octave sweep over about 30 ms on
++/// top of a 2.5 octave punch, a little fold, grit and 24 dB of warm drive, a dark thud of a click, about 30 ms of hold,
++/// then a decay that's down 20 dB by about 280 ms and 40 dB by 400 ms.
++inline constexpr int32_t kDefaultPreset = 4;
++
++/// Clean and deep first, then crunchier and more broken down the list
++extern const std::array<Preset, kNumPresets> kPresets;
++
++/// A preset's settings, as the Deluge reads them from its controls (bend centred on 64)
++Settings settingsFor(const Preset& preset);
++
++} // namespace deluge::dsp::drum_synth::ultrakik
 diff --git a/src/deluge/dsp/drum_synth/xia.cpp b/src/deluge/dsp/drum_synth/xia.cpp
 new file mode 100644
 index 000000000..14dd48640
@@ -9675,7 +10717,7 @@ index 000000000..cd1babb23
 +extern SynthInstrumentMenu synthInstrumentMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d81..b138c88fa 100644
+index 38cab4d81..dfc24ca77 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -9708,7 +10750,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -543,6 +552,127 @@
+@@ -543,6 +552,155 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -9801,6 +10843,34 @@ index 38cab4d81..b138c88fa 100644
 +    "STRING_FOR_GIN_ENV_MOD": "Mod",
 +    "STRING_FOR_GIN_SOUND": "GIN sound",
 +    "STRING_FOR_GIN_SOUND_LOADED": "Sound loaded",
++    "STRING_FOR_DRUM_ENGINE_ULTRAKIK": "ULTRAKIK",
++    "STRING_FOR_UK_SWEEP": "Sweep",
++    "STRING_FOR_UK_SWEEP_TIME": "Sweep time",
++    "STRING_FOR_UK_FOLD": "Fold",
++    "STRING_FOR_UK_GRIT": "Grit",
++    "STRING_FOR_UK_CLICK": "Click",
++    "STRING_FOR_UK_CLICK_TONE": "Click tone",
++    "STRING_FOR_UK_BEND": "Bend",
++    "STRING_FOR_UK_PUNCH": "Punch",
++    "STRING_FOR_UK_DECAY": "Decay",
++    "STRING_FOR_UK_HOLD": "Hold",
++    "STRING_FOR_UK_SUB": "Sub",
++    "STRING_FOR_UK_WAVE": "Body wave",
++    "STRING_FOR_UK_DRIVE_TYPE": "Drive type",
++    "STRING_FOR_UK_CLICK_TYPE": "Click type",
++    "STRING_FOR_UK_CRUSH": "Crush",
++    "STRING_FOR_UK_BEND_TIME": "Bend time",
++    "STRING_FOR_UK_SNAP": "Snap",
++    "STRING_FOR_UK_ROUND": "Round",
++    "STRING_FOR_UK_WARM": "Warm",
++    "STRING_FOR_UK_HARD": "Hard",
++    "STRING_FOR_UK_TUBE": "Tube",
++    "STRING_FOR_UK_FUZZ": "Fuzz",
++    "STRING_FOR_UK_THUD": "Thud",
++    "STRING_FOR_UK_TICK": "Tick",
++    "STRING_FOR_UK_ZAP": "Zap",
++    "STRING_FOR_UK_TRI": "Tri",
++    "STRING_FOR_UK_PRESET": "Kick preset",
 +    "STRING_FOR_CYC_AMP_DECAY": "Amp decay",
 +    "STRING_FOR_NEW_KIT_TYPE": "New kit",
 +    "STRING_FOR_SYNTH_INSTRUMENT": "Instrument",
@@ -9836,7 +10906,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -568,6 +698,8 @@
+@@ -568,6 +726,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -9845,7 +10915,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -624,6 +756,13 @@
+@@ -624,6 +784,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -9859,7 +10929,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -705,6 +844,12 @@
+@@ -705,6 +872,12 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -9872,7 +10942,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -847,6 +992,34 @@
+@@ -847,6 +1020,34 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -9907,7 +10977,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
-@@ -995,6 +1168,8 @@
+@@ -995,6 +1196,8 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -9917,7 +10987,7 @@ index 38cab4d81..b138c88fa 100644
      "STRING_FOR_DEFAULT_HORIZONTAL_MENU": "Horizontal Menu",
      "STRING_FOR_CHORD_KEYBOARD_MODE_ROW": "Chord Row Mode",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf7..4ec72553d 100644
+index 1f87aacf7..fd2c36988 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -9950,7 +11020,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -556,6 +565,127 @@ PLACE_SDRAM_DATA Language english{
+@@ -556,6 +565,155 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -10043,6 +11113,34 @@ index 1f87aacf7..4ec72553d 100644
 +        {STRING_FOR_GIN_ENV_MOD, "Mod"},
 +        {STRING_FOR_GIN_SOUND, "GIN sound"},
 +        {STRING_FOR_GIN_SOUND_LOADED, "Sound loaded"},
++        {STRING_FOR_DRUM_ENGINE_ULTRAKIK, "ULTRAKIK"},
++        {STRING_FOR_UK_SWEEP, "Sweep"},
++        {STRING_FOR_UK_SWEEP_TIME, "Sweep time"},
++        {STRING_FOR_UK_FOLD, "Fold"},
++        {STRING_FOR_UK_GRIT, "Grit"},
++        {STRING_FOR_UK_CLICK, "Click"},
++        {STRING_FOR_UK_CLICK_TONE, "Click tone"},
++        {STRING_FOR_UK_BEND, "Bend"},
++        {STRING_FOR_UK_PUNCH, "Punch"},
++        {STRING_FOR_UK_DECAY, "Decay"},
++        {STRING_FOR_UK_HOLD, "Hold"},
++        {STRING_FOR_UK_SUB, "Sub"},
++        {STRING_FOR_UK_WAVE, "Body wave"},
++        {STRING_FOR_UK_DRIVE_TYPE, "Drive type"},
++        {STRING_FOR_UK_CLICK_TYPE, "Click type"},
++        {STRING_FOR_UK_CRUSH, "Crush"},
++        {STRING_FOR_UK_BEND_TIME, "Bend time"},
++        {STRING_FOR_UK_SNAP, "Snap"},
++        {STRING_FOR_UK_ROUND, "Round"},
++        {STRING_FOR_UK_WARM, "Warm"},
++        {STRING_FOR_UK_HARD, "Hard"},
++        {STRING_FOR_UK_TUBE, "Tube"},
++        {STRING_FOR_UK_FUZZ, "Fuzz"},
++        {STRING_FOR_UK_THUD, "Thud"},
++        {STRING_FOR_UK_TICK, "Tick"},
++        {STRING_FOR_UK_ZAP, "Zap"},
++        {STRING_FOR_UK_TRI, "Tri"},
++        {STRING_FOR_UK_PRESET, "Kick preset"},
 +        {STRING_FOR_CYC_AMP_DECAY, "Amp decay"},
 +        {STRING_FOR_NEW_KIT_TYPE, "New kit"},
 +        {STRING_FOR_SYNTH_INSTRUMENT, "Instrument"},
@@ -10078,7 +11176,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -581,6 +711,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -581,6 +739,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -10087,7 +11185,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -637,6 +769,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -637,6 +797,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -10101,7 +11199,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -718,6 +857,12 @@ PLACE_SDRAM_DATA Language english{
+@@ -718,6 +885,12 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -10114,7 +11212,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -860,6 +1005,34 @@ PLACE_SDRAM_DATA Language english{
+@@ -860,6 +1033,34 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -10149,7 +11247,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
-@@ -1008,6 +1181,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -1008,6 +1209,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -10159,7 +11257,7 @@ index 1f87aacf7..4ec72553d 100644
          {STRING_FOR_DEFAULT_HORIZONTAL_MENU, "Horizontal Menu"},
          {STRING_FOR_CHORD_KEYBOARD_MODE_ROW, "Chord Row Mode"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d56..fc20297bf 100644
+index 1af382d56..87481ca3d 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,42 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -10215,7 +11313,7 @@ index 1af382d56..fc20297bf 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -450,6 +489,125 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -450,6 +489,153 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -10308,6 +11406,34 @@ index 1af382d56..fc20297bf 100644
 +        {STRING_FOR_GIN_ENV_MOD, "MOD"},
 +        {STRING_FOR_GIN_SOUND, "GSND"},
 +        {STRING_FOR_GIN_SOUND_LOADED, "DONE"},
++        {STRING_FOR_DRUM_ENGINE_ULTRAKIK, "ULTRAKIK"},
++        {STRING_FOR_UK_SWEEP, "SWEP"},
++        {STRING_FOR_UK_SWEEP_TIME, "STIM"},
++        {STRING_FOR_UK_FOLD, "FOLD"},
++        {STRING_FOR_UK_GRIT, "GRIT"},
++        {STRING_FOR_UK_CLICK, "CLIK"},
++        {STRING_FOR_UK_CLICK_TONE, "CTON"},
++        {STRING_FOR_UK_BEND, "BEND"},
++        {STRING_FOR_UK_PUNCH, "PNCH"},
++        {STRING_FOR_UK_DECAY, "DCY"},
++        {STRING_FOR_UK_HOLD, "HOLD"},
++        {STRING_FOR_UK_SUB, "SUB"},
++        {STRING_FOR_UK_WAVE, "WAVE"},
++        {STRING_FOR_UK_DRIVE_TYPE, "DTYP"},
++        {STRING_FOR_UK_CLICK_TYPE, "CTYP"},
++        {STRING_FOR_UK_CRUSH, "CRSH"},
++        {STRING_FOR_UK_BEND_TIME, "BTIM"},
++        {STRING_FOR_UK_SNAP, "SNAP"},
++        {STRING_FOR_UK_ROUND, "ROND"},
++        {STRING_FOR_UK_WARM, "WARM"},
++        {STRING_FOR_UK_HARD, "HARD"},
++        {STRING_FOR_UK_TUBE, "TUBE"},
++        {STRING_FOR_UK_FUZZ, "FUZZ"},
++        {STRING_FOR_UK_THUD, "THUD"},
++        {STRING_FOR_UK_TICK, "TICK"},
++        {STRING_FOR_UK_ZAP, "ZAP"},
++        {STRING_FOR_UK_TRI, "TRI"},
++        {STRING_FOR_UK_PRESET, "KPRE"},
 +        {STRING_FOR_CYC_AMP_DECAY, "DEC"},
 +        {STRING_FOR_NEW_KIT_TYPE, "NEW"},
 +        {STRING_FOR_SYNTH_INSTRUMENT, "INST"},
@@ -10341,7 +11467,7 @@ index 1af382d56..fc20297bf 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -459,6 +617,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -459,6 +645,13 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -10355,7 +11481,7 @@ index 1af382d56..fc20297bf 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -561,6 +726,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -561,6 +754,8 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -10365,7 +11491,7 @@ index 1af382d56..fc20297bf 100644
          {STRING_FOR_DEFAULT_HORIZONTAL_MENU, "HORZ"},
      },
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b4..bed0ce69d 100644
+index 8328945b4..cc2e6d423 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,42 @@
@@ -10421,7 +11547,7 @@ index 8328945b4..bed0ce69d 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -466,6 +505,125 @@
+@@ -466,6 +505,153 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -10514,6 +11640,34 @@ index 8328945b4..bed0ce69d 100644
 +        "STRING_FOR_GIN_ENV_MOD": "MOD",
 +        "STRING_FOR_GIN_SOUND": "GSND",
 +        "STRING_FOR_GIN_SOUND_LOADED": "DONE",
++        "STRING_FOR_DRUM_ENGINE_ULTRAKIK": "ULTRAKIK",
++        "STRING_FOR_UK_SWEEP": "SWEP",
++        "STRING_FOR_UK_SWEEP_TIME": "STIM",
++        "STRING_FOR_UK_FOLD": "FOLD",
++        "STRING_FOR_UK_GRIT": "GRIT",
++        "STRING_FOR_UK_CLICK": "CLIK",
++        "STRING_FOR_UK_CLICK_TONE": "CTON",
++        "STRING_FOR_UK_BEND": "BEND",
++        "STRING_FOR_UK_PUNCH": "PNCH",
++        "STRING_FOR_UK_DECAY": "DCY",
++        "STRING_FOR_UK_HOLD": "HOLD",
++        "STRING_FOR_UK_SUB": "SUB",
++        "STRING_FOR_UK_WAVE": "WAVE",
++        "STRING_FOR_UK_DRIVE_TYPE": "DTYP",
++        "STRING_FOR_UK_CLICK_TYPE": "CTYP",
++        "STRING_FOR_UK_CRUSH": "CRSH",
++        "STRING_FOR_UK_BEND_TIME": "BTIM",
++        "STRING_FOR_UK_SNAP": "SNAP",
++        "STRING_FOR_UK_ROUND": "ROND",
++        "STRING_FOR_UK_WARM": "WARM",
++        "STRING_FOR_UK_HARD": "HARD",
++        "STRING_FOR_UK_TUBE": "TUBE",
++        "STRING_FOR_UK_FUZZ": "FUZZ",
++        "STRING_FOR_UK_THUD": "THUD",
++        "STRING_FOR_UK_TICK": "TICK",
++        "STRING_FOR_UK_ZAP": "ZAP",
++        "STRING_FOR_UK_TRI": "TRI",
++        "STRING_FOR_UK_PRESET": "KPRE",
 +        "STRING_FOR_CYC_AMP_DECAY": "DEC",
 +        "STRING_FOR_NEW_KIT_TYPE": "NEW",
 +        "STRING_FOR_SYNTH_INSTRUMENT": "INST",
@@ -10547,7 +11701,7 @@ index 8328945b4..bed0ce69d 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -479,6 +637,20 @@
+@@ -479,6 +665,20 @@
  
          "STRING_FOR_WAVEFOLD": "FOLD",
  
@@ -10568,7 +11722,7 @@ index 8328945b4..bed0ce69d 100644
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
-@@ -603,6 +775,8 @@
+@@ -603,6 +803,8 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -10578,7 +11732,7 @@ index 8328945b4..bed0ce69d 100644
          "STRING_FOR_FAVOURITES_EMPTY": "NONE",
  
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92c..b07a415f3 100644
+index 49b15e92c..03012c6ff 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -10600,7 +11754,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -586,6 +591,127 @@ enum class String : size_t {
+@@ -586,6 +591,155 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -10693,6 +11847,34 @@ index 49b15e92c..b07a415f3 100644
 +	STRING_FOR_GIN_ENV_MOD,
 +	STRING_FOR_GIN_SOUND,
 +	STRING_FOR_GIN_SOUND_LOADED,
++	STRING_FOR_DRUM_ENGINE_ULTRAKIK,
++	STRING_FOR_UK_SWEEP,
++	STRING_FOR_UK_SWEEP_TIME,
++	STRING_FOR_UK_FOLD,
++	STRING_FOR_UK_GRIT,
++	STRING_FOR_UK_CLICK,
++	STRING_FOR_UK_CLICK_TONE,
++	STRING_FOR_UK_BEND,
++	STRING_FOR_UK_PUNCH,
++	STRING_FOR_UK_DECAY,
++	STRING_FOR_UK_HOLD,
++	STRING_FOR_UK_SUB,
++	STRING_FOR_UK_WAVE,
++	STRING_FOR_UK_DRIVE_TYPE,
++	STRING_FOR_UK_CLICK_TYPE,
++	STRING_FOR_UK_CRUSH,
++	STRING_FOR_UK_BEND_TIME,
++	STRING_FOR_UK_SNAP,
++	STRING_FOR_UK_ROUND,
++	STRING_FOR_UK_WARM,
++	STRING_FOR_UK_HARD,
++	STRING_FOR_UK_TUBE,
++	STRING_FOR_UK_FUZZ,
++	STRING_FOR_UK_THUD,
++	STRING_FOR_UK_TICK,
++	STRING_FOR_UK_ZAP,
++	STRING_FOR_UK_TRI,
++	STRING_FOR_UK_PRESET,
 +	STRING_FOR_CYC_AMP_DECAY,
 +	STRING_FOR_NEW_KIT_TYPE,
 +	STRING_FOR_SYNTH_INSTRUMENT,
@@ -10728,7 +11910,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -615,6 +741,8 @@ enum class String : size_t {
+@@ -615,6 +769,8 @@ enum class String : size_t {
  	STRING_FOR_START_POINT,
  	STRING_FOR_START_POINT_SHORT,
  	STRING_FOR_END_POINT,
@@ -10737,7 +11919,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -683,6 +811,13 @@ enum class String : size_t {
+@@ -683,6 +839,13 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -10751,7 +11933,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -715,6 +850,10 @@ enum class String : size_t {
+@@ -715,6 +878,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -10762,7 +11944,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -772,6 +911,12 @@ enum class String : size_t {
+@@ -772,6 +939,12 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -10775,7 +11957,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -923,6 +1068,34 @@ enum class String : size_t {
+@@ -923,6 +1096,34 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -10810,7 +11992,7 @@ index 49b15e92c..b07a415f3 100644
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
-@@ -1133,6 +1306,8 @@ enum class String : size_t {
+@@ -1133,6 +1334,8 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_CLIP_TYPE,
  	STRING_FOR_DEFAULT_NEW_CLIP_TYPE,
  	STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE,
@@ -11252,10 +12434,10 @@ index 000000000..466e7dab2
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 000000000..0057a9466
+index 000000000..6b8693965
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,377 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -11375,6 +12557,9 @@ index 000000000..0057a9466
 +		return {};
 +	}
 +	const Engine engine = sound->sources[0].drumPatch.engine();
++	if (deluge::dsp::drum_synth::isUltrakik(engine)) {
++		return layouts_[7];
++	}
 +	if (deluge::dsp::drum_synth::isGin(engine)) {
 +		return layouts_[6];
 +	}
@@ -11406,6 +12591,8 @@ index 000000000..0057a9466
 +		return l10n::getView(deluge::dsp::drum_synth::cycEngineName(engine));
 +	}
 +	switch (engine) {
++	case Engine::ULTRAKIK:
++		return l10n::getView(STRING_FOR_DRUM_ENGINE_ULTRAKIK);
 +	case Engine::GIN:
 +		return l10n::getView(STRING_FOR_DRUM_ENGINE_GIN);
 +	case Engine::SNARE:
@@ -11630,10 +12817,10 @@ index 000000000..0057a9466
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.h b/src/deluge/gui/menu_item/drum_synth/editor.h
 new file mode 100644
-index 000000000..f23cf85f6
+index 000000000..45156dd41
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.h
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,99 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -11690,8 +12877,9 @@ index 000000000..f23cf85f6
 +	using Layout = std::span<const Column>;
 +
 +	Editor(l10n::String name, Layout drumLayout, Layout snareLayout, Layout metalLayout, Layout tiaLayout,
-+	       Layout iiaLayout, Layout cycLayout, Layout ginLayout, MenuItem* fullMenu)
-+	    : MenuItem(name), layouts_{drumLayout, snareLayout, metalLayout, tiaLayout, iiaLayout, cycLayout, ginLayout},
++	       Layout iiaLayout, Layout cycLayout, Layout ginLayout, Layout ultrakikLayout, MenuItem* fullMenu)
++	    : MenuItem(name),
++	      layouts_{drumLayout, snareLayout, metalLayout, tiaLayout, iiaLayout, cycLayout, ginLayout, ultrakikLayout},
 +	      fullMenu_(fullMenu) {}
 +
 +	void beginSession(MenuItem* navigatedBackwardFrom) override;
@@ -11724,7 +12912,7 @@ index 000000000..f23cf85f6
 +	void changed();
 +
 +	/// LXR drum, snare and metal, TIA, IIA, one shared by all the Cyc engines, then GIN
-+	std::array<Layout, 7> layouts_;
++	std::array<Layout, 8> layouts_;
 +	MenuItem* fullMenu_;
 +	int32_t selectedColumn_ = 0;
 +};
@@ -11734,10 +12922,10 @@ index 000000000..f23cf85f6
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 000000000..191f1a476
+index 000000000..d74e83322
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
-@@ -0,0 +1,558 @@
+@@ -0,0 +1,665 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -11915,7 +13103,11 @@ index 000000000..191f1a476
 +		return;
 +	}
 +
-+	const deluge::dsp::drum_synth::RowSetup row = deluge::dsp::drum_synth::rowSetupForEngine(engine, variant);
++	deluge::dsp::drum_synth::RowSetup row = deluge::dsp::drum_synth::rowSetupForEngine(engine, variant);
++	// ULTRAKIK on a synth plays at the note, for 808 lines (and glides with portamento); a kit row drops to C2
++	if (deluge::dsp::drum_synth::isUltrakik(engine) && !soundEditor.editingKitRow()) {
++		row.transpose = 0;
++	}
 +	applyRowSetup(row);
 +	if (isXia(engine)) {
 +		patch.setXiaPreset(engine, variant);
@@ -11925,6 +13117,9 @@ index 000000000..191f1a476
 +	}
 +	else if (isGin(engine)) {
 +		patch.setGinSound(deluge::dsp::drum_synth::gin::defaultSound());
++	}
++	else if (deluge::dsp::drum_synth::isUltrakik(engine)) {
++		patch.setUltrakikPreset();
 +	}
 +	else {
 +		patch.setPreset(deluge::dsp::drum_synth::presetForLxrEngine(engine));
@@ -12021,10 +13216,23 @@ index 000000000..191f1a476
 +	}
 +};
 +
-+/// A GIN setting kept in the patch as a number, 0-127 (EQ gain, level). Menu edits only: not a patched param.
-+class GinNumber final : public Integer {
++/// A continuous setting of ULTRAKIK
++class UltrakikControl final : public Control {
 +public:
-+	GinNumber(l10n::String name, Patch::Param param) : Integer(name), param_(param) {}
++	using Control::Control;
++
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		const auto* sound = static_cast<Sound*>(modControllable);
++		return sound->sources[0].oscType == OscType::DRUM_SYNTH
++		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch.engine());
++	}
++};
++
++/// A drum synth setting kept in the patch as a number, 0-127: GIN's EQ gain and level, ULTRAKIK's crush, bend time and
++/// snap. Menu edits only: not a patched param.
++class PatchNumber final : public Integer {
++public:
++	PatchNumber(l10n::String name, Patch::Param param) : Integer(name), param_(param) {}
 +
 +	[[nodiscard]] int32_t getMaxValue() const override { return 127; }
 +	[[nodiscard]] int32_t getMinValue() const override { return 0; }
@@ -12037,6 +13245,8 @@ index 000000000..191f1a476
 +private:
 +	Patch::Param param_;
 +};
++
++using GinNumber = PatchNumber;
 +
 +/// The LXR voices' drive and decay, which they share with every other engine's on the same pads and gold knobs
 +class LxrCommonControl final : public Control {
@@ -12140,6 +13350,45 @@ index 000000000..191f1a476
 +	}
 +};
 +
++/// ULTRAKIK's body wave
++class UltrakikWave final : public Choice {
++public:
++	explicit UltrakikWave(l10n::String name) : Choice(name, Patch::UK_WAVE) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_SINE), l10n::getView(STRING_FOR_UK_ROUND), l10n::getView(STRING_FOR_UK_TRI),
++		        l10n::getView(STRING_FOR_SAW)};
++	}
++};
++
++/// ULTRAKIK's drive curve
++class UltrakikDriveType final : public Choice {
++public:
++	explicit UltrakikDriveType(l10n::String name) : Choice(name, Patch::UK_DRIVE_TYPE) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_UK_WARM), l10n::getView(STRING_FOR_UK_HARD), l10n::getView(STRING_FOR_UK_TUBE),
++		        l10n::getView(STRING_FOR_UK_FUZZ)};
++	}
++};
++
++/// ULTRAKIK's click
++class UltrakikClickType final : public Choice {
++public:
++	explicit UltrakikClickType(l10n::String name) : Choice(name, Patch::UK_CLICK_TYPE) {}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_UK_THUD), l10n::getView(STRING_FOR_UK_TICK), l10n::getView(STRING_FOR_NOISE),
++		        l10n::getView(STRING_FOR_UK_ZAP)};
++	}
++};
++
 +/// What bends GIN's pitch: a decaying sweep, a sine LFO (FM at audio rates), or filtered noise
 +class GinModMode final : public Choice {
 +public:
@@ -12208,6 +13457,52 @@ index 000000000..191f1a476
 +		}
 +		return options;
 +	}
++};
++
++/// Puts one of ULTRAKIK's presets on this row: tuned to it on a kit row, at the note on a synth. Each turn of SELECT
++/// loads the next one, so the list can be played through while auditioning the row.
++class UltrakikPresetSelect final : public Selection {
++public:
++	using Selection::Selection;
++
++	void readCurrentValue() override { setValue(last_); }
++	void writeCurrentValue() override {
++		namespace uk = deluge::dsp::drum_synth::ultrakik;
++		const int32_t choice = std::clamp<int32_t>(getValue(), 0, uk::kNumPresets - 1);
++		last_ = choice;
++		deluge::dsp::drum_synth::RowSetup row = deluge::dsp::drum_synth::rowSetupForUltrakik(choice);
++		if (!soundEditor.editingKitRow()) {
++			row.transpose = 0;
++		}
++		applyRowSetup(row);
++		currentPatch().setUltrakikPreset(choice);
++		setControls(deluge::dsp::drum_synth::ultrakikControlsFor(choice));
++		setDrumKnobs(*soundEditor.currentSound, Engine::ULTRAKIK);
++		soundEditor.markInstrumentAsEdited();
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		const auto* sound = static_cast<Sound*>(modControllable);
++		return sound->sources[0].oscType == OscType::DRUM_SYNTH
++		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch.engine());
++	}
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		namespace uk = deluge::dsp::drum_synth::ultrakik;
++		// "1 DEEP 808" and so on, so the place in the list shows
++		static std::array<std::array<char, 16>, uk::kNumPresets> names{};
++		deluge::vector<std::string_view> options;
++		for (int32_t i = 0; i < uk::kNumPresets; i++) {
++			if (names[i][0] == 0) {
++				snprintf(names[i].data(), names[i].size(), "%d %s", static_cast<int>(i + 1), uk::kPresets[i].name);
++			}
++			options.emplace_back(names[i].data());
++		}
++		return options;
++	}
++
++private:
++	static inline int32_t last_ = deluge::dsp::drum_synth::ultrakik::kDefaultPreset;
 +};
 +
 +/// The steeper amp envelope, on any drum synth sound
@@ -12884,10 +14179,10 @@ index 000000000..bb20e6814
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/synth_mode.h b/src/deluge/gui/menu_item/synth_mode.h
-index 02acbd45b..8af646121 100644
+index 02acbd45b..466a368ac 100644
 --- a/src/deluge/gui/menu_item/synth_mode.h
 +++ b/src/deluge/gui/menu_item/synth_mode.h
-@@ -16,33 +16,152 @@
+@@ -16,33 +16,153 @@
   */
  #pragma once
  #include "definitions_cxx.hpp"
@@ -13002,7 +14297,7 @@ index 02acbd45b..8af646121 100644
 +		if (!kitRow) {
 +			list.push_back({K::TB303, ::SynthMode::TB303, Engine::DRUM, 0, STRING_FOR_TB303});
 +		}
-+		static constexpr std::array<Entry, 18> kDrumEngines{{
++		static constexpr std::array<Entry, 19> kDrumEngines{{
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::DRUM, 0, STRING_FOR_DRUM_ENGINE_DRUM},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::SNARE, 0, STRING_FOR_DRUM_ENGINE_SNARE},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::METAL, 0, STRING_FOR_DRUM_ENGINE_METAL},
@@ -13021,6 +14316,7 @@ index 02acbd45b..8af646121 100644
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::VTG_SNR, 0, STRING_FOR_DRUM_ENGINE_VTG_SNR},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::CLAP_ENG, 0, STRING_FOR_DRUM_ENGINE_CLAP_ENG},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::GIN, 0, STRING_FOR_DRUM_ENGINE_GIN},
++		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::ULTRAKIK, 0, STRING_FOR_DRUM_ENGINE_ULTRAKIK},
 +		}};
 +		for (const Entry& e : kDrumEngines) {
 +			list.push_back(e);
@@ -13044,7 +14340,7 @@ index 02acbd45b..8af646121 100644
  					if (soundDrum->sources[0].oscType <= kLastRingmoddableOscType
  					    && soundDrum->sources[1].oscType <= kLastRingmoddableOscType) {
  						soundDrum->setSynthMode(current_value, currentSong);
-@@ -51,25 +170,20 @@ public:
+@@ -51,25 +171,20 @@ public:
  			}
  		}
  		// Or, the normal case of just one sound
@@ -13325,7 +14621,7 @@ index f4e341a9b..47b7c1a86 100644
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..a94a6022b 100644
+index 7bbd559f6..972a767a3 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -13509,7 +14805,7 @@ index 7bbd559f6..a94a6022b 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1527,432 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1527,567 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -13582,31 +14878,110 @@ index 7bbd559f6..a94a6022b 100644
 +PLACE_SDRAM_BSS drum_synth::GinControl ginEqFreqMenu{STRING_FOR_GIN_EQ_FREQ, XiaSlot::GIN_EQ_FREQ};
 +PLACE_SDRAM_BSS drum_synth::GinNumber ginEqGainMenu{STRING_FOR_GIN_EQ_GAIN, DrumParam::GIN_EQ_GAIN};
 +PLACE_SDRAM_BSS drum_synth::GinNumber ginLevelMenu{STRING_FOR_GIN_LEVEL, DrumParam::GIN_LEVEL};
++PLACE_SDRAM_BSS drum_synth::UltrakikPresetSelect ukPresetMenu{STRING_FOR_UK_PRESET};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukSweepMenu{STRING_FOR_UK_SWEEP, XiaSlot::UK_SWEEP};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukSweepTimeMenu{STRING_FOR_UK_SWEEP_TIME, XiaSlot::UK_SWEEP_TIME};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukFoldMenu{STRING_FOR_UK_FOLD, XiaSlot::UK_FOLD};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukGritMenu{STRING_FOR_UK_GRIT, XiaSlot::UK_GRIT};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukDriveMenu{STRING_FOR_XIA_DRIVE, XiaSlot::UK_DRIVE};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukClickMenu{STRING_FOR_UK_CLICK, XiaSlot::UK_CLICK};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukClickToneMenu{STRING_FOR_UK_CLICK_TONE, XiaSlot::UK_CLICK_TONE};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukBendMenu{STRING_FOR_UK_BEND, XiaSlot::UK_BEND};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukPunchMenu{STRING_FOR_UK_PUNCH, XiaSlot::UK_PUNCH};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukDecayMenu{STRING_FOR_UK_DECAY, XiaSlot::UK_DECAY};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukHoldMenu{STRING_FOR_UK_HOLD, XiaSlot::UK_HOLD};
++PLACE_SDRAM_BSS drum_synth::UltrakikControl ukSubMenu{STRING_FOR_UK_SUB, XiaSlot::UK_SUB};
++PLACE_SDRAM_BSS drum_synth::UltrakikWave ukWaveMenu{STRING_FOR_UK_WAVE};
++PLACE_SDRAM_BSS drum_synth::UltrakikDriveType ukDriveTypeMenu{STRING_FOR_UK_DRIVE_TYPE};
++PLACE_SDRAM_BSS drum_synth::UltrakikClickType ukClickTypeMenu{STRING_FOR_UK_CLICK_TYPE};
++PLACE_SDRAM_BSS drum_synth::PatchNumber ukCrushMenu{STRING_FOR_UK_CRUSH, DrumParam::UK_CRUSH};
++PLACE_SDRAM_BSS drum_synth::PatchNumber ukBendTimeMenu{STRING_FOR_UK_BEND_TIME, DrumParam::UK_BEND_TIME};
++PLACE_SDRAM_BSS drum_synth::PatchNumber ukSnapMenu{STRING_FOR_UK_SNAP, DrumParam::UK_SNAP};
 +// Items the current engine doesn't use hide themselves
 +PLACE_SDRAM_BSS menu_item::Submenu drumSynthMenu{
 +    STRING_FOR_DRUM_SYNTH,
 +    {
-+        &drumPresetMenu,         &drumOscWaveMenu,     &drumPitchAmountMenu,
-+        &drumPitchDecayMenu,     &drumPitchSlopeMenu,  &drumMixModeMenu,
-+        &drumFmAmountMenu,       &drumModWaveMenu,     &drumModCoarseMenu,
-+        &drumModFineMenu,        &drumFm2AmountMenu,   &drumMod2WaveMenu,
-+        &drumMod2CoarseMenu,     &drumMod2FineMenu,    &drumNoiseMixMenu,
-+        &drumNoisePitchMenu,     &drumNoiseFilterMenu, &drumNoiseCutoffMenu,
-+        &drumNoiseResonanceMenu, &drumTransientMenu,   &drumTransientVolumeMenu,
-+        &drumTransientPitchMenu, &tiaBlendex1Menu,     &tiaFreq1Menu,
-+        &tiaBlendex2Menu,        &tiaFreq2Menu,        &tiaBlendex3Menu,
-+        &tiaFreq3Menu,           &iiaWeightMenu,       &iiaAlloyMenu,
-+        &iiaShapeMenu,           &iiaStrikeMenu,       &cycMacro1Menu,
-+        &cycMacro2Menu,          &cycMacro3Menu,       &cycMacro4Menu,
-+        &cycDecayMenu,           &cycDriveMenu,        &lxrDriveMenu,
-+        &lxrDecayMenu,           &xiaDriveMenu,        &xiaDecayMenu,
-+        &xiaPunchMenu,           &ginSoundMenu,        &ginWaveMenu,
-+        &ginToneAttackMenu,      &ginToneDecayMenu,    &ginModModeMenu,
-+        &ginModRateMenu,         &ginModAmountMenu,    &ginMixMenu,
-+        &ginNoiseFreqMenu,       &ginNoiseResMenu,     &ginNoiseEnvMenu,
-+        &ginNoiseAttackMenu,     &ginNoiseDecayMenu,   &ginDriveMenu,
-+        &ginDecayMenu,           &ginEqFreqMenu,       &ginEqGainMenu,
-+        &ginLevelMenu,           &drumSnappyDecayMenu,
++        &drumPresetMenu,
++        &drumOscWaveMenu,
++        &drumPitchAmountMenu,
++        &drumPitchDecayMenu,
++        &drumPitchSlopeMenu,
++        &drumMixModeMenu,
++        &drumFmAmountMenu,
++        &drumModWaveMenu,
++        &drumModCoarseMenu,
++        &drumModFineMenu,
++        &drumFm2AmountMenu,
++        &drumMod2WaveMenu,
++        &drumMod2CoarseMenu,
++        &drumMod2FineMenu,
++        &drumNoiseMixMenu,
++        &drumNoisePitchMenu,
++        &drumNoiseFilterMenu,
++        &drumNoiseCutoffMenu,
++        &drumNoiseResonanceMenu,
++        &drumTransientMenu,
++        &drumTransientVolumeMenu,
++        &drumTransientPitchMenu,
++        &tiaBlendex1Menu,
++        &tiaFreq1Menu,
++        &tiaBlendex2Menu,
++        &tiaFreq2Menu,
++        &tiaBlendex3Menu,
++        &tiaFreq3Menu,
++        &iiaWeightMenu,
++        &iiaAlloyMenu,
++        &iiaShapeMenu,
++        &iiaStrikeMenu,
++        &cycMacro1Menu,
++        &cycMacro2Menu,
++        &cycMacro3Menu,
++        &cycMacro4Menu,
++        &cycDecayMenu,
++        &cycDriveMenu,
++        &lxrDriveMenu,
++        &lxrDecayMenu,
++        &xiaDriveMenu,
++        &xiaDecayMenu,
++        &xiaPunchMenu,
++        &ginSoundMenu,
++        &ginWaveMenu,
++        &ginToneAttackMenu,
++        &ginToneDecayMenu,
++        &ginModModeMenu,
++        &ginModRateMenu,
++        &ginModAmountMenu,
++        &ginMixMenu,
++        &ginNoiseFreqMenu,
++        &ginNoiseResMenu,
++        &ginNoiseEnvMenu,
++        &ginNoiseAttackMenu,
++        &ginNoiseDecayMenu,
++        &ginDriveMenu,
++        &ginDecayMenu,
++        &ginEqFreqMenu,
++        &ginEqGainMenu,
++        &ginLevelMenu,
++        &ukPresetMenu,
++        &ukPunchMenu,
++        &ukSweepMenu,
++        &ukSweepTimeMenu,
++        &ukBendMenu,
++        &ukBendTimeMenu,
++        &ukWaveMenu,
++        &ukSnapMenu,
++        &ukFoldMenu,
++        &ukDriveMenu,
++        &ukDriveTypeMenu,
++        &ukGritMenu,
++        &ukCrushMenu,
++        &ukSubMenu,
++        &ukClickMenu,
++        &ukClickTypeMenu,
++        &ukClickToneMenu,
++        &ukHoldMenu,
++        &ukDecayMenu,
++        &drumSnappyDecayMenu,
 +    },
 +};
 +
@@ -13731,13 +15106,35 @@ index 7bbd559f6..a94a6022b 100644
 +    {&ginDecayMenu, DrumKind::NUMBER, DrumGroup::XIA_ENVELOPE},
 +    {&source0TransposeMenu, DrumKind::NUMBER, DrumGroup::SOUND, -2400, 2400, 100, 100},
 +}};
++// ULTRAKIK: the pitch, the body, the click, then the amp and tuning. Crush, bend time and snap are on the pads and in
++// the menu.
++PLACE_SDRAM_DATA std::array<DrumColumn, 16> drumEditorUltrakikLayout{{
++    {&ukPunchMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ukSweepMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ukSweepTimeMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ukBendMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&ukWaveMenu, DrumKind::CHOICE, DrumGroup::OSC},
++    {&ukFoldMenu, DrumKind::NUMBER, DrumGroup::OSC},
++    {&ukDriveMenu, DrumKind::NUMBER, DrumGroup::MOD},
++    {&ukDriveTypeMenu, DrumKind::CHOICE, DrumGroup::MOD},
++    {&ukGritMenu, DrumKind::NUMBER, DrumGroup::MOD},
++    {&ukSubMenu, DrumKind::NUMBER, DrumGroup::MOD2},
++    {&ukClickMenu, DrumKind::NUMBER, DrumGroup::TRANSIENT},
++    {&ukClickTypeMenu, DrumKind::CHOICE, DrumGroup::TRANSIENT},
++    {&ukClickToneMenu, DrumKind::NUMBER, DrumGroup::TRANSIENT},
++    {&ukHoldMenu, DrumKind::NUMBER, DrumGroup::XIA_ENVELOPE},
++    {&ukDecayMenu, DrumKind::NUMBER, DrumGroup::XIA_ENVELOPE},
++    {&source0TransposeMenu, DrumKind::NUMBER, DrumGroup::SOUND, -2400, 2400, 100, 100},
++}};
 +
 +// Drum synth shortcut pads. On a drum synth sound, the MOD1 and MOD2 columns hold the standard layout, the same on
 +// every engine: from the bottom of MOD1 up, decay, drive, pitch, pitch envelope amount and speed, character A and B and
 +// extra 1, then from the bottom of MOD2 up, extras 2 to 9. Their attack / release, mod rate / depth and Custom 2 / 3
-+// gold knobs sit in one column, a pair to a knob. OSC1 TYPE opens SYNTH MODE, where the engine is chosen. Every other
-+// pad keeps its usual job, except those whose param is one of the drum controls (osc 1's pulse width, the carriers'
-+// feedback, the wave indexes), which do nothing: they would edit the control raw.
++// gold knobs sit in one column, a pair to a knob. OSC1 TYPE opens SYNTH MODE, where the engine is chosen. An engine
++// with more settings than that (ULTRAKIK) puts four more on the OSC1 pads a drum synth has no use for: pulse width,
++// retrigger phase, feedback and wave index, bottom up. Every other pad keeps its usual job, except those whose param is
++// one of the drum controls (osc 1's pulse width, the carriers' feedback, the wave indexes), which do nothing: they
++// would edit the control raw.
 +extern SynthModeSelection synthModeMenu;
 +extern MenuItem* paramShortcutsForSounds[][kDisplayHeight];
 +namespace {
@@ -13746,18 +15143,19 @@ index 7bbd559f6..a94a6022b 100644
 +constexpr int32_t kPadMod1 = 4;
 +constexpr int32_t kPadMod2 = 5;
 +constexpr int32_t kRowType = 2;
++constexpr int32_t kOsc1ExtraFirstRow = 3; ///< OSC1 pulse width, then retrigger phase, feedback, wave index
 +
 +// The standard drum synth layout (see dsp::drum_synth::StandardSlot): the shared slots, the same job on every engine,
 +// then each engine's own extras. nullptr = an engine without that setting. The shared slots' items must be the
 +// controls dsp::drum_synth::sharedControlSlot() names, as the gold knobs read that. Settings an engine has beyond its
-+// nine extras are only in its menu: LXR Metal's mod 2 fine, GIN's EQ and level.
++// nine extras are only in its menu (LXR Metal's mod 2 fine, GIN's EQ and level), or on the OSC1 extras (ULTRAKIK).
 +using StandardSlot = deluge::dsp::drum_synth::StandardSlot;
 +constexpr int32_t kNumStandardSlots = static_cast<int32_t>(StandardSlot::NUM_SLOTS);
 +struct DrumLayout {
 +	DrumEngine first; ///< The engines it's for, first to last
 +	DrumEngine last;
 +	std::array<MenuItem*, kNumStandardSlots> items; ///< Decay, drive, pitch, pitch envelope amount and speed,
-+	                                                ///< character A and B, then extras 1 to 9
++	                                                ///< character A and B, extras 1 to 9, then the OSC1 extras
 +};
 +PLACE_SDRAM_DATA DrumLayout drumLayouts[] = {
 +    {DrumEngine::DRUM,
@@ -13796,11 +15194,29 @@ index 7bbd559f6..a94a6022b 100644
 +     {&ginDecayMenu, &ginDriveMenu, &source0TransposeMenu, &ginModAmountMenu, &ginModRateMenu, &ginMixMenu,
 +      &ginNoiseFreqMenu, &ginModModeMenu, &ginWaveMenu, &ginToneAttackMenu, &ginToneDecayMenu, &drumNoiseFilterMenu,
 +      &ginNoiseResMenu, &ginNoiseEnvMenu, &ginNoiseAttackMenu, &ginNoiseDecayMenu}},
++    // ULTRAKIK: sweep and its time as the pitch envelope, fold and grit as the characters, the punch on top of MOD1.
++    // MOD2 bottom up: sub, hold, the click (level, type, tone), the bend and its time, crush. OSC1 bottom up from
++    // pulse width: body wave, snap, drive type, the presets.
++    {DrumEngine::ULTRAKIK,
++     DrumEngine::ULTRAKIK,
++     {&ukDecayMenu, &ukDriveMenu,     &source0TransposeMenu, &ukSweepMenu,     &ukSweepTimeMenu,
++      &ukFoldMenu,  &ukGritMenu,      &ukPunchMenu,          &ukSubMenu,       &ukHoldMenu,
++      &ukClickMenu, &ukClickTypeMenu, &ukClickToneMenu,      &ukBendMenu,      &ukBendTimeMenu,
++      &ukCrushMenu, &ukWaveMenu,      &ukSnapMenu,           &ukDriveTypeMenu, &ukPresetMenu}},
 +};
 +
-+/// The standard slot on a pad, or -1
++constexpr int32_t kNumModSlots = static_cast<int32_t>(StandardSlot::NUM_MOD_SLOTS);
++constexpr int32_t kNumOsc1Extras = kNumStandardSlots - kNumModSlots;
++
++/// The standard slot on a pad, or -1. The OSC1 extras count whether or not the engine has them.
 +int32_t drumLayoutSlotAt(int32_t x, int32_t y) {
-+	return (x == kPadMod1 || x == kPadMod2) ? (x - kPadMod1) * kDisplayHeight + y : -1;
++	if (x == kPadMod1 || x == kPadMod2) {
++		return (x - kPadMod1) * kDisplayHeight + y;
++	}
++	if (x == kPadOsc1 && y >= kOsc1ExtraFirstRow && y < kOsc1ExtraFirstRow + kNumOsc1Extras) {
++		return kNumModSlots + y - kOsc1ExtraFirstRow;
++	}
++	return -1;
 +}
 +} // namespace
 +
@@ -13820,13 +15236,28 @@ index 7bbd559f6..a94a6022b 100644
 +	return nullptr;
 +}
 +
++/// The standard slot on a pad of this sound's layout, or -1: the MOD1 and MOD2 columns on every engine, an OSC1 extra
++/// only where the engine puts something there
++static int32_t drumLayoutSlotFor(const Sound* sound, int32_t x, int32_t y) {
++	const int32_t slot = drumLayoutSlotAt(x, y);
++	if (slot < kNumModSlots) {
++		return slot;
++	}
++	return (drumLayoutItem(sound->sources[0].drumPatch.engine(), slot) != nullptr) ? slot : -1;
++}
++
 +bool isDrumLayoutPad(const Sound* sound, int32_t x, int32_t y) {
-+	return isDrumSynth(sound) && drumLayoutSlotAt(x, y) >= 0;
++	return isDrumSynth(sound) && drumLayoutSlotFor(sound, x, y) >= 0;
 +}
 +
 +bool drumLayoutPadFor(int32_t slot, int32_t* x, int32_t* y) {
 +	if (slot < 0 || slot >= kNumStandardSlots) {
 +		return false;
++	}
++	if (slot >= kNumModSlots) {
++		*x = kPadOsc1;
++		*y = kOsc1ExtraFirstRow + slot - kNumModSlots;
++		return true;
 +	}
 +	*x = kPadMod1 + slot / kDisplayHeight;
 +	*y = slot % kDisplayHeight;
@@ -13841,7 +15272,7 @@ index 7bbd559f6..a94a6022b 100644
 +	if (x == kPadOsc1 && y == kRowType) {
 +		return &synthModeMenu;
 +	}
-+	if (const int32_t slot = drumLayoutSlotAt(x, y); slot >= 0) {
++	if (const int32_t slot = drumLayoutSlotFor(sound, x, y); slot >= 0) {
 +		return drumLayoutItem(sound->sources[0].drumPatch.engine(), slot);
 +	}
 +	if (usual != nullptr && usual->getParamKind() == params::Kind::PATCHED
@@ -13852,7 +15283,7 @@ index 7bbd559f6..a94a6022b 100644
 +}
 +
 +uint32_t drumShortcutParam(const Sound* sound, int32_t x, int32_t y) {
-+	if (isDrumSynth(sound) && drumLayoutSlotAt(x, y) >= 0) {
++	if (isDrumSynth(sound) && drumLayoutSlotFor(sound, x, y) >= 0) {
 +		MenuItem* item = soundShortcutFor(sound, x, y);
 +		return (item != nullptr && item->getParamKind() == params::Kind::PATCHED) ? item->getParamIndex()
 +		                                                                          : params::kNoParamID;
@@ -13866,9 +15297,9 @@ index 7bbd559f6..a94a6022b 100644
 +#undef DRUM_PITCH_COLUMNS
 +
 +namespace deluge::gui::menu_item::drum_synth {
-+PLACE_SDRAM_BSS Editor drumSynthEditor{STRING_FOR_DRUM_SYNTH, drumEditorDrumLayout, drumEditorSnareLayout,
-+                                       drumEditorMetalLayout, drumEditorTiaLayout,  drumEditorIiaLayout,
-+                                       drumEditorCycLayout,   drumEditorGinLayout,  &drumSynthMenu};
++PLACE_SDRAM_BSS Editor drumSynthEditor{
++    STRING_FOR_DRUM_SYNTH, drumEditorDrumLayout, drumEditorSnareLayout, drumEditorMetalLayout,    drumEditorTiaLayout,
++    drumEditorIiaLayout,   drumEditorCycLayout,  drumEditorGinLayout,   drumEditorUltrakikLayout, &drumSynthMenu};
 +} // namespace deluge::gui::menu_item::drum_synth
 +
  // Not FM
@@ -13942,7 +15373,7 @@ index 7bbd559f6..a94a6022b 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +1994,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2129,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -13954,7 +15385,7 @@ index 7bbd559f6..a94a6022b 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2023,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2158,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -13963,7 +15394,7 @@ index 7bbd559f6..a94a6022b 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2032,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2167,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -13972,7 +15403,7 @@ index 7bbd559f6..a94a6022b 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2186,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2321,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -13982,7 +15413,7 @@ index 7bbd559f6..a94a6022b 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2319,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2454,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -13991,7 +15422,7 @@ index 7bbd559f6..a94a6022b 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2375,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2510,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -14000,7 +15431,7 @@ index 7bbd559f6..a94a6022b 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2397,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2532,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -14008,7 +15439,7 @@ index 7bbd559f6..a94a6022b 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2440,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2575,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -14042,7 +15473,7 @@ index 7bbd559f6..a94a6022b 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2511,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2646,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -14051,7 +15482,7 @@ index 7bbd559f6..a94a6022b 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2535,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2670,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -14206,7 +15637,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3c..ca3775efb 100644
+index d3eae8c3c..ca6c64ffe 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -2,7 +2,10 @@
@@ -14319,16 +15750,20 @@ index d3eae8c3c..ca3775efb 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -452,6 +514,16 @@ bool SoundEditor::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
+@@ -452,6 +514,20 @@ bool SoundEditor::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
  		}
  		else {
  			*cols = 0xFFFFFFFE;
-+			// Pad Guides: the drum synth layout's columns stay lit, the glow greys their empty pads itself
-+			if (InstrumentClipView::padGuidesGlowSound() != nullptr) {
-+				for (int32_t slot : {int32_t{0}, int32_t{kDisplayHeight}}) { // the bottom of each column
++			// Pad Guides: the drum synth layout's columns stay lit, the glow greys their empty pads itself. The OSC1
++			// column too, where the engine has settings on it.
++			if (const Sound* glowSound = InstrumentClipView::padGuidesGlowSound(); glowSound != nullptr) {
++				using deluge::dsp::drum_synth::StandardSlot;
++				const auto engine = glowSound->sources[0].drumPatch.engine();
++				for (int32_t slot = 0; slot < static_cast<int32_t>(StandardSlot::NUM_SLOTS); slot++) {
 +					int32_t x;
 +					int32_t y;
-+					if (drumLayoutPadFor(slot, &x, &y)) {
++					const bool modColumn = slot < static_cast<int32_t>(StandardSlot::NUM_MOD_SLOTS);
++					if ((modColumn || drumLayoutItem(engine, slot) != nullptr) && drumLayoutPadFor(slot, &x, &y)) {
 +						*cols &= ~(1u << (kDisplayWidth + kSideBarWidth - 1 - x));
 +					}
 +				}
@@ -14336,7 +15771,7 @@ index d3eae8c3c..ca3775efb 100644
  		}
  		break;
  	case UIType::PERFORMANCE:
-@@ -963,9 +1035,15 @@ ActionResult SoundEditor::exitCompletely() {
+@@ -963,9 +1039,15 @@ ActionResult SoundEditor::exitCompletely() {
  
  bool SoundEditor::findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout, bool* isSecondLayerParamOut) {
  	bool found = false;
@@ -14353,7 +15788,7 @@ index d3eae8c3c..ca3775efb 100644
  				*isSecondLayerParamOut = false;
  				*xout = x;
  				*yout = y;
-@@ -1012,6 +1090,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
+@@ -1012,6 +1094,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
  
  void SoundEditor::setupShortcutsBlinkFromTable(MenuItem const* const currentItem,
                                                 MenuItem const* const items[kDisplayWidth][kDisplayHeight]) {
@@ -14371,7 +15806,7 @@ index d3eae8c3c..ca3775efb 100644
  	for (auto x = 0; x < kDisplayWidth; ++x) {
  		for (auto y = 0; y < kDisplayHeight; ++y) {
  			if (items[x][y] == currentItem) {
-@@ -1090,14 +1179,20 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1090,14 +1183,20 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  			}
  
  			// First, see if there's a shortcut for the actual MenuItem we're currently on
@@ -14394,7 +15829,7 @@ index d3eae8c3c..ca3775efb 100644
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1517,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1521,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -14403,7 +15838,7 @@ index d3eae8c3c..ca3775efb 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1430,7 +1525,42 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1430,7 +1529,42 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  
  static const uint32_t shortcutPadUIModes[] = {UI_MODE_AUDITIONING, UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR, 0};
  
@@ -14446,7 +15881,7 @@ index d3eae8c3c..ca3775efb 100644
  	// a bunch of other views call this, in which case we actually want to know if we *would* edit kit affect entire
  	// if we were to open a menu. There's a weird edge case in kits otherwise where trying to open a kit param that doesn't
  	// exist in the current selected drum row (like if a filter is off or different modfx) otherwise
-@@ -1586,10 +1716,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1586,10 +1720,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -14465,7 +15900,7 @@ index d3eae8c3c..ca3775efb 100644
  
  					// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  					secondLayerShortcutsToggled =
-@@ -1598,7 +1735,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1598,7 +1739,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  							? !secondLayerShortcutsToggled
  							: false;
  
@@ -14474,7 +15909,7 @@ index d3eae8c3c..ca3775efb 100644
  						if (const auto secondLayerItem = paramShortcutsForSoundsSecondLayer[x][y];
  							secondLayerItem != nullptr) {
  							item = secondLayerItem;
-@@ -1607,6 +1744,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1607,6 +1748,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			}
  		}
@@ -14494,7 +15929,7 @@ index d3eae8c3c..ca3775efb 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1631,7 +1781,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1631,7 +1785,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			// Special shortcut for Note Row Editor menu: [audition pad] + [sequence direction pad]
  			Clip* currentClip = getCurrentClip();
@@ -14507,7 +15942,7 @@ index d3eae8c3c..ca3775efb 100644
  			    && display->haveOLED() && runtimeFeatureSettings.get(HorizontalMenus) == On
  			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
  
-@@ -1650,11 +1804,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1650,11 +1808,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -14526,7 +15961,7 @@ index d3eae8c3c..ca3775efb 100644
  		}
  
  
-@@ -1704,6 +1865,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1704,6 +1869,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -14541,7 +15976,7 @@ index d3eae8c3c..ca3775efb 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2316,7 @@ doMIDIOrCV:
+@@ -2147,6 +2320,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -14871,7 +16306,7 @@ index 0a42de354..b4e8d5c92 100644
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 4f8f5ec28..f8e334a72 100644
+index 4f8f5ec28..a83b51e01 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -20,12 +20,17 @@
@@ -15181,7 +16616,7 @@ index 4f8f5ec28..f8e334a72 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1755,6 +1929,195 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1755,6 +1929,211 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -15233,8 +16668,8 @@ index 4f8f5ec28..f8e334a72 100644
 +
 +namespace {
 +/// The soft tint on a preset kit row's audition pad: blue for the Cyc engines, orange for the LXR voices, green for
-+/// DXIA and DIIA, pink for GIN, by the engine the row plays now. A preset row put back on a sample keeps its kit's
-+/// colour. Rows added to the kit any other way aren't tinted (returns false).
++/// DXIA and DIIA, pink for GIN and ULTRAKIK, by the engine the row plays now. A preset row put back on a sample keeps
++/// its kit's colour. Rows added to the kit any other way aren't tinted (returns false).
 +bool presetRowTint(Drum* drum, RGB* tint) {
 +	using deluge::dsp::drum_synth::PresetKit;
 +	if (drum == nullptr || drum->type != DrumType::SOUND) {
@@ -15250,10 +16685,10 @@ index 4f8f5ec28..f8e334a72 100644
 +	constexpr RGB kPink{255, 0, 120};
 +	if (soundDrum->sources[0].oscType == OscType::DRUM_SYNTH) {
 +		const auto engine = soundDrum->sources[0].drumPatch.engine();
-+		*tint = deluge::dsp::drum_synth::isCyc(engine)   ? kBlue
-+		        : deluge::dsp::drum_synth::isXia(engine) ? kGreen
-+		        : deluge::dsp::drum_synth::isGin(engine) ? kPink
-+		                                                 : kOrange;
++		*tint = deluge::dsp::drum_synth::isCyc(engine)                                                    ? kBlue
++		        : deluge::dsp::drum_synth::isXia(engine)                                                  ? kGreen
++		        : (deluge::dsp::drum_synth::isGin(engine) || deluge::dsp::drum_synth::isUltrakik(engine)) ? kPink
++		                                                                                                  : kOrange;
 +	}
 +	else {
 +		*tint = (soundDrum->presetKit == PresetKit::CYCLES) ? kBlue
@@ -15277,17 +16712,33 @@ index 4f8f5ec28..f8e334a72 100644
 +	constexpr int32_t kFullGreyout = 6500000;
 +	constexpr RGB kGlow{255, 40, 90};
 +	const auto engine = sound->sources[0].drumPatch.engine();
++	// The OSC1 extras (ULTRAKIK): the column, and its rows with a setting
++	int32_t osc1X = -1;
++	uint32_t osc1Rows = 0;
 +	for (int32_t slot = 0; slot < static_cast<int32_t>(StandardSlot::NUM_SLOTS); slot++) {
 +		int32_t x;
 +		int32_t y;
 +		if (!drumLayoutPadFor(slot, &x, &y) || !(whichRows & (1 << y))) {
 +			continue;
 +		}
++		const bool modColumn = slot < static_cast<int32_t>(StandardSlot::NUM_MOD_SLOTS);
 +		if (drumLayoutItem(engine, slot) != nullptr) {
 +			image[y][x] = RGB::blend(kGlow, image[y][x], 32768);
++			if (!modColumn) {
++				osc1X = x;
++				osc1Rows |= 1u << y;
++			}
 +		}
-+		else if (inSoundEditor) {
++		else if (inSoundEditor && modColumn) {
 +			image[y][x] = image[y][x].greyOut(kFullGreyout);
++		}
++	}
++	// In the sound editor that column is left out of the greyout too, so grey its other pads here
++	if (inSoundEditor && osc1X >= 0) {
++		for (int32_t y = 0; y < kDisplayHeight; y++) {
++			if ((whichRows & (1 << y)) && !(osc1Rows & (1u << y))) {
++				image[y][osc1X] = image[y][osc1X].greyOut(kFullGreyout);
++			}
 +		}
 +	}
 +}
@@ -15377,7 +16828,7 @@ index 4f8f5ec28..f8e334a72 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1774,6 +2137,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1774,6 +2153,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -15399,7 +16850,7 @@ index 4f8f5ec28..f8e334a72 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2585,9 +2963,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2585,9 +2979,18 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -15418,7 +16869,7 @@ index 4f8f5ec28..f8e334a72 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -4935,6 +5322,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4935,6 +5338,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -15444,7 +16895,7 @@ index 4f8f5ec28..f8e334a72 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5176,6 +5582,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+@@ -5176,6 +5598,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
  		}
  	}
  
@@ -15457,7 +16908,7 @@ index 4f8f5ec28..f8e334a72 100644
  	if (shouldRedrawStuff) {
  		// make sure the clip we're displaying actually belongs to this kit
  		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
-@@ -5398,6 +5810,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5398,6 +5826,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -15469,7 +16920,7 @@ index 4f8f5ec28..f8e334a72 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -6283,6 +6700,11 @@ drawNormally:
+@@ -6283,6 +6716,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -15481,7 +16932,7 @@ index 4f8f5ec28..f8e334a72 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6393,6 +6815,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6393,6 +6831,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -15489,7 +16940,7 @@ index 4f8f5ec28..f8e334a72 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6408,6 +6831,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6408,6 +6847,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -15503,7 +16954,7 @@ index 4f8f5ec28..f8e334a72 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -7548,6 +7978,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7548,6 +7994,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -15525,7 +16976,7 @@ index 4f8f5ec28..f8e334a72 100644
  	if (!image) {
  		return true;
  	}
-@@ -7565,6 +8010,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7565,6 +8026,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
  	                    drawUndefinedArea);
  	render_selected_note_pulse(whichRows, image);
@@ -15533,7 +16984,7 @@ index 4f8f5ec28..f8e334a72 100644
  	PadLEDs::renderingLock = false;
  
  	return true;
-@@ -7607,6 +8053,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7607,6 +8069,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -15543,7 +16994,7 @@ index 4f8f5ec28..f8e334a72 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7655,6 +8104,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7655,6 +8120,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -15556,7 +17007,7 @@ index 4f8f5ec28..f8e334a72 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8376,3 +8831,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8376,3 +8847,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -18243,25 +19694,39 @@ index 000000000..61180b22b
 +
 +} // namespace deluge::default_instruments
 diff --git a/src/deluge/model/instrument/kit.cpp b/src/deluge/model/instrument/kit.cpp
-index 4aac4577b..44d0d09d5 100644
+index 4aac4577b..e846d6301 100644
 --- a/src/deluge/model/instrument/kit.cpp
 +++ b/src/deluge/model/instrument/kit.cpp
-@@ -117,6 +117,9 @@ bool Kit::writeDataToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Son
+@@ -117,6 +117,10 @@ bool Kit::writeDataToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Son
  	}
  
  	GlobalEffectableForClip::writeAttributesToFile(writer, clipForSavingOutputOnly == nullptr);
++	// Not "presetName": that's the kit's own name (Instrument::writeDataToFile)
 +	if (!presetName.isEmpty()) {
-+		writer.writeAttribute("presetName", presetName.get());
++		writer.writeAttribute("kitPreset", presetName.get());
 +	}
  
  	writer.writeOpeningTagEnd();
  	// Attributes end
-@@ -300,6 +303,10 @@ doReadDrum:
+@@ -300,6 +304,23 @@ doReadDrum:
  			reader.match(']');
  			reader.exitTag("soundSources");
  		}
-+		else if (!strcmp(tagName, "presetName")) {
++		else if (!strcmp(tagName, "kitPreset")) {
 +			reader.readTagOrAttributeValueString(&presetName);
++			reader.exitTag("kitPreset");
++		}
++		else if (!strcmp(tagName, "presetName")) {
++			// The kit's own name, which the song's clips find it by. v1.12 to v1.19 also saved the Kit presets entry
++			// under this name, after the kit's name: a second one, or a built in entry ("*", "*2"...), is that.
++			String value;
++			reader.readTagOrAttributeValueString(&value);
++			if (name.isEmpty() && value.get()[0] != '*') {
++				name.set(&value);
++			}
++			else {
++				presetName.set(&value);
++			}
 +			reader.exitTag("presetName");
 +		}
  		else if (!strcmp(tagName, "selectedDrumIndex")) {
@@ -22157,10 +23622,10 @@ index 9eca346b7..8ddedad05 100644
  	void setCVTranspose(uint8_t channel, int32_t semitones, int32_t cents);
 diff --git a/src/deluge/processing/sound/drum_synth_params.h b/src/deluge/processing/sound/drum_synth_params.h
 new file mode 100644
-index 000000000..031dfcaa1
+index 000000000..f2809bb66
 --- /dev/null
 +++ b/src/deluge/processing/sound/drum_synth_params.h
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,161 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -22279,6 +23744,17 @@ index 000000000..031dfcaa1
 +	}
 +}
 +
++/// What ULTRAKIK calls the setting on a control slot
++inline deluge::l10n::String ultrakikKnobName(int32_t slot) {
++	using enum deluge::l10n::String;
++	static constexpr std::array<deluge::l10n::String, DrumControls::NUM_SLOTS> kNames{
++	    STRING_FOR_UK_SWEEP,  STRING_FOR_UK_SWEEP_TIME, STRING_FOR_UK_FOLD,       STRING_FOR_UK_GRIT,
++	    STRING_FOR_XIA_DRIVE, STRING_FOR_UK_CLICK,      STRING_FOR_UK_CLICK_TONE, STRING_FOR_UK_BEND,
++	    STRING_FOR_UK_PUNCH,  STRING_FOR_UK_DECAY,      STRING_FOR_UK_HOLD,       STRING_FOR_UK_SUB,
++	};
++	return kNames[std::clamp<int32_t>(slot, 0, DrumControls::NUM_SLOTS - 1)];
++}
++
 +/// What GIN calls the setting on a control slot
 +inline deluge::l10n::String ginKnobName(int32_t slot) {
 +	using enum deluge::l10n::String;
@@ -22312,7 +23788,7 @@ index 000000000..031dfcaa1
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce447..c48e618d0 100644
+index 8dd1ce447..9cf0998e8 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -22339,7 +23815,7 @@ index 8dd1ce447..c48e618d0 100644
  	patchedParams->params[params::LOCAL_NOISE_VOLUME].setCurrentValueBasicForSetup(-2147483648);
  	patchedParams->params[params::GLOBAL_MOD_FX_DEPTH].setCurrentValueBasicForSetup(0);
  	patchedParams->params[params::GLOBAL_MOD_FX_RATE].setCurrentValueBasicForSetup(0);
-@@ -221,6 +227,88 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
+@@ -221,6 +227,92 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -22349,13 +23825,14 @@ index 8dd1ce447..c48e618d0 100644
 +	using deluge::dsp::drum_synth::Preset;
 +	const bool gin = ginSound != nullptr || deluge::dsp::drum_synth::isGin(cycEngine);
 +	const bool cyc = deluge::dsp::drum_synth::isCyc(cycEngine);
++	const bool ultrakik = deluge::dsp::drum_synth::isUltrakik(cycEngine);
 +	const deluge::dsp::drum_synth::gin::KitSound& ginKitSound =
 +	    (ginSound != nullptr) ? *ginSound : deluge::dsp::drum_synth::gin::defaultSound();
 +
 +	const deluge::dsp::drum_synth::RowSetup row =
-+	    gin   ? deluge::dsp::drum_synth::rowSetupForGinSound(ginKitSound, ginChoke)
-+	    : cyc ? deluge::dsp::drum_synth::rowSetupForEngine(cycEngine)
-+	          : deluge::dsp::drum_synth::rowSetupFor(preset);
++	    gin                 ? deluge::dsp::drum_synth::rowSetupForGinSound(ginKitSound, ginChoke)
++	    : (cyc || ultrakik) ? deluge::dsp::drum_synth::rowSetupForEngine(cycEngine)
++	                        : deluge::dsp::drum_synth::rowSetupFor(preset);
 +
 +	polyphonic = row.choke ? PolyphonyMode::CHOKE : PolyphonyMode::AUTO;
 +	lpfMode = FilterMode::TRANSISTOR_24DB;
@@ -22366,6 +23843,9 @@ index 8dd1ce447..c48e618d0 100644
 +	}
 +	else if (cyc) {
 +		sources[0].drumPatch.setCycPreset(cycEngine);
++	}
++	else if (ultrakik) {
++		sources[0].drumPatch.setUltrakikPreset();
 +	}
 +	else {
 +		sources[0].drumPatch.setPreset(preset);
@@ -22428,7 +23908,7 @@ index 8dd1ce447..c48e618d0 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -259,7 +347,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
+@@ -259,7 +351,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -22463,7 +23943,7 @@ index 8dd1ce447..c48e618d0 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +440,239 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +444,246 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -22518,6 +23998,10 @@ index 8dd1ce447..c48e618d0 100644
 +		// The pitch modulation, then the tone / noise mix and the noise filter, as on GIN's own front panel
 +		layout = {DrumControls::GIN_MOD_RATE, DrumControls::GIN_MOD_AMOUNT, DrumControls::GIN_MIX,
 +		          DrumControls::GIN_NOISE_FREQ};
++		break;
++	case Engine::ULTRAKIK:
++		// The sweep, then fold and grit
++		layout = {DrumControls::UK_SWEEP_TIME, DrumControls::UK_SWEEP, DrumControls::UK_FOLD, DrumControls::UK_GRIT};
 +		break;
 +	default:
 +		// The Cyc engines: Sweep / Contour, Color / Shape
@@ -22616,6 +24100,9 @@ index 8dd1ce447..c48e618d0 100644
 +	}
 +
 +	const auto engine = sources[0].drumPatch.engine();
++	if (deluge::dsp::drum_synth::isUltrakik(engine)) {
++		return deluge::l10n::get(deluge::dsp::drum_synth::ultrakikKnobName(slot));
++	}
 +	if (deluge::dsp::drum_synth::isGin(engine)) {
 +		return deluge::l10n::get(deluge::dsp::drum_synth::ginKnobName(slot));
 +	}
@@ -22703,7 +24190,7 @@ index 8dd1ce447..c48e618d0 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +783,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +794,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -22713,7 +24200,7 @@ index 8dd1ce447..c48e618d0 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1600,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1611,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -22725,7 +24212,7 @@ index 8dd1ce447..c48e618d0 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1347,6 +1703,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1714,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -22739,7 +24226,7 @@ index 8dd1ce447..c48e618d0 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1877,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1888,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -22749,7 +24236,7 @@ index 8dd1ce447..c48e618d0 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2010,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2021,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -22768,7 +24255,7 @@ index 8dd1ce447..c48e618d0 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1865,6 +2239,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2250,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -22785,7 +24272,7 @@ index 8dd1ce447..c48e618d0 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2311,11 @@ justSwitchOff:
+@@ -1927,6 +2322,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -22797,7 +24284,7 @@ index 8dd1ce447..c48e618d0 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2565,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2576,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -22806,7 +24293,7 @@ index 8dd1ce447..c48e618d0 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2774,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2785,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -22819,7 +24306,7 @@ index 8dd1ce447..c48e618d0 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2392,6 +2787,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2798,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -22829,7 +24316,7 @@ index 8dd1ce447..c48e618d0 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +2894,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2905,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -22860,7 +24347,7 @@ index 8dd1ce447..c48e618d0 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2924,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2935,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -22880,7 +24367,7 @@ index 8dd1ce447..c48e618d0 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2952,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +2963,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -22895,7 +24382,7 @@ index 8dd1ce447..c48e618d0 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +3023,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +3034,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -22904,7 +24391,7 @@ index 8dd1ce447..c48e618d0 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3309,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3320,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -22940,7 +24427,7 @@ index 8dd1ce447..c48e618d0 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3415,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3426,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -22956,7 +24443,7 @@ index 8dd1ce447..c48e618d0 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3492,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3503,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -22977,7 +24464,7 @@ index 8dd1ce447..c48e618d0 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3550,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3561,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -23070,7 +24557,7 @@ index 8dd1ce447..c48e618d0 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3749,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3760,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -23079,7 +24566,7 @@ index 8dd1ce447..c48e618d0 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3942,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3953,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -23101,7 +24588,7 @@ index 8dd1ce447..c48e618d0 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3976,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +3987,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -23112,7 +24599,7 @@ index 8dd1ce447..c48e618d0 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4190,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4201,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -23122,7 +24609,7 @@ index 8dd1ce447..c48e618d0 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4317,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4328,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -23134,7 +24621,7 @@ index 8dd1ce447..c48e618d0 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4411,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4422,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -23149,7 +24636,7 @@ index 8dd1ce447..c48e618d0 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4601,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4612,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -23170,7 +24657,7 @@ index 8dd1ce447..c48e618d0 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4694,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4705,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -23182,7 +24669,7 @@ index 8dd1ce447..c48e618d0 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4713,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4724,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -23192,7 +24679,7 @@ index 8dd1ce447..c48e618d0 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4764,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4775,9 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -23202,7 +24689,7 @@ index 8dd1ce447..c48e618d0 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +5026,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +5037,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -23225,7 +24712,7 @@ index 8dd1ce447..c48e618d0 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5549,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5560,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -23514,10 +25001,10 @@ index 2d965a0de..5b8dc624c 100644
  extern ScreensaverMode screensaverMode;
  /// Minutes without physical input before the screensaver appears, kMinScreensaverTimeoutMinutes to
 diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
-index fd2e3f80b..58281df04 100644
+index fd2e3f80b..0b9cf795b 100644
 --- a/src/deluge/storage/storage_manager.cpp
 +++ b/src/deluge/storage/storage_manager.cpp
-@@ -410,6 +410,18 @@ paramManagersMissing:
+@@ -410,6 +410,27 @@ paramManagersMissing:
  		}
  	}
  
@@ -23533,10 +25020,19 @@ index fd2e3f80b..58281df04 100644
 +		song->applyLoadedSaturationDrives((ModControllableAudio*)newInstrument->toModControllable());
 +	}
 +
++	// Kit files never hold the kit's own name, so a presetName read from one (saved on v1.12 to v1.19) was its Kit
++	// presets entry
++	if (newInstrument->type == OutputType::KIT && !newInstrument->name.isEmpty()) {
++		Kit* kit = (Kit*)newInstrument;
++		if (kit->presetName.isEmpty()) {
++			kit->presetName.set(&kit->name);
++		}
++	}
++
  	newInstrument->name.set(name);
  	newInstrument->dirPath.set(dirPath);
  	newInstrument->mightExistOnCard = true;
-@@ -525,6 +537,21 @@ Error StorageManager::loadPatternFile(FilePointer* filePointer, String* fileName
+@@ -525,6 +546,21 @@ Error StorageManager::loadPatternFile(FilePointer* filePointer, String* fileName
  	return Error::NONE;
  }
  
@@ -23558,7 +25054,7 @@ index fd2e3f80b..58281df04 100644
  // Returns error status
  Error StorageManager::loadFavouriteFile(FilePointer* filePointer, String* fileName) {
  
-@@ -591,6 +618,8 @@ Error StorageManager::loadSynthToDrum(Song* song, InstrumentClip* clip, bool may
+@@ -591,6 +627,8 @@ Error StorageManager::loadSynthToDrum(Song* song, InstrumentClip* clip, bool may
  			return error;
  		}
  	}
@@ -23633,7 +25129,7 @@ index dcf105a39..a6c4f0d84 100644
  		return SynthMode::SUBTRACTIVE;
  	}
 diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
-index 048faee99..670029d89 100644
+index 048faee99..150e5949d 100644
 --- a/tests/unit/CMakeLists.txt
 +++ b/tests/unit/CMakeLists.txt
 @@ -40,7 +40,7 @@ file(GLOB_RECURSE deluge_SOURCES
@@ -23654,7 +25150,7 @@ index 048faee99..670029d89 100644
          # For chord tests
          ../../src/deluge/gui/ui/keyboard/chords.cpp
          # For clock output scheduler tests
-@@ -72,6 +74,12 @@ file(GLOB_RECURSE deluge_SOURCES
+@@ -72,6 +74,16 @@ file(GLOB_RECURSE deluge_SOURCES
          # For MIDI message / queue tests
          ../../src/deluge/model/midi/message.cpp
          ../../src/deluge/io/midi/midi_queue.cpp
@@ -23664,10 +25160,14 @@ index 048faee99..670029d89 100644
 +        ../../src/deluge/dsp/drum_synth/xia.cpp
 +        ../../src/deluge/dsp/drum_synth/xia_tables.c
 +        ../../src/deluge/dsp/drum_synth/cyc.cpp
++        ../../src/deluge/dsp/drum_synth/gin.cpp
++        ../../src/deluge/dsp/drum_synth/gin_kits.cpp
++        ../../src/deluge/dsp/drum_synth/ultrakik.cpp
++        ../../src/deluge/dsp/drum_synth/ultrakik_presets.cpp
  )
  
  add_executable(UnitTests
-@@ -85,6 +93,7 @@ add_executable(UnitTests
+@@ -85,6 +97,7 @@ add_executable(UnitTests
          volume_param_gain_tests.cpp
          db_shift_tests.cpp
          sync_tests.cpp
@@ -23675,13 +25175,14 @@ index 048faee99..670029d89 100644
          chord_tests.cpp
          time_tests.cpp
          clock_output_scheduler_tests.cpp
-@@ -96,6 +105,9 @@ add_executable(UnitTests
+@@ -96,6 +109,10 @@ add_executable(UnitTests
          iterance_migration_tests.cpp
          waveform_peak_math_tests.cpp
          midi_queue_tests.cpp
 +        drum_synth_tests.cpp
 +        xia_tests.cpp
 +        cyc_tests.cpp
++        ultrakik_tests.cpp
  )
  add_test(NAME UnitTests
          COMMAND UnitTests)
@@ -23891,10 +25392,10 @@ index 000000000..dcfd95e69
 +}
 diff --git a/tests/unit/drum_synth_tests.cpp b/tests/unit/drum_synth_tests.cpp
 new file mode 100644
-index 000000000..ab97eec99
+index 000000000..8a56a285a
 --- /dev/null
 +++ b/tests/unit/drum_synth_tests.cpp
-@@ -0,0 +1,340 @@
+@@ -0,0 +1,391 @@
 +#include "CppUTest/TestHarness.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include <array>
@@ -24235,6 +25736,57 @@ index 000000000..ab97eec99
 +	CHECK_FALSE(Patch::isUsedBy(Patch::MOD_WAVE, Engine::SNARE));
 +	CHECK(Patch::isUsedBy(Patch::TRANS_MODE, Engine::METAL));
 +}
++
++TEST(DrumSynthTest, everyUltrakikPresetSoundsThroughTheVoice) {
++	for (int32_t i = 0; i < ultrakik::kNumPresets; i++) {
++		Patch patch;
++		patch.setUltrakikPreset(i);
++		const DrumControls controls = ultrakikControlsFor(i);
++		Voice voice;
++		voice.trigger(patch);
++		std::array<int32_t, 4480> out{};
++		renderInto(voice, patch, out, 65.4, &controls);
++		CHECK(peak(out.data(), out.size()) > kAmplitude / 4);
++	}
++}
++
++TEST(DrumSynthTest, ultrakikControlsFromPatchAreItsDefaultPreset) {
++	Patch patch;
++	patch.setUltrakikPreset();
++	CHECK(controlsFromPatch(patch).values == ultrakikControlsFor(ultrakik::kDefaultPreset).values);
++	CHECK(ultrakikSettings(patch.bytes(), controlsFromPatch(patch))
++	      == ultrakik::settingsFor(ultrakik::kPresets[ultrakik::kDefaultPreset]));
++}
++
++TEST(DrumSynthTest, ultrakikSoundsAfterTheVoicePlayedAnotherEngine) {
++	Patch uk;
++	uk.setUltrakikPreset();
++	for (Engine before : {Engine::TIA, Engine::IIA, Engine::CYC_KIK, Engine::GIN, Engine::DRUM}) {
++		Patch other;
++		if (isXia(before)) {
++			other.setXiaPreset(before, 0);
++		}
++		else if (isCyc(before)) {
++			other.setCycPreset(before);
++		}
++		else if (isGin(before)) {
++			other.setGinSound(gin::defaultSound());
++		}
++		// The same voice: ULTRAKIK, then the other engine (the XIA engines share its memory), then ULTRAKIK again
++		Voice voice;
++		std::array<int32_t, 4480> out{};
++		voice.trigger(uk);
++		renderInto(voice, uk, out, 65.4);
++		const int32_t first = peak(out.data(), out.size());
++		voice.trigger(other);
++		renderInto(voice, other, out, 65.4);
++		voice.trigger(uk);
++		renderInto(voice, uk, out, 65.4);
++		CHECK(first > kAmplitude / 4);
++		// Its grit and click noise run on from the first hit, so the peak can move a little
++		CHECK(peak(out.data(), out.size()) > first * 9 / 10);
++	}
++}
 diff --git a/tests/unit/swing_style_tests.cpp b/tests/unit/swing_style_tests.cpp
 new file mode 100644
 index 000000000..1c5c20bf7
@@ -24308,6 +25860,208 @@ index 000000000..1c5c20bf7
 +				}
 +			}
 +		}
++	}
++}
+diff --git a/tests/unit/ultrakik_tests.cpp b/tests/unit/ultrakik_tests.cpp
+new file mode 100644
+index 000000000..207e89d62
+--- /dev/null
++++ b/tests/unit/ultrakik_tests.cpp
+@@ -0,0 +1,196 @@
++#include "CppUTest/TestHarness.h"
++#include "dsp/drum_synth/ultrakik.h"
++#include "dsp/drum_synth/ultrakik_presets.h"
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <vector>
++
++using namespace deluge::dsp::drum_synth;
++
++namespace {
++
++constexpr float kSampleRate = 44100.f;
++
++uint32_t incrementForHz(double hz) {
++	return static_cast<uint32_t>(hz / kSampleRate * 4294967296.0);
++}
++
++/// The engine's starting knobs: its default preset
++ultrakik::Settings defaults() {
++	return ultrakik::settingsFor(ultrakik::kPresets[ultrakik::kDefaultPreset]);
++}
++
++/// A preset's note on a kit row, which plays at middle C
++double presetHz(const ultrakik::Preset& preset) {
++	return 261.6256 * std::pow(2.0, preset.transpose / 12.0);
++}
++
++/// Every choice turned on at once, with a bend and the crusher
++ultrakik::Settings everything(int32_t i) {
++	ultrakik::Settings s = defaults();
++	s.wave = static_cast<ultrakik::Wave>(i % static_cast<int32_t>(ultrakik::Wave::NUM_WAVES));
++	s.driveType = static_cast<ultrakik::DriveType>(i % static_cast<int32_t>(ultrakik::DriveType::NUM_TYPES));
++	s.clickType = static_cast<ultrakik::Click>(i % static_cast<int32_t>(ultrakik::Click::NUM_CLICKS));
++	s.bend = (i % 2 == 0) ? -0.5f : 0.3f;
++	s.bendTime = 0.3f;
++	s.crush = 0.4f;
++	s.fold = 0.8f;
++	s.grit = 1.f;
++	s.drive = 1.f;
++	s.click = 1.f;
++	return s;
++}
++
++std::vector<int32_t> renderNote(const ultrakik::Settings& s, double hz, int32_t length, int32_t block,
++                                bool* finished = nullptr) {
++	ultrakik::Voice voice;
++	voice.reset();
++	voice.trigger();
++	std::vector<int32_t> out(length);
++	for (int32_t i = 0; i < length; i += block) {
++		voice.render(s, incrementForHz(hz), kSampleRate, out.data() + i, std::min(block, length - i));
++	}
++	if (finished != nullptr) {
++		*finished = voice.finished();
++	}
++	return out;
++}
++
++float peak(const std::vector<int32_t>& x, int32_t from = 0, int32_t to = -1) {
++	int64_t m = 0;
++	for (int32_t i = from; i < ((to < 0) ? static_cast<int32_t>(x.size()) : to); i++) {
++		m = std::max<int64_t>(m, std::abs(static_cast<int64_t>(x[i])));
++	}
++	return static_cast<float>(m) / 2147483648.f;
++}
++
++} // namespace
++
++TEST_GROUP(Ultrakik){};
++
++TEST(Ultrakik, sameEveryTime) {
++	CHECK(renderNote(defaults(), 49, 22050, 128) == renderNote(defaults(), 49, 22050, 128));
++}
++
++TEST(Ultrakik, sameAtAnyHostBlockSize) {
++	for (int32_t i = 0; i < 4; i++) {
++		const auto reference = renderNote(everything(i), 49, 22050, 128);
++		for (int32_t block : {1, 7, 32, 100}) {
++			CHECK(renderNote(everything(i), 49, 22050, block) == reference);
++		}
++	}
++	const auto reference = renderNote(defaults(), 49, 22050, 128);
++	for (int32_t block : {1, 7, 32, 100}) {
++		CHECK(renderNote(defaults(), 49, 22050, block) == reference);
++	}
++}
++
++TEST(Ultrakik, defaultHitsHardWithoutClipping) {
++	const auto x = renderNote(defaults(), 49, 44100, 128);
++	const float p = peak(x);
++	CHECK(p > 0.8f);
++	CHECK(p < 1.f);
++	// Still full 100 ms in: the thump
++	CHECK(peak(x, 4410, 6615) > 0.5f);
++}
++
++TEST(Ultrakik, neverPastFullScale) {
++	for (int32_t i = 0; i < 4; i++) {
++		CHECK(peak(renderNote(everything(i), 49, 44100, 128)) < 1.f);
++		CHECK(peak(renderNote(everything(i), 600, 44100, 128)) < 1.f);
++	}
++}
++
++TEST(Ultrakik, defaultTailIsShort) {
++	bool finished = false;
++	const auto x = renderNote(defaults(), 49, 2 * 44100, 128, &finished);
++	CHECK(finished);
++	// 40 dB down by half a second
++	CHECK(peak(x, 22050, 26460) < 0.01f);
++}
++
++TEST(Ultrakik, decayAtTheTopHolds) {
++	ultrakik::Settings s = defaults();
++	s.decay = 1.f;
++	bool finished = true;
++	const auto x = renderNote(s, 49, 3 * 44100, 128, &finished);
++	CHECK(!finished);
++	CHECK(peak(x, 2 * 44100, 3 * 44100) > 0.5f);
++}
++
++TEST(Ultrakik, settlesOnTheNote) {
++	// Clean sine, no bend: the zero crossings 300 ms in are the note's
++	ultrakik::Settings s = defaults();
++	s.fold = s.grit = s.drive = s.click = 0.f;
++	s.decay = 1.f;
++	const auto x = renderNote(s, 55, 44100, 128);
++	int32_t first = -1;
++	int32_t last = -1;
++	int32_t crossings = 0;
++	for (int32_t i = 13230; i < 44100; i++) {
++		if (x[i - 1] < 0 && x[i] >= 0) {
++			if (first < 0) {
++				first = i;
++			}
++			last = i;
++			crossings++;
++		}
++	}
++	const double hz = (crossings - 1) * kSampleRate / (last - first);
++	DOUBLES_EQUAL(55.0, hz, 0.3);
++}
++
++TEST(Ultrakik, bendMovesThePitch) {
++	ultrakik::Settings s = defaults();
++	s.fold = s.grit = s.drive = s.click = s.sweep = s.punch = 0.f;
++	s.decay = 1.f;
++	s.bend = -0.5f;   // 12 semitones down
++	s.bendTime = 0.f; // 40 ms
++	const auto x = renderNote(s, 100, 44100, 128);
++	int32_t first = -1;
++	int32_t last = -1;
++	int32_t crossings = 0;
++	for (int32_t i = 22050; i < 44100; i++) {
++		if (x[i - 1] < 0 && x[i] >= 0) {
++			if (first < 0) {
++				first = i;
++			}
++			last = i;
++			crossings++;
++		}
++	}
++	DOUBLES_EQUAL(50.0, (crossings - 1) * kSampleRate / (last - first), 0.5);
++}
++
++TEST(Ultrakik, defaultIsUltra) {
++	const ultrakik::Settings s = defaults();
++	CHECK_EQUAL(70, static_cast<int32_t>(lroundf(s.sweep * 127)));
++	CHECK_EQUAL(60, static_cast<int32_t>(lroundf(s.drive * 127)));
++	CHECK_EQUAL(52, static_cast<int32_t>(lroundf(s.decay * 127)));
++	DOUBLES_EQUAL(0.0, s.bend, 1e-6);
++	CHECK(s.wave == ultrakik::Wave::SINE);
++}
++
++TEST(Ultrakik, everyPresetHitsHardWithoutClipping) {
++	for (const ultrakik::Preset& preset : ultrakik::kPresets) {
++		const float p = peak(renderNote(ultrakik::settingsFor(preset), presetHz(preset), 44100, 128));
++		CHECK(p > 0.8f);
++		CHECK(p < 1.f);
++	}
++}
++
++TEST(Ultrakik, everyPresetEnds) {
++	for (const ultrakik::Preset& preset : ultrakik::kPresets) {
++		bool finished = false;
++		renderNote(ultrakik::settingsFor(preset), presetHz(preset), 5 * 44100, 128, &finished);
++		CHECK(finished);
++	}
++}
++
++TEST(Ultrakik, everyPresetSameAtAnyHostBlockSize) {
++	for (const ultrakik::Preset& preset : ultrakik::kPresets) {
++		const auto reference = renderNote(ultrakik::settingsFor(preset), presetHz(preset), 22050, 128);
++		CHECK(renderNote(ultrakik::settingsFor(preset), presetHz(preset), 22050, 7) == reference);
 +	}
 +}
 diff --git a/tests/unit/xia_tests.cpp b/tests/unit/xia_tests.cpp
@@ -24646,10 +26400,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..fbe453a82
+index 000000000..a54b298fc
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,355 @@
+@@ -0,0 +1,425 @@
 +---
 +title: Drum Synth
 +---
@@ -24786,6 +26540,7 @@ index 000000000..fbe453a82
 +| DIIA | DIIA G, DIIA I, DIIA H |
 +| Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
 +| GIN | GIN (starts on the 808 kit's kick; **GIN sound** in the Drum synth menu loads any of the 128 kit sounds) |
++| ULTRAKIK | ULTRAKIK, the kick engine (new in v1.21, see [ULTRAKIK](#ultrakik)) |
 +
 +Choose **Sample** to put a kit row back on its sample.
 +
@@ -24815,28 +26570,29 @@ index 000000000..fbe453a82
 +- **MOD1, from the bottom up:** Decay, Drive, Pitch, Pitch envelope amount, Pitch envelope speed, Character A, Character B, Extra 1.
 +- **MOD2, from the bottom up:** Extras 2 to 9, each engine's own settings.
 +- **OSC1 TYPE** opens SYNTH MODE, where the engine is chosen.
++- **OSC1, from PULSE WIDTH up (ULTRAKIK only):** an engine with more settings than fit on MOD1 and MOD2 puts them on the OSC1 pads a drum synth has no use for: PULSE WIDTH, RETRIGGER and FEEDBACK, with ULTRAKIK's presets on WAVE INDEX. OSC1 LEVEL, TRANSPOSE, TYPE and NOISE keep their jobs.
 +- Every other pad keeps its usual Deluge job: OSC1 LEVEL and TRANSPOSE, OSC2 (a real second oscillator on a drum row), the envelopes, filters, FX and the mod FX pads. The few whose Deluge setting a drum engine uses for its own controls (osc 1 pulse width, both oscillators' feedback and wave index) do nothing on a drum row.
 +- **Pitch** is the oscillator's transpose, the same pad as OSC1 TRANSPOSE.
 +- Each pair of gold knobs sits in one column: Drive / Decay, Pitch envelope speed / amount and Character A / B (see Gold knobs below).
 +
-+| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA | Cyc engines | GIN |
-+|---|---|---|---|---|---|---|---|
-+| MOD1 row 1 (bottom) | Decay | Decay | Decay | Engine decay | Engine decay | Amp decay | Decay (both) |
-+| MOD1 row 2 | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
-+| MOD1 row 3 | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch |
-+| MOD1 row 4 | Pitch amount | Pitch amount | | | | Sweep | Mod amount |
-+| MOD1 row 5 | Pitch decay | Pitch decay | | | | Contour | Mod rate |
-+| MOD1 row 6 | FM amount | Noise mix | FM amount | Blendex 1 | Weight | Color | Mix |
-+| MOD1 row 7 | Mod pitch | Noise cutoff | FM 2 amount | Freq 1 | Alloy | Shape | Noise freq |
-+| MOD1 row 8 (top) | Pitch curve | Pitch curve | Mod 2 pitch | Punch | Punch | Punch | Mod mode |
-+| MOD2 row 1 (bottom) | Osc wave | Osc wave | Osc wave | Blendex 2 | Shape | | Tone wave |
-+| MOD2 row 2 | Osc mode (FM / mix) | Noise rate | Mod wave | Freq 2 | Strike | | Tone attack |
-+| MOD2 row 3 | Mod wave | Noise filter | Mod pitch | Blendex 3 | | | Tone decay |
-+| MOD2 row 4 | Mod fine | Noise resonance | Mod fine | Freq 3 | | | Noise filter |
-+| MOD2 row 5 | Transient | Transient | Transient | | | | Noise reso |
-+| MOD2 row 6 | Transient level | Transient level | Transient level | | | | Noise env |
-+| MOD2 row 7 | Transient speed | Transient speed | Transient speed | | | | Noise attack |
-+| MOD2 row 8 (top) | | | Mod 2 wave | | | | Noise decay |
++| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA | Cyc engines | GIN | ULTRAKIK |
++|---|---|---|---|---|---|---|---|---|
++| MOD1 row 1 (bottom) | Decay | Decay | Decay | Engine decay | Engine decay | Amp decay | Decay (both) | Decay |
++| MOD1 row 2 | Drive | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
++| MOD1 row 3 | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch |
++| MOD1 row 4 | Pitch amount | Pitch amount | | | | Sweep | Mod amount | Sweep |
++| MOD1 row 5 | Pitch decay | Pitch decay | | | | Contour | Mod rate | Sweep time |
++| MOD1 row 6 | FM amount | Noise mix | FM amount | Blendex 1 | Weight | Color | Mix | Fold |
++| MOD1 row 7 | Mod pitch | Noise cutoff | FM 2 amount | Freq 1 | Alloy | Shape | Noise freq | Grit |
++| MOD1 row 8 (top) | Pitch curve | Pitch curve | Mod 2 pitch | Punch | Punch | Punch | Mod mode | Punch |
++| MOD2 row 1 (bottom) | Osc wave | Osc wave | Osc wave | Blendex 2 | Shape | | Tone wave | Sub |
++| MOD2 row 2 | Osc mode (FM / mix) | Noise rate | Mod wave | Freq 2 | Strike | | Tone attack | Hold |
++| MOD2 row 3 | Mod wave | Noise filter | Mod pitch | Blendex 3 | | | Tone decay | Click |
++| MOD2 row 4 | Mod fine | Noise resonance | Mod fine | Freq 3 | | | Noise filter | Click type |
++| MOD2 row 5 | Transient | Transient | Transient | | | | Noise reso | Click tone |
++| MOD2 row 6 | Transient level | Transient level | Transient level | | | | Noise env | Bend |
++| MOD2 row 7 | Transient speed | Transient speed | Transient speed | | | | Noise attack | Bend time |
++| MOD2 row 8 (top) | | | Mod 2 wave | | | | Noise decay | Crush |
 +
 +On the Cyc engines the names follow each machine: Sweep / Contour are Pitch sweep / Mod envelope on Vtg Snr and Spacing crunch / Body envelope on clap eng, and Color / Shape are Inharm / Freq complex and Body char / Balance. Sweep and Contour sit on the pitch envelope's pads on every Cyc engine, though on Cyc Tone, Cyc Chord and clap eng they shape something else (see [Cyc engines](#cyc-engines)).
 +
@@ -24864,6 +26620,7 @@ index 000000000..fbe453a82
 +| DIIA | LFO rate | Vibrato | Weight | Alloy |
 +| Cyc engines | Contour (Mod envelope, Body envelope) | Sweep (Pitch sweep, Spacing crunch) | Color (Inharm, Body char) | Shape (Freq complex, Balance) |
 +| GIN | Mod rate | Mod amount | Mix | Noise freq |
++| ULTRAKIK | Sweep time | Sweep | Fold | Grit |
 +
 +The Cymbal / hat, DXIA and DIIA have no pitch envelope, so their mod rate / depth knobs keep the Deluge's usual LFO rate and vibrato. On the Cyc engines mod depth is now Sweep and mod rate Contour (before v1.16 it was the other way round), and Drive is the engine's drive, not Punch: 0 is clean, 100 is where it starts, 127 is full saturation. With Pad Guides off, the drum knobs keep the v1.11 layout (Cymbal / hat: transient speed / level; DXIA: Blendex 2 / 3; DIIA: Shape / Strike; Cyc: Sweep / Contour on rate / depth). The knobs are set whenever a sound loads or changes engine, so after switching Pad Guides, reload the song.
 +
@@ -24883,7 +26640,7 @@ index 000000000..fbe453a82
 +
 +**Pad Guides** (**GUID**) is a Community Features setting, on by default (new in v1.16).
 +
-+- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** tints the MOD1 / MOD2 pads that have a setting soft pink, blended over the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
++- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** tints the MOD1 / MOD2 pads that have a setting soft pink (and ULTRAKIK's OSC1 pads), blended over the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
 +- **Gold knobs.** Drum synth rows use the layout above.
 +- **Mod button pads.** Holding any gold knob button still shows its two settings' names, and now also flashes their shortcut pads: red for the top knob's, yellow for the bottom's. This works on every sound type, and on kit, audio clip and song FX. A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
 +
@@ -24971,6 +26728,71 @@ index 000000000..fbe453a82
 +- Settings follow the knobs while a hit plays, where GIN fixes them at the hit.
 +- A hit ends once both layers are 72 dB down (80 dB before v1.17).
 +
++## ULTRAKIK
++
++**ULTRAKIK** (new in v1.21) is a kick engine. It starts as a thick, low thump with colour and grit already on and a short tail, and bends into long gliding 808s, hard 909s and fully broken kicks. It's synthesised, not a sample: put a sample on OSC2 if you want one on top.
++
++**How it works.** One oscillator, swept down from above by two pitch envelopes: **Punch**, a very fast spike of up to four octaves over a few milliseconds (the beater hitting the skin), and **Sweep**, a slower drop of up to five octaves (the boom). **Bend** then moves the pitch slowly over the hit, up to two octaves either way, for 808 slides and drops. **Snap** sets the phase it starts on: the further round, the harder the first edge hits. After the oscillator comes the amp (**Hold** at full level, then **Decay**), a sine wavefolder (**Fold**), the **Drive** stage, **Grit** riding on the driven peaks, the **Click**, the **Crush**er, and finally **Sub**: a clean sine of the body mixed under all of it, so the low end survives whatever you do above it. The amp sits before the drive, like a VCA into a pedal, so more drive keeps the body full for longer.
++
++Picked in SYNTH MODE it starts on its default preset, ULTRA. On a kit row it plays at C2 (about 65 Hz) from the kit's middle C. On a synth it plays at the note.
++
++| Setting | Range | Starts at | What it does |
++|---|---|---|---|
++| Decay | 40 ms to 8 s to fall 60 dB, 127 holds | 52 (about 0.6 s) | How long the hit rings. At 127 it holds while the note does, for gated 808s |
++| Drive | 0 to 36 dB | 60 (24 dB) | Gain into the drive stage. 0 is clean |
++| Pitch | Transpose | C2 on a kit row | The note the kick lands on |
++| Sweep | None to 5 octaves | 70 | How far above the note the sweep starts |
++| Sweep time | 2 ms to 250 ms | 40 | How fast it falls: short for a tight 909, long for a boomy drop |
++| Fold | Clean to many folds | 20 | A little rounds and fattens the body, more folds it into bright, BIA-style harmonics |
++| Grit | 0 to 127 | 25 | Darkened noise riding on the body's peaks: the rattle of a speaker pushed too far |
++| Punch | None to 4 octaves | 60 | The very fast pitch spike at the start |
++| Sub | 0 to 127 | 45 | Clean sine under the driven body |
++| Hold | 0 to 200 ms | 50 (about 30 ms) | Full level before the decay starts: the thump |
++| Click | 0 to 127 | 45 | Transient level |
++| Click type | Thud, Tick, Noise, Zap | Thud | Thud: a low passed noise thump. Tick: a short pulse, the 808 / 909 attack. Noise: a bright burst. Zap: a sine falling from kHz in a few ms |
++| Click tone | 0 to 127 | 60 | Dark and long to bright and short |
++| Bend | 24 semitones down to 24 up, 64 none | 64 | Slow pitch bend over the hit |
++| Bend time | 40 ms to 4 s | 64 (0.4 s) | How long the bend takes. It starts slowly and speeds up, so the attack stays put and the tail dives |
++| Crush | 0 to 127 | 0 | Sample rate down to about 700 Hz and bit depth down to 3 bits, on the body only (Sub stays clean) |
++| Body wave | Sine, Round, Tri, Saw | Sine | Round is a triangle shaped most of the way to a sine, like the 909's. Tri is hollower. Saw is buzzy, for hardstyle and gabber |
++| Snap | 0 to 90 degrees start phase | 64 (45 degrees) | 0 starts smooth, 127 starts on the peak for the hardest edge |
++| Drive type | Warm, Hard, Tube, Fuzz | Warm | Warm: soft clip, odd harmonics. Hard: hard clip, square and loudest. Tube: leans one way for even harmonics. Fuzz: adds the octave up and hard clips, ragged |
++
++The first twelve are parameters (lockable, automatable, modulatable). Crush, Bend time, Snap, Body wave, Drive type and Click type are row settings. Body wave, Snap and Drive type are on the OSC1 pads (PULSE WIDTH, RETRIGGER, FEEDBACK), and the presets on OSC1 WAVE INDEX; everything is in the Drum synth menu, and all but Crush, Bend time and Snap in the pad editor.
++
++**Presets.** Sixteen big kicks, clean and deep at the top of the list, crunchier and more broken further down. Hold SHIFT and press OSC1 WAVE INDEX (or go to **Kick preset** in the Drum synth menu), and turn SELECT: each turn loads the next preset straight away, so you can play the row while you go through them. Press SELECT to leave the list. A preset sets every ULTRAKIK setting and the row's envelope release; on a kit row it also sets the pitch, on a synth the kick plays at the note. FX are left alone.
++
++| # | Preset | Pitch on a kit row | What it is |
++|---|---|---|---|
++| 1 | DEEP 808 | C1 | Clean, long sine 808 with a little tube warmth and a soft tick |
++| 2 | GRIME SLIDE | C2, dives to C1 | Long 808 that slides down an octave over about 1.3 s |
++| 3 | BOOM ROOM | C1 | Slow, deep sweep from high up: a big round boom |
++| 4 | 909 THUMP | C2 | Round body, short tick, tight decay |
++| 5 | ULTRA | C2 | The default: thick, low thump with drive, fold, grit and a dark thud |
++| 6 | CLUB 909 | C2 | Round body into hard clip, bright tick, hard snap |
++| 7 | TUBE FAT | C2 | Triangle body into heavy tube drive, a little longer |
++| 8 | TRAP KNOCK | C1 | Long 808 pushed hard into tube drive |
++| 9 | HARDSTYLE | C2 | Saw body, heavy warm drive and fold, long tail |
++| 10 | DISTORTO | C2 | Hard clipped 909 with a noise burst and grit |
++| 11 | RUMBLE | C2 | Long, gritty and driven: the rattling tail of a techno rumble |
++| 12 | GABBER | C2 | Full drive into hard clip, folded, with a long, thick tail |
++| 13 | BITCRUSHER | C2 | Saw into hard clip, crushed, zap click |
++| 14 | FUZZ BOMB | C2 | Triangle into fuzz, heavy grit, a little crush |
++| 15 | FOLD STORM | C2 | Folded almost all the way, zap click, bright and metallic |
++| 16 | ANNIHILATE | C2, dives to C1 | Everything up: saw, fuzz, full fold and grit, crushed, dropping an octave in a quarter of a second |
++
++Every preset is tuned to C on a kit row, and the two that slide drop exactly an octave, so they land on C too. The long 808s sit on C1 (about 33 Hz), the rest on C2 (about 65 Hz). Move the row's Pitch to put them in another key.
++
++All sixteen peak within 1 dB of full scale, so moving between them doesn't jump in level.
++
++For a grime or trap 808 line, put ULTRAKIK on a synth with polyphony LEGATO and some portamento, set Decay to 127 (it holds while the note does), and overlap notes to slide.
++
++**Known issue.** On some rows of the Deluge's sample kits ULTRAKIK can stay silent when picked in SYNTH MODE. It plays on rows that are already a drum synth (an LXR, Cycles or GIN kit row) and on most sample kit rows.
++
++**Level.** Every setting peaks at about -1 dB, with a soft knee above that so the click and grit can't push it past full scale. Turning Drive up makes it louder without making it peak higher.
++
++**CPU.** About 1.4 times a Cyc Kik voice at the defaults (under 1% of the CPU per hit), and under 1.8 times with everything on, measured against Cyc Kik on a computer rather than on the Deluge. Each stage runs only while it's doing something: the click stops after its burst, grit once the body is too quiet to carry it, the sweep once it's over. A hit ends once it's 72 dB down, counting the drive's gain.
++
 +## CPU load
 +
 +**SHIFT + SELECT > CPU load** shows the audio engine's load while you play:
@@ -25001,6 +26823,8 @@ index 000000000..fbe453a82
 +
 +
 +The Cyc engines (cyc.cpp) are original code, GPL-3.0-or-later.
++
++ULTRAKIK (ultrakik.cpp) is original code, GPL-3.0-or-later. Not affiliated with or endorsed by Noise Engineering, Ohm Force, Roland or Mutable Instruments.
 +
 +GIN (gin.cpp) is derived from the MIT licensed GIN synthesis core by SquareWave Studio and libpo32 by Eric Lewis; their copyright and licence notices are kept in gin.h, and the Deluge port is GPL-3.0-or-later. The kits (gin_kits.cpp) are original. Not affiliated with or endorsed by SquareWave Studio, Teenage Engineering or Sonic Charge; OP-1 and PO-32 are trademarks of Teenage Engineering. Elektron, Model:Cycles and Syntakt are trademarks of Elektron Music Machines; these engines are not affiliated with or endorsed by Elektron.
 +

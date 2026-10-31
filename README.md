@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.20
+# BRIBELUGE: Deluge Bribes FW v1.21
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -9,7 +9,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **[Autofill](#3-autofill):** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **[Mono sequencer](#4-mono-sequencer):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row. From v1.16.1 a mono clip always plays in scale mode.
 5. **[Endless Record](#5-endless-record):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine.
+6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine. New in v1.21: **[ULTRAKIK](#ultrakik-new-in-v121)**, a kick engine with sixteen presets, from deep 808s to fully broken kicks.
 7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound. New in v1.16.1: the drive can be learned to a gold knob, automated and MIDI learned.
 8. **[Sample start offset](#8-sample-start-offset):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
@@ -38,6 +38,10 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **New in v1.20: shortcut pad names.** On a 7-segment Deluge, hold SHIFT (or an audition pad) and hold any shortcut pad: the display scrolls the full name of what that pad changes, so you can learn the layout as you go. Let go and it shows the value. See [Pad names](#pad-names).
 
+**New in v1.21: ULTRAKIK.** A kick engine for the drum synth. It starts as a thick, low thump with drive and grit already on and a short tail, and bends into long gliding 808s, hard 909s and fully broken kicks. Sixteen presets, clean at the top of the list and crunchier and crazier further down, all tuned to C: hold SHIFT, press OSC1 WAVE INDEX on an ULTRAKIK row and turn SELECT to play through them. See [ULTRAKIK](#ultrakik-new-in-v121).
+
+**Fixed in v1.21: songs with named kits load again.** From v1.12 the firmware read a kit's own name as its Kit presets entry, so songs whose clips find their kit by name came up **CORRUPTED**, including songs made on official firmware. Nothing on the card was damaged: those songs load again now. Kits saved since v1.12 keep their Kit presets entry.
+
 [Back to top](#readme-top)
 
 ## About
@@ -53,9 +57,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.20.bin`](firmware/deluge-bribes-v1.20.bin)
+[`firmware/deluge-bribes-v1.21.bin`](firmware/deluge-bribes-v1.21.bin)
 
-SHA-256: `5f69b0703b9a73206bf97ebe956f95b879ca80ac99430ad346f8dd8ff3b4dde3`
+SHA-256: `1e673cf2f2d8217d1ea9dd5a2c7137e7f6eb3ffa800828caac2b5de7579b1e75`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -63,7 +67,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.20.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.21.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -103,6 +107,8 @@ To go back, install an official firmware file the same way.
 | **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one (Pad Guides) |
 | **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
 | **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
+| **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
+| **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
 | **SHIFT + SYNTH on a synth track** | Pick the instrument: **Deluge**, **DLFM** or **DX7**. SHIFT + SYNTH again moves on, SELECT loads its first preset (Synth instruments) |
 | **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
@@ -343,6 +349,7 @@ The engines:
 - **DIIA** (**DI-G**, **DI-I**, **DI-H**), called Drom2 before v1.11: inharmonic, metallic partials with a noise strike, in three variants.
 - **Cyc engines (new in v1.8):** **Cyc Kik** (**KIK**), **Cyc Snr** (**SNR**), **Cyc Metal** (**CMTL**), **Cyc Perc** (**PERC**), **Cyc Tone** (**TONE**), **Cyc Chord** (**CHRD**), **Vtg Snr** (**VSNR**) and **clap eng** (**CLAP**). Modelled on the Model:Cycles' six machines and the Syntakt's SD VINTAGE and CP VINTAGE, with the same knobs and starting values.
 - **GIN** (**GIN**, new in v1.13): the drum voice from SquareWave Studio's GIN for the OP-1, built on Eric Lewis's libpo32, a PO-32 style drum synth. A tone with a pitch sweep, LFO or noise modulator, and a filtered noise layer with its own envelope, mixed, driven and EQ'd. See [GIN](#gin-new-in-v113).
+- **ULTRAKIK** (**ULTRAKIK**, new in v1.21): a kick engine. One swept oscillator into a wavefolder, four kinds of drive, grit, a click and a clean sub, with sixteen presets. See [ULTRAKIK](#ultrakik-new-in-v121).
 
 ### Making a drum synth kit
 
@@ -388,6 +395,7 @@ Every engine and variant is in one list, **SYNTH MODE**. Hold a row's audition p
 | DIIA | DIIA G, DIIA I, DIIA H |
 | Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
 | GIN | GIN (starts on the 808 kick) |
+| ULTRAKIK | ULTRAKIK (starts on its ULTRA preset, at C2 on a kit row) |
 
 - Each engine you pick starts from its defaults, set up as its kit row is (new in v1.12): transpose, envelopes, filters open (the high pass on for the cymbal), osc 2 and noise off, tune centred, whatever the row was before. So what SYNTH MODE previews is what the kit plays. FX are left alone.
 - **Envelopes (new in v1.12):** every drum engine shapes its hits with its own decay (the LXR voices' Decay, DXIA and DIIA's engine decay, the Cyc engines' amp decay). The Deluge envelope around it is open (attack 0, sustain full) with a release long enough for that decay to ring out after the note ends, so one tap plays the whole hit and gated sounds follow the note.
@@ -401,30 +409,31 @@ Changed in v1.16: every drum engine has the same settings on the same pads, in t
 - **MOD1, from the bottom up:** Decay, Drive, Pitch, Pitch envelope amount, Pitch envelope speed, Character A, Character B, Extra 1.
 - **MOD2, from the bottom up:** Extras 2 to 9, each engine's own settings.
 - **OSC1 TYPE** opens SYNTH MODE.
-- **Every other pad is the Deluge's own again:** OSC1 level and transpose, OSC2 (a real second oscillator on a drum row), envelopes, filters, FX and the mod FX pads. The few whose Deluge setting a drum engine borrows for its controls (osc 1 pulse width, both oscillators' feedback and wave index) do nothing on a drum row.
+- **Every other pad is the Deluge's own again:** OSC1 level and transpose, OSC2 (a real second oscillator on a drum row), envelopes, filters, FX and the mod FX pads. The few whose Deluge setting a drum engine borrows for its controls (osc 1 pulse width, both oscillators' feedback and wave index) do nothing on a drum row, except on ULTRAKIK, which puts its extra settings there (new in v1.21).
 - **Gold knob pairs** sit in one column: Drive / Decay, Pitch envelope speed / amount, Character A / B.
 
-| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA | Cyc engines | GIN |
-|---|---|---|---|---|---|---|---|
-| MOD1 row 1 (bottom) | Decay | Decay | Decay | Engine decay | Engine decay | Amp decay | Decay (both) |
-| MOD1 row 2 | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
-| MOD1 row 3 | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch |
-| MOD1 row 4 | Pitch amount | Pitch amount | | | | Sweep | Mod amount |
-| MOD1 row 5 | Pitch decay | Pitch decay | | | | Contour | Mod rate |
-| MOD1 row 6 | FM amount | Noise mix | FM amount | Blendex 1 | Weight | Color | Mix |
-| MOD1 row 7 | Mod pitch | Noise cutoff | FM 2 amount | Freq 1 | Alloy | Shape | Noise freq |
-| MOD1 row 8 (top) | Pitch curve | Pitch curve | Mod 2 pitch | Punch | Punch | Punch | Mod mode |
-| MOD2 row 1 (bottom) | Osc wave | Osc wave | Osc wave | Blendex 2 | Shape | | Tone wave |
-| MOD2 row 2 | Osc mode (FM / mix) | Noise rate | Mod wave | Freq 2 | Strike | | Tone attack |
-| MOD2 row 3 | Mod wave | Noise filter | Mod pitch | Blendex 3 | | | Tone decay |
-| MOD2 row 4 | Mod fine | Noise resonance | Mod fine | Freq 3 | | | Noise filter |
-| MOD2 row 5 | Transient | Transient | Transient | | | | Noise reso |
-| MOD2 row 6 | Transient level | Transient level | Transient level | | | | Noise env |
-| MOD2 row 7 | Transient speed | Transient speed | Transient speed | | | | Noise attack |
-| MOD2 row 8 (top) | | | Mod 2 wave | | | | Noise decay |
+| Pad | Kick / tom | Snare | Cymbal / hat | DXIA | DIIA | Cyc engines | GIN | ULTRAKIK |
+|---|---|---|---|---|---|---|---|---|
+| MOD1 row 1 (bottom) | Decay | Decay | Decay | Engine decay | Engine decay | Amp decay | Decay (both) | Decay |
+| MOD1 row 2 | Drive | Drive | Drive | Drive | Drive | Drive | Drive | Drive |
+| MOD1 row 3 | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch | Pitch |
+| MOD1 row 4 | Pitch amount | Pitch amount | | | | Sweep | Mod amount | Sweep |
+| MOD1 row 5 | Pitch decay | Pitch decay | | | | Contour | Mod rate | Sweep time |
+| MOD1 row 6 | FM amount | Noise mix | FM amount | Blendex 1 | Weight | Color | Mix | Fold |
+| MOD1 row 7 | Mod pitch | Noise cutoff | FM 2 amount | Freq 1 | Alloy | Shape | Noise freq | Grit |
+| MOD1 row 8 (top) | Pitch curve | Pitch curve | Mod 2 pitch | Punch | Punch | Punch | Mod mode | Punch |
+| MOD2 row 1 (bottom) | Osc wave | Osc wave | Osc wave | Blendex 2 | Shape | | Tone wave | Sub |
+| MOD2 row 2 | Osc mode (FM / mix) | Noise rate | Mod wave | Freq 2 | Strike | | Tone attack | Hold |
+| MOD2 row 3 | Mod wave | Noise filter | Mod pitch | Blendex 3 | | | Tone decay | Click |
+| MOD2 row 4 | Mod fine | Noise resonance | Mod fine | Freq 3 | | | Noise filter | Click type |
+| MOD2 row 5 | Transient | Transient | Transient | | | | Noise reso | Click tone |
+| MOD2 row 6 | Transient level | Transient level | Transient level | | | | Noise env | Bend |
+| MOD2 row 7 | Transient speed | Transient speed | Transient speed | | | | Noise attack | Bend time |
+| MOD2 row 8 (top) | | | Mod 2 wave | | | | Noise decay | Crush |
 
 - **Cyc names:** Sweep / Contour are Pitch sweep / Mod envelope on Vtg Snr and Spacing crunch / Body envelope on clap eng; Color / Shape are Inharm / Freq complex and Body char / Balance. On Cyc Tone, Cyc Chord and clap eng, Sweep and Contour shape something other than pitch (see [Cyc engines](#cyc-engines)).
 - **Drive** on the Cyc engines is the engine's drive (0 clean, 100 to start, 127 full saturation). **Punch** is its own pad, at the top of MOD1.
+- **ULTRAKIK on OSC1 (new in v1.21):** PULSE WIDTH is its body wave, RETRIGGER its snap, FEEDBACK its drive type and WAVE INDEX its presets. OSC1 LEVEL, TRANSPOSE, TYPE and NOISE keep their jobs.
 - **No pad:** Mod 2 fine on the Cymbal / hat, and GIN's EQ freq, EQ gain and level. They're in the sound menu under **Drum synth**.
 
 ### Gold knobs
@@ -447,6 +456,7 @@ Every drum synth row and the 303 share one layout, after the Cycles' knobs. It's
 | DIIA | LFO rate / Vibrato (no pitch envelope) | Weight / Alloy |
 | Cyc engines | Contour / Sweep (Mod envelope / Pitch sweep on Vtg Snr, Body envelope / Spacing crunch on clap eng) | Color / Shape (Inharm / Freq complex on Vtg Snr, Body char / Balance on clap eng) |
 | GIN | Mod rate / Mod amount | Mix / Noise freq |
+| ULTRAKIK | Sweep time / Sweep | Fold / Grit |
 
 - On the Cyc engines, mod depth is now Sweep and mod rate Contour (the other way round before v1.16).
 - With Pad Guides off, the drum knobs keep the v1.11 layout. The knobs are set when a sound loads, so reload the song after switching it.
@@ -511,6 +521,45 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 - **Decay** moves the tone and noise decays together: 64 leaves the sound as it is, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay** and **Noise decay** are on their own pads.
 - The pitch is the note and the row's transpose, not a setting: each kit row is tuned to its sound. Velocity works through the Deluge's usual velocity setting. There's no A / B morph (parameter locks do that job), and turning a knob changes a hit that's already playing.
 
+### ULTRAKIK (new in v1.21)
+
+ULTRAKIK is a kick engine, synthesised rather than sampled (put a sample on OSC2 if you want one on top). It starts as a thick, low thump with drive, fold, grit and a dark click already on and a short tail, and bends into long gliding 808s, hard 909s and fully broken kicks. Pick it in SYNTH MODE: on a kit row it plays at C2, on a synth at the note.
+
+**How it works.** One oscillator (sine, round, triangle or saw) swept down from above by **Punch**, a very fast pitch spike (the beater), and **Sweep**, a slower drop (the boom). **Bend** moves the pitch slowly over the hit for 808 slides and drops, and **Snap** sets the phase it starts on. Then the amp (**Hold**, then **Decay**), a wavefolder (**Fold**), the **Drive** (Warm, Hard, Tube or Fuzz), **Grit** riding on the driven peaks, the **Click** (Thud, Tick, Noise or Zap), the **Crush**er, and **Sub**: a clean sine of the body under it all, so the low end survives whatever happens above it. Every setting peaks just under full scale.
+
+| Pads | From the bottom up |
+|---|---|
+| MOD1 | Decay, Drive, Pitch, Sweep, Sweep time, Fold, Grit, Punch |
+| MOD2 | Sub, Hold, Click, Click type, Click tone, Bend, Bend time, Crush |
+| OSC1 | PULSE WIDTH body wave, RETRIGGER snap, FEEDBACK drive type, WAVE INDEX presets |
+
+Its twelve continuous settings (everything on MOD1 and MOD2 except Pitch, Click type, Bend time and Crush) are parameters: lock them, automate them, modulate them. Gold knobs: Drive / Decay on attack / release, **Sweep time / Sweep** on mod rate / depth, **Fold / Grit** on CUSTOM 2 / 3.
+
+**Presets.** Hold SHIFT and press OSC1 WAVE INDEX on an ULTRAKIK row (or **Kick preset**, **KPRE**, in the Drum synth menu) and turn SELECT: each turn loads the next preset, so you can play the row while you go through them. Press SELECT to leave. A preset sets every ULTRAKIK setting and the envelope release; on a kit row it also sets the pitch. FX are left alone.
+
+| # | Preset | Kit row note | Sound |
+|---|---|---|---|
+| 1 | DEEP 808 | C1 | Clean, long sine 808 with a soft tick |
+| 2 | GRIME SLIDE | C2 to C1 | Long 808 that slides down an octave |
+| 3 | BOOM ROOM | C1 | Slow, deep sweep: a big round boom |
+| 4 | 909 THUMP | C2 | Round body, short tick, tight |
+| 5 | ULTRA | C2 | The default: thick, low thump with drive, fold, grit and a dark thud |
+| 6 | CLUB 909 | C2 | Round body into hard clip, bright tick, hard snap |
+| 7 | TUBE FAT | C2 | Triangle into heavy tube drive |
+| 8 | TRAP KNOCK | C1 | Long 808 pushed hard into tube drive |
+| 9 | HARDSTYLE | C2 | Saw, heavy drive and fold, long tail |
+| 10 | DISTORTO | C2 | Hard clipped 909 with a noise burst and grit |
+| 11 | RUMBLE | C2 | Long, gritty, driven: a techno rumble |
+| 12 | GABBER | C2 | Full drive into hard clip, folded, long and thick |
+| 13 | BITCRUSHER | C2 | Saw into hard clip, crushed, zap click |
+| 14 | FUZZ BOMB | C2 | Triangle into fuzz, heavy grit |
+| 15 | FOLD STORM | C2 | Folded almost all the way, bright and metallic |
+| 16 | ANNIHILATE | C2 to C1 | Everything up, crushed, dropping an octave fast |
+
+- **808 lines:** on a synth track, set polyphony to **LEGATO**, add some portamento and set Decay to 127 (it holds while the note does), then overlap notes to slide.
+- **CPU:** measured on a computer at about 1.4 times a Cyc Kik voice at the defaults and under 1.8 times with everything on. Each stage switches off once it's done.
+- **Known issue:** on some rows of the Deluge's sample kits ULTRAKIK can stay silent when picked in SYNTH MODE. It plays on LXR, Cycles and GIN kit rows and on most sample kit rows.
+
 ### Snappy decay
 
 **Snappy decay** (**SNAP**), in the sound menu of any drum synth row, makes the amp envelope's decay and release follow a steeper curve: tighter hits, and the same decay setting sounds about half as long. It starts off on new drum synth rows (from v1.12: each engine's own decay does the shaping) and is saved with the row.
@@ -519,6 +568,7 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 
 - The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
+- **Settings > Defaults > High CPU Indicator** (**CPU**) set to **ON** makes the **PLAY** button blink whenever the Deluge runs out of CPU and cuts notes to keep up (voice stealing). It's off until you turn it on.
 - **From v1.17** each hit ends once it's 72 dB down (it was 100 dB, 80 on GIN). The Cyc engines fade out over the last few samples. When the CPU runs short, a hit that's 40 dB down is cut before notes you can still hear. See [New in v1.17](#readme-top) at the top.
 - **From v1.18** the Cycles engines build their sines from a lookup table and cost an estimated third to a quarter of what they did, for the same sound. Metal's feedback is chaotic, so its waveform never comes out exactly the same from one build to the next, but it sounds the same.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
