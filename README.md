@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.18
+# BRIBELUGE: Deluge Bribes FW v1.19
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -17,6 +17,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 11. **[Affect all](#11-affect-all) (new in v1.15):** a performance snapshot for LXR, Cycles and GIN kits. SHIFT + AFFECT ENTIRE freezes the kit, then every gold knob turn moves all the drums at once, or the kit's FX, and SHIFT + AFFECT ENTIRE again snaps it all back on the next bar.
 12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
+14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -33,6 +34,8 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **New in v1.18: Cycles engines at a fraction of the cost.** The Cycles engines now build their sines from a lookup table, instead of working each one out every sample. By an estimate from the compiled code, Metal, Chord, Vtg Snr, Perc and Tone cost about a third to a quarter of what they did, and they sound the same. Tested on hardware: a Cycles kit and an LXR kit playing together with a 303 and another synth, with no voice stealing and the CPU peaking around 75 to 80%.
 
+**New in v1.19: default instruments.** Set a default kit and a default synth in **SETTINGS > DEFAULTS > UI > CLIP TYPE**, and every new kit or synth track starts as that instrument, on its top preset. Turning SELECT on an LXR, Cycles or GIN kit now steps through that kit's presets instead of swapping it for a sample kit, and picking LXR, Cycles or GIN with SHIFT + KIT opens its presets straight away. See [Default instruments](#14-default-instruments).
+
 [Back to top](#readme-top)
 
 ## About
@@ -48,9 +51,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.18.bin`](firmware/deluge-bribes-v1.18.bin)
+[`firmware/deluge-bribes-v1.19.bin`](firmware/deluge-bribes-v1.19.bin)
 
-SHA-256: `c900ed4842a98d3d72c40bfdb5d32e00f9e4d7f8b9ff4969c5af5aadb5e8c2eb`
+SHA-256: `d52cabc1bc39f19cb92cec9e4af01051a79de283c99742aec0f5197f154fcb2d`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -58,7 +61,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.18.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.19.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -88,6 +91,7 @@ To go back, install an official firmware file the same way.
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
 | **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
 | **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
+| **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Default instruments, new in v1.19) |
 | **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
 | **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
 | **SHIFT + a MOD1 / MOD2 pad on a drum synth row** | That engine's setting: MOD1 from the bottom is Decay, Drive, Pitch, Pitch env amount, Pitch env speed, Character A, Character B, Extra 1; MOD2 holds Extras 2 to 9 (Drum synth, new in v1.16) |
@@ -97,6 +101,7 @@ To go back, install an official firmware file the same way.
 | **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one (Pad Guides) |
 | **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
 | **SHIFT + SYNTH on a synth track** | Pick the instrument: **Deluge**, **DLFM** or **DX7**. SHIFT + SYNTH again moves on, SELECT loads its first preset (Synth instruments) |
+| **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
 | **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
 | **SHIFT + SATURATION pad, then hold LEARN and turn a gold knob** | Put saturation drive on that gold knob, in the context its button has selected (Saturation, new in v1.16.1) |
@@ -364,6 +369,8 @@ The list is **Default** (the rows as SHIFT + KIT makes them) and then the preset
 - **Cycles presets:** sixteen kits of my own, bank E of my Model:Cycles kits, converted for the Cyc engines: copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) to `KITS/CYCLES` on the card.
 - **LXR presets:** sixteen kits by **Hrtl** from the free [LXR-02 pack Erica Synths released in 2022](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), converted for the drum synth: copy [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/LXR` on the card. Close to the originals rather than identical (see the folder's README).
 - **Making presets:** a preset is an ordinary kit file. Set the kit up, press **SAVE**, go into `KITS/LXR`, `KITS/CYCLES` or `KITS/GIN` (made the first time you open the list) and save, over an existing preset or under a new name. Only the preset rows are read back. [`tools/lxr_to_deluge.py`](tools/lxr_to_deluge.py) converts LXR-02 .SND kits.
+- **Turning SELECT in the clip** (new in v1.19) steps to the next or previous preset in the same list and keeps it, without opening the list. It goes round at the ends.
+- **Picking LXR, Cycles or GIN** in the New kit menu (new in v1.19) opens that kit's presets on the top one: the first preset in its folder, or Default if there's none (GIN: its first built in kit).
 - Swapping sounds clears the undo history.
 
 ### Choosing an engine
@@ -711,6 +718,23 @@ Drum synth rows' gold knobs follow the shared pad layout (see [Gold knobs](#gold
 - Presets already playing on another track are skipped. If they all are, the screen shows **No free presets** (**NONE**).
 - On kit, MIDI and CV tracks, and with a menu open, SHIFT + SYNTH still makes a new blank synth. MOD7 + SYNTH still makes a new DX7 synth.
 - Ringmod, the 303 and the drum engines aren't listed: they're in **SYNTH MODE**.
+
+[Back to top](#readme-top)
+
+## 14. Default instruments
+
+Pick the instrument every new kit track and every new synth track starts as. Press **SHIFT + SELECT** to open Settings, then go to **DEFAULTS > UI > CLIP TYPE**:
+
+| Setting | Screen | Options |
+|---|---|---|
+| **Kit Instrument** | **KIT** | **OFF** (stock), **LXR**, **Cycles**, **GIN** |
+| **Synth Instrument** | **SYNT** | **OFF** (stock), **Deluge**, **DLFM**, **DX7** (DX7 only with the DX7 engine on in Community Features) |
+
+With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth instrument's folder (see [Synth instruments](#13-synth-instruments)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
+
+- **Counts as a new track:** a new clip in song view, a new arranger track, the **KIT** or **SYNTH** button on a clip that has never been that type (one that has goes back to what it had), and the synth a new song starts with.
+- **Then:** turning SELECT on a synth steps through its instrument's folder as usual, and on an LXR, Cycles or GIN kit through that kit's presets (see [Kit presets](#kit-presets-new-in-v112)). SHIFT + KIT and SHIFT + SYNTH still open the full pickers.
+- Both settings start on **OFF**, so new tracks are stock until you change them.
 
 [Back to top](#readme-top)
 

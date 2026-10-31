@@ -8853,10 +8853,10 @@ index adbcbc904..25b0e108a 100644
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
-index 000000000..b225dc271
+index 000000000..5c536c29b
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.cpp
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,350 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -8940,6 +8940,40 @@ index 000000000..b225dc271
 +	previewing_ = home_;
 +	currentOption = home_;
 +	scrollPos = home_;
++	return true;
++}
++
++void KitPresets::startOnTopPreset() {
++	const int32_t top = (numPresets_ > 0 && kit_ != preset_kit::PresetKit::GIN) ? firstPresetOption() : defaultOption();
++	currentOption = top;
++	scrollPos = top;
++	preview(top);
++}
++
++bool KitPresets::step(preset_kit::PresetKit kit, int32_t offset) {
++	if (offset == 0 || !setup(kit)) {
++		return false;
++	}
++	// Current isn't a preset to step to: from there, the first or the last
++	const int32_t first = defaultOption();
++	const int32_t count = numOptions() - first;
++	int32_t target;
++	if (hasCurrent_) {
++		target = (offset > 0) ? first : numOptions() - 1;
++	}
++	else {
++		target = first + (home_ - first + ((offset > 0) ? 1 : count - 1)) % count;
++	}
++	if (target == home_) {
++		return true;
++	}
++	currentOption = target;
++	preview(target);
++	if (previewing_ == target) {
++		remember(target);
++		keep();
++		getCurrentKit()->beenEdited();
++	}
 +	return true;
 +}
 +
@@ -9095,6 +9129,16 @@ index 000000000..b225dc271
 +	view.setActiveModControllableTimelineCounter(getCurrentInstrumentClip());
 +	view.setKnobIndicatorLevels();
 +	uiNeedsRendering(&instrumentClipView);
++	// Stepping with SELECT, the menu closed: the preset's name over the view
++	if (getCurrentUI() != this) {
++		if (display->haveOLED()) {
++			display->displayPopup(options_[previewing_]);
++		}
++		else {
++			display->setScrollingText(options_[previewing_]);
++		}
++		return;
++	}
 +	if (display->haveOLED()) {
 +		renderUIsForOled();
 +	}
@@ -9103,23 +9147,26 @@ index 000000000..b225dc271
 +	}
 +}
 +
-+bool KitPresets::acceptCurrentOption() {
-+	preview(currentOption);
-+	// Remember it, so the list opens here next time
++void KitPresets::remember(int32_t option) {
 +	Kit* kit = getCurrentKit();
-+	if (currentOption == defaultOption()) {
++	if (option == defaultOption()) {
 +		kit->presetName.set("*");
 +	}
-+	else if (currentOption > defaultOption() && currentOption < firstPresetOption()) {
++	else if (option > defaultOption() && option < firstPresetOption()) {
 +		char builtIn[8];
-+		snprintf(builtIn, sizeof(builtIn), "*%d", static_cast<int>(currentOption - defaultOption() + 1));
++		snprintf(builtIn, sizeof(builtIn), "*%d", static_cast<int>(option - defaultOption() + 1));
 +		kit->presetName.set(builtIn);
 +	}
-+	else if (currentOption >= firstPresetOption()) {
-+		kit->presetName.set(labels_[currentOption - firstPresetOption()].data());
++	else if (option >= firstPresetOption()) {
++		kit->presetName.set(labels_[option - firstPresetOption()].data());
 +	}
++}
++
++bool KitPresets::acceptCurrentOption() {
++	preview(currentOption);
++	remember(currentOption);
 +	keep();
-+	kit->beenEdited();
++	getCurrentKit()->beenEdited();
 +	display->setNextTransitionDirection(-1);
 +	close();
 +	return true;
@@ -9162,10 +9209,10 @@ index 000000000..b225dc271
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/kit_presets.h b/src/deluge/gui/context_menu/kit_presets.h
 new file mode 100644
-index 000000000..b2bf70855
+index 000000000..a565c6867
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.h
-@@ -0,0 +1,92 @@
+@@ -0,0 +1,100 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -9199,12 +9246,18 @@ index 000000000..b2bf70855
 +/// away, pattern running; the other rows and the pattern stay. SELECT or KIT keeps the one showing. BACK puts the kit
 +/// back as it was and goes up to the Kit / LXR / Cycles / GIN menu. The list: Default (as SHIFT + KIT makes it), or on
 +/// GIN its sixteen built in kits, then the presets in name order, with Current first if the kit isn't on any of them.
++/// SELECT on a preset kit, with the menu closed, steps through the same list (see step()).
 +class KitPresets final : public ContextMenu {
 +public:
 +	KitPresets() = default;
 +
 +	/// Read the preset list and find the kit's preset rows. false if there's nothing to browse.
 +	bool setup(preset_kit::PresetKit kit);
++	/// Once open, play the top preset: the first file, else the first kit built in (GIN: always its first)
++	void startOnTopPreset();
++	/// SELECT on a preset kit with the menu closed: the next (offset > 0) or previous of its presets, built in kits
++	/// then files, round at the ends, kept straight away. false if the kit has nothing to step through.
++	bool step(preset_kit::PresetKit kit, int32_t offset);
 +
 +	char const* getTitle() override;
 +	std::span<char const*> getOptions() override;
@@ -9233,6 +9286,8 @@ index 000000000..b2bf70855
 +	void preview(int32_t option);
 +	void restoreRow(int32_t row);
 +	void restoreAll();
++	/// Note the option on the kit, so the list opens there next time
++	void remember(int32_t option);
 +	void keep();
 +	void refresh();
 +
@@ -9260,10 +9315,10 @@ index 000000000..b2bf70855
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
-index 000000000..bff634c5b
+index 000000000..93fbe8ddc
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/new_kit_type.cpp
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,94 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -9344,7 +9399,11 @@ index 000000000..bff634c5b
 +	case PresetKit::LXR:
 +	case PresetKit::CYCLES:
 +	case PresetKit::GIN:
-+		instrumentClipView.createNewDrumSynthKit(chosen);
++		// Then straight into its presets, playing the top one
++		if (instrumentClipView.createNewDrumSynthKit(chosen) && kitPresets.setup(chosen)) {
++			openUI(&kitPresets);
++			kitPresets.startOnTopPreset();
++		}
 +		break;
 +	default:
 +		instrumentClipView.createNewInstrument(OutputType::KIT);
@@ -9616,7 +9675,7 @@ index 000000000..cd1babb23
 +extern SynthInstrumentMenu synthInstrumentMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 38cab4d81..d7d6f3959 100644
+index 38cab4d81..b138c88fa 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -9848,8 +9907,17 @@ index 38cab4d81..d7d6f3959 100644
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
+@@ -995,6 +1168,8 @@
+     "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
+     "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
+     "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
++    "STRING_FOR_DEFAULT_KIT_INSTRUMENT": "Kit Instrument",
++    "STRING_FOR_DEFAULT_SYNTH_INSTRUMENT": "Synth Instrument",
+     "STRING_FOR_FAVOURITES_EMPTY": "Empty",
+     "STRING_FOR_DEFAULT_HORIZONTAL_MENU": "Horizontal Menu",
+     "STRING_FOR_CHORD_KEYBOARD_MODE_ROW": "Chord Row Mode",
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 1f87aacf7..b0944abcc 100644
+index 1f87aacf7..4ec72553d 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -10081,8 +10149,17 @@ index 1f87aacf7..b0944abcc 100644
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
+@@ -1008,6 +1181,8 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
+         {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
+         {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
++        {STRING_FOR_DEFAULT_KIT_INSTRUMENT, "Kit Instrument"},
++        {STRING_FOR_DEFAULT_SYNTH_INSTRUMENT, "Synth Instrument"},
+         {STRING_FOR_FAVOURITES_EMPTY, "Empty"},
+         {STRING_FOR_DEFAULT_HORIZONTAL_MENU, "Horizontal Menu"},
+         {STRING_FOR_CHORD_KEYBOARD_MODE_ROW, "Chord Row Mode"},
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 1af382d56..b5eba1dfd 100644
+index 1af382d56..fc20297bf 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,42 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -10278,8 +10355,17 @@ index 1af382d56..b5eba1dfd 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
+@@ -561,6 +726,8 @@ PLACE_SDRAM_DATA Language seven_segment{
+         {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
+         {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
+         {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
++        {STRING_FOR_DEFAULT_KIT_INSTRUMENT, "KIT"},
++        {STRING_FOR_DEFAULT_SYNTH_INSTRUMENT, "SYNT"},
+         {STRING_FOR_FAVOURITES_EMPTY, "NONE"},
+         {STRING_FOR_DEFAULT_HORIZONTAL_MENU, "HORZ"},
+     },
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index 8328945b4..859d76d37 100644
+index 8328945b4..bed0ce69d 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,42 @@
@@ -10482,8 +10568,17 @@ index 8328945b4..859d76d37 100644
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
          "STRING_FOR_LOOP_TOO_LONG": "CANT",
+@@ -603,6 +775,8 @@
+ 
+         "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
+         "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
++        "STRING_FOR_DEFAULT_KIT_INSTRUMENT": "KIT",
++        "STRING_FOR_DEFAULT_SYNTH_INSTRUMENT": "SYNT",
+ 
+         "STRING_FOR_FAVOURITES_EMPTY": "NONE",
+ 
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 49b15e92c..0633bdc77 100644
+index 49b15e92c..b07a415f3 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -10715,6 +10810,15 @@ index 49b15e92c..0633bdc77 100644
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
+@@ -1133,6 +1306,8 @@ enum class String : size_t {
+ 	STRING_FOR_DEFAULT_CLIP_TYPE,
+ 	STRING_FOR_DEFAULT_NEW_CLIP_TYPE,
+ 	STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE,
++	STRING_FOR_DEFAULT_KIT_INSTRUMENT,
++	STRING_FOR_DEFAULT_SYNTH_INSTRUMENT,
+ 
+ 	// string for favourites feature
+ 	STRING_FOR_FAVOURITES_EMPTY,
 diff --git a/src/deluge/gui/menu_item/cpu/load.h b/src/deluge/gui/menu_item/cpu/load.h
 new file mode 100644
 index 000000000..6d686b098
@@ -10972,6 +11076,68 @@ index 000000000..464e22253
 +};
 +
 +} // namespace deluge::gui::menu_item::cv
+diff --git a/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h b/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h
+new file mode 100644
+index 000000000..1e3d8348a
+--- /dev/null
++++ b/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h
+@@ -0,0 +1,56 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++#include "gui/l10n/l10n.h"
++#include "gui/menu_item/selection.h"
++#include "model/instrument/synth_instruments.h"
++#include "storage/flash_storage.h"
++
++namespace deluge::gui::menu_item::defaults::ui::clip_type {
++
++/// Which preset kit a new kit track starts as: Off (a stock kit), LXR, Cycles or GIN. Option n is PresetKit n.
++class DefaultKitInstrument final : public Selection {
++public:
++	using Selection::Selection;
++	void readCurrentValue() override { this->setValue(FlashStorage::defaultKitInstrument); }
++	void writeCurrentValue() override { FlashStorage::defaultKitInstrument = this->getValue(); }
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_OFF), l10n::getView(STRING_FOR_LXR_KIT), l10n::getView(STRING_FOR_CYCLES_KIT),
++		        l10n::getView(STRING_FOR_GIN_KIT)};
++	}
++};
++
++/// Which of the SHIFT + SYNTH instruments a new synth track starts as, or Off (stock). Option n is instrument n - 1.
++class DefaultSynthInstrument final : public Selection {
++public:
++	using Selection::Selection;
++	void readCurrentValue() override { this->setValue(FlashStorage::defaultSynthInstrument); }
++	void writeCurrentValue() override { FlashStorage::defaultSynthInstrument = this->getValue(); }
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		deluge::vector<std::string_view> options{l10n::getView(l10n::String::STRING_FOR_OFF)};
++		for (const auto& instrument : synth_instruments::kSynthInstruments) {
++			options.push_back(l10n::getView(instrument.name));
++		}
++		return options;
++	}
++};
++
++} // namespace deluge::gui::menu_item::defaults::ui::clip_type
 diff --git a/src/deluge/gui/menu_item/delay/amount_unpatched.h b/src/deluge/gui/menu_item/delay/amount_unpatched.h
 index 0b1d60c02..73aaaa061 100644
 --- a/src/deluge/gui/menu_item/delay/amount_unpatched.h
@@ -13159,7 +13325,7 @@ index f4e341a9b..47b7c1a86 100644
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..5e9641b66 100644
+index 7bbd559f6..a94a6022b 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -13173,7 +13339,13 @@ index 7bbd559f6..5e9641b66 100644
  #include "gui/menu_item/cv/selection.h"
  #include "gui/menu_item/cv/submenu.h"
  #include "gui/menu_item/cv/transpose.h"
-@@ -60,8 +62,12 @@
+@@ -55,13 +57,18 @@
+ #include "gui/menu_item/defaults/slice_mode.h"
+ #include "gui/menu_item/defaults/startup_song_mode.h"
+ #include "gui/menu_item/defaults/swing_interval.h"
++#include "gui/menu_item/defaults/ui/clip_type/default_instrument.h"
+ #include "gui/menu_item/defaults/ui/clip_type/default_new_clip_type.h"
+ #include "gui/menu_item/defaults/velocity.h"
  #include "gui/menu_item/delay/amount.h"
  #include "gui/menu_item/delay/amount_unpatched.h"
  #include "gui/menu_item/delay/analog.h"
@@ -13186,7 +13358,7 @@ index 7bbd559f6..5e9641b66 100644
  #include "gui/menu_item/dx/browse.h"
  #include "gui/menu_item/dx/engine_select.h"
  #include "gui/menu_item/dx/global_params.h"
-@@ -77,7 +83,7 @@
+@@ -77,7 +84,7 @@
  #include "gui/menu_item/filter_route.h"
  #include "gui/menu_item/firmware/version.h"
  #include "gui/menu_item/flash/status.h"
@@ -13195,7 +13367,7 @@ index 7bbd559f6..5e9641b66 100644
  #include "gui/menu_item/gate/mode.h"
  #include "gui/menu_item/gate/off_time.h"
  #include "gui/menu_item/gate/selection.h"
-@@ -189,6 +195,7 @@
+@@ -189,6 +196,7 @@
  #include "gui/menu_item/sample/repeat.h"
  #include "gui/menu_item/sample/reverse.h"
  #include "gui/menu_item/sample/start.h"
@@ -13203,7 +13375,7 @@ index 7bbd559f6..5e9641b66 100644
  #include "gui/menu_item/sample/time_stretch.h"
  #include "gui/menu_item/sample/transpose.h"
  #include "gui/menu_item/sequence/direction.h"
-@@ -216,7 +223,10 @@
+@@ -216,7 +224,10 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -13214,7 +13386,7 @@ index 7bbd559f6..5e9641b66 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -512,6 +522,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -512,6 +523,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
@@ -13225,7 +13397,7 @@ index 7bbd559f6..5e9641b66 100644
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +535,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +536,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
@@ -13234,7 +13406,7 @@ index 7bbd559f6..5e9641b66 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,7 +646,8 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,7 +647,8 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -13244,7 +13416,7 @@ index 7bbd559f6..5e9641b66 100644
  PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
                                         RenderingStyle::BAR};
  PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
-@@ -641,6 +658,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
+@@ -641,6 +659,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -13252,7 +13424,7 @@ index 7bbd559f6..5e9641b66 100644
          &bitcrushMenu,
          &srrMenu,
          &foldMenu,
-@@ -772,6 +790,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +791,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -13261,7 +13433,7 @@ index 7bbd559f6..5e9641b66 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -855,6 +875,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +876,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -13291,7 +13463,7 @@ index 7bbd559f6..5e9641b66 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,6 +953,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,6 +954,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -13299,7 +13471,7 @@ index 7bbd559f6..5e9641b66 100644
          &bitcrushMenu,
          &srrMenu,
      },
-@@ -985,6 +1029,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1030,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -13311,7 +13483,7 @@ index 7bbd559f6..5e9641b66 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1098,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1099,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -13319,7 +13491,25 @@ index 7bbd559f6..5e9641b66 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1469,14 +1519,432 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1349,10 +1400,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+ PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
+     STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
+ 
++PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultKitInstrument defaultKitInstrumentMenu{
++    STRING_FOR_DEFAULT_KIT_INSTRUMENT, STRING_FOR_DEFAULT_KIT_INSTRUMENT};
++PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultSynthInstrument defaultSynthInstrumentMenu{
++    STRING_FOR_DEFAULT_SYNTH_INSTRUMENT, STRING_FOR_DEFAULT_SYNTH_INSTRUMENT};
++
+ PLACE_SDRAM_BSS Submenu defaultClipTypeMenu{STRING_FOR_DEFAULT_CLIP_TYPE,
+                                             {
+                                                 &defaultNewClipTypeMenu,
+                                                 &defaultUseLastClipTypeMenu,
++                                                &defaultKitInstrumentMenu,
++                                                &defaultSynthInstrumentMenu,
+                                             }};
+ 
+ PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
+@@ -1469,14 +1527,432 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -13752,7 +13942,7 @@ index 7bbd559f6..5e9641b66 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +1986,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +1994,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -13764,7 +13954,7 @@ index 7bbd559f6..5e9641b66 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2015,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2023,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -13773,7 +13963,7 @@ index 7bbd559f6..5e9641b66 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2024,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2032,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -13782,7 +13972,7 @@ index 7bbd559f6..5e9641b66 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2178,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2186,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -13792,7 +13982,7 @@ index 7bbd559f6..5e9641b66 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2311,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2319,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -13801,7 +13991,7 @@ index 7bbd559f6..5e9641b66 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1887,7 +2367,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1887,7 +2375,7 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitArpMenu,
          &audioCompMenu,
          &globalFiltersMenu,
@@ -13810,7 +14000,7 @@ index 7bbd559f6..5e9641b66 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2389,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2397,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -13818,7 +14008,7 @@ index 7bbd559f6..5e9641b66 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2432,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2440,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -13852,7 +14042,7 @@ index 7bbd559f6..5e9641b66 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2503,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2511,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -13861,7 +14051,7 @@ index 7bbd559f6..5e9641b66 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2527,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2535,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -14352,6 +14542,91 @@ index e94b776d8..97eb4d467 100644
  	/// Idle countdown before the screensaver appears, then its frame clock while it shows
  	SCREENSAVER,
  	/// Total number of timers
+diff --git a/src/deluge/gui/views/arranger_view.cpp b/src/deluge/gui/views/arranger_view.cpp
+index 89c2e7690..8d1ae62d6 100644
+--- a/src/deluge/gui/views/arranger_view.cpp
++++ b/src/deluge/gui/views/arranger_view.cpp
+@@ -55,6 +55,7 @@
+ #include "model/consequence/consequence_clip_existence.h"
+ #include "model/consequence/consequence_clip_instance_change.h"
+ #include "model/drum/drum.h"
++#include "model/instrument/default_instruments.h"
+ #include "model/instrument/instrument.h"
+ #include "model/instrument/kit.h"
+ #include "model/instrument/melodic_instrument.h"
+@@ -819,39 +820,45 @@ void ArrangerView::endAudition(Output* output, bool evenIfPlaying) {
+ 
+ // Loads from file, etc - doesn't truly "create"
+ Instrument* ArrangerView::createNewInstrument(OutputType newOutputType, bool* instrumentAlreadyInSong) {
+-	Error error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
+-	if (error != Error::NONE) {
+-		display->displayError(error);
+-		return nullptr;
+-	}
++	// A default instrument set in SETTINGS > DEFAULTS > CLIP TYPE, else the first free preset as stock
++	Instrument* newInstrument = deluge::default_instruments::forNewTrack(currentSong, newOutputType);
++	*instrumentAlreadyInSong = false;
++	if (newInstrument == nullptr) {
++		Error error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
++		if (error != Error::NONE) {
++			display->displayError(error);
++			return nullptr;
++		}
+ 
+-	FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
+-	                                     currentSong, newOutputType, Availability::INSTRUMENT_UNUSED),
+-	                                 error, {
+-		                                 display->displayError(error);
+-		                                 return nullptr;
+-	                                 });
++		FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
++		                                     currentSong, newOutputType, Availability::INSTRUMENT_UNUSED),
++		                                 error, {
++			                                 display->displayError(error);
++			                                 return nullptr;
++		                                 });
+ 
+-	Instrument* newInstrument = fileItem->instrument;
+-	bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
+-	*instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
++		newInstrument = fileItem->instrument;
++		bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
++		*instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
+ 
+-	if (!newInstrument) {
+-		String newPresetName;
+-		fileItem->getFilenameWithoutExtension(&newPresetName);
+-		error = StorageManager::loadInstrumentFromFile(currentSong, nullptr, newOutputType, false, &newInstrument,
+-		                                               &fileItem->filePointer, &newPresetName, &Browser::currentDir);
+-	}
++		if (!newInstrument) {
++			String newPresetName;
++			fileItem->getFilenameWithoutExtension(&newPresetName);
++			error =
++			    StorageManager::loadInstrumentFromFile(currentSong, nullptr, newOutputType, false, &newInstrument,
++			                                           &fileItem->filePointer, &newPresetName, &Browser::currentDir);
++		}
+ 
+-	Browser::emptyFileItems();
++		Browser::emptyFileItems();
+ 
+-	if (error != Error::NONE) {
+-		display->displayError(error);
+-		return nullptr;
+-	}
++		if (error != Error::NONE) {
++			display->displayError(error);
++			return nullptr;
++		}
+ 
+-	if (isHibernating) {
+-		currentSong->removeInstrumentFromHibernationList(newInstrument);
++		if (isHibernating) {
++			currentSong->removeInstrumentFromHibernationList(newInstrument);
++		}
+ 	}
+ 
+ 	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
 index 0a42de354..b4e8d5c92 100644
 --- a/src/deluge/gui/views/automation_view.cpp
@@ -16409,6 +16684,82 @@ index 000000000..4bbd4cbd8
 +extern KitPatternMode kitPatternMode;
 +
 +} // namespace deluge::gui::kit_pattern
+diff --git a/src/deluge/gui/views/session_view.cpp b/src/deluge/gui/views/session_view.cpp
+index 4a063b07e..2a243a067 100644
+--- a/src/deluge/gui/views/session_view.cpp
++++ b/src/deluge/gui/views/session_view.cpp
+@@ -59,6 +59,7 @@
+ #include "model/clip/clip_instance.h"
+ #include "model/clip/instrument_clip.h"
+ #include "model/clip/instrument_clip_minder.h"
++#include "model/instrument/default_instruments.h"
+ #include "model/instrument/instrument.h"
+ #include "model/instrument/melodic_instrument.h"
+ #include "model/note/note_row.h"
+@@ -1587,34 +1588,41 @@ void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
+ // Will now look in subfolders too if need be.
+ Error setPresetOrNextUnlaunchedOne(InstrumentClip* clip, OutputType outputType, bool* instrumentAlreadyInSong,
+                                    bool copyDrumsFromClip = true) {
+-	Error error = Browser::currentDir.set(getInstrumentFolder(outputType));
+-	if (error != Error::NONE) {
+-		return error;
+-	}
++	// A default instrument set in SETTINGS > DEFAULTS > CLIP TYPE, else the first free preset as stock
++	Error error = Error::NONE;
++	Instrument* newInstrument = deluge::default_instruments::forNewTrack(currentSong, outputType);
++	*instrumentAlreadyInSong = false;
++	if (newInstrument == nullptr) {
++		error = Browser::currentDir.set(getInstrumentFolder(outputType));
++		if (error != Error::NONE) {
++			return error;
++		}
+ 
+-	FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
+-	                                     currentSong, outputType, Availability::INSTRUMENT_UNUSED),
+-	                                 error, { return error; });
++		FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
++		                                     currentSong, outputType, Availability::INSTRUMENT_UNUSED),
++		                                 error, { return error; });
+ 
+-	Instrument* newInstrument = fileItem->instrument;
+-	bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
+-	*instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
++		newInstrument = fileItem->instrument;
++		bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
++		*instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
+ 
+-	if (!newInstrument) {
+-		String newPresetName;
+-		fileItem->getFilenameWithoutExtension(&newPresetName);
+-		error = StorageManager::loadInstrumentFromFile(currentSong, nullptr, outputType, false, &newInstrument,
+-		                                               &fileItem->filePointer, &newPresetName, &Browser::currentDir);
+-	}
++		if (!newInstrument) {
++			String newPresetName;
++			fileItem->getFilenameWithoutExtension(&newPresetName);
++			error =
++			    StorageManager::loadInstrumentFromFile(currentSong, nullptr, outputType, false, &newInstrument,
++			                                           &fileItem->filePointer, &newPresetName, &Browser::currentDir);
++		}
+ 
+-	Browser::emptyFileItems();
++		Browser::emptyFileItems();
+ 
+-	if (error != Error::NONE) {
+-		return error;
+-	}
++		if (error != Error::NONE) {
++			return error;
++		}
+ 
+-	if (isHibernating) {
+-		currentSong->removeInstrumentFromHibernationList(newInstrument);
++		if (isHibernating) {
++			currentSong->removeInstrumentFromHibernationList(newInstrument);
++		}
+ 	}
+ 
+ 	if (display->haveOLED()) {
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
 index 0690e2bb0..b82040db5 100644
 --- a/src/deluge/gui/views/view.cpp
@@ -16814,18 +17165,26 @@ index e1bc1eff7..c040ee971 100644
  		if (playbackHandler.recording == RecordingMode::OFF) {
  			finishLinearRecording(modelStack);
 diff --git a/src/deluge/model/clip/instrument_clip.cpp b/src/deluge/model/clip/instrument_clip.cpp
-index babfd8541..d91d862ca 100644
+index babfd8541..ce5f712f4 100644
 --- a/src/deluge/model/clip/instrument_clip.cpp
 +++ b/src/deluge/model/clip/instrument_clip.cpp
-@@ -35,6 +35,7 @@
+@@ -27,6 +27,7 @@
+ #include "hid/buttons.h"
+ #include "io/midi/midi_device.h"
+ #include "io/midi/midi_engine.h"
++#include "io/midi/midi_transpose.h"
+ #include "memory/general_memory_allocator.h"
+ #include "model/action/action_logger.h"
+ #include "model/clip/clip_instance.h"
+@@ -34,6 +35,7 @@
+ #include "model/consequence/consequence_scale_add_note.h"
  #include "model/drum/drum_name.h"
  #include "model/instrument/cv_instrument.h"
++#include "model/instrument/default_instruments.h"
  #include "model/instrument/midi_instrument.h"
-+#include "io/midi/midi_transpose.h"
  #include "model/iterance/iterance.h"
  #include "model/note/note.h"
- #include "model/output.h"
-@@ -47,8 +48,10 @@
+@@ -47,8 +49,10 @@
  #include "modulation/midi/midi_param.h"
  #include "modulation/midi/midi_param_collection.h"
  #include "modulation/patch/patch_cable_set.h"
@@ -16836,7 +17195,7 @@ index babfd8541..d91d862ca 100644
  #include "processing/sound/sound_instrument.h"
  #include "storage/storage_manager.h"
  #include "util/const_functions.h"
-@@ -135,6 +138,11 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
+@@ -135,6 +139,11 @@ void InstrumentClip::copyBasicsFrom(Clip const* otherClip) {
  	yScroll = otherInstrumentClip->yScroll;
  	keyboardState = otherInstrumentClip->keyboardState;
  	sequenceDirectionMode = otherInstrumentClip->sequenceDirectionMode;
@@ -16848,7 +17207,7 @@ index babfd8541..d91d862ca 100644
  
  	affectEntire = otherInstrumentClip->affectEntire;
  
-@@ -893,6 +901,12 @@ doNewProbability:
+@@ -893,6 +902,12 @@ doNewProbability:
  					}
  				}
  
@@ -16861,7 +17220,7 @@ index babfd8541..d91d862ca 100644
  				// probability, iterance and fill conditions have passed
  				if (conditionPassed) {
  					sendPendingNoteOn(modelStack, &pendingNoteOnList.pendingNoteOns[i]);
-@@ -905,6 +919,11 @@ doNewProbability:
+@@ -905,6 +920,11 @@ doNewProbability:
  				pendingNoteOnList.pendingNoteOns[i].noteRow->sequenced = false;
  			}
  		}
@@ -16873,7 +17232,7 @@ index babfd8541..d91d862ca 100644
  	}
  
  	if (ticksTilNextNoteRowEvent < playbackHandler.swungTicksTilNextEvent) {
-@@ -931,13 +950,70 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
+@@ -931,13 +951,70 @@ void InstrumentClip::sendPendingNoteOn(ModelStackWithTimelineCounter* modelStack
  	else {
  		ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
  		    modelStackWithNoteRow->addOtherTwoThings(output->toModControllable(), &paramManager);
@@ -16902,9 +17261,9 @@ index babfd8541..d91d862ca 100644
 -		               pendingNoteOn->ticksLate);
 +		    ->sendNote(modelStackWithThreeMainThings, true, noteCode, mpeValues, MIDI_CHANNEL_NONE,
 +		               pendingNoteOn->velocity, pendingNoteOn->sampleSyncLength, pendingNoteOn->ticksLate);
-+	}
-+}
-+
+ 	}
+ }
+ 
 +void InstrumentClip::playAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId, int32_t velocity,
 +                                     int32_t semitones) {
 +	NoteRow* noteRow = noteRows.getElement(noteRowId);
@@ -16930,9 +17289,9 @@ index babfd8541..d91d862ca 100644
 +	sendPendingNoteOn(modelStack, &pendingNoteOn);
 +	if (soundDrum) {
 +		soundDrum->transpose = oldTranspose;
- 	}
- }
- 
++	}
++}
++
 +void InstrumentClip::stopAutofillHit(ModelStackWithTimelineCounter* modelStack, int32_t noteRowId) {
 +	NoteRow* noteRow = noteRows.getElement(noteRowId);
 +	if (output->type != OutputType::KIT || !noteRow->drum) {
@@ -16947,7 +17306,7 @@ index babfd8541..d91d862ca 100644
  void InstrumentClip::toggleNoteRowMute(ModelStackWithNoteRow* modelStack) {
  
  	// Record action
-@@ -1327,6 +1403,10 @@ void InstrumentClip::transpose(int32_t semitones, ModelStackWithTimelineCounter*
+@@ -1327,6 +1404,10 @@ void InstrumentClip::transpose(int32_t semitones, ModelStackWithTimelineCounter*
  
  	yScroll += semitones;
  	colourOffset -= semitones;
@@ -16958,7 +17317,7 @@ index babfd8541..d91d862ca 100644
  }
  
  bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType type,
-@@ -1446,6 +1526,10 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
+@@ -1446,6 +1527,10 @@ bool InstrumentClip::nudgeNotesVertically(int32_t direction, VerticalNudgeType t
  	}
  
  	yScroll += change;
@@ -16969,7 +17328,7 @@ index babfd8541..d91d862ca 100644
  	return true;
  }
  
-@@ -2392,6 +2476,16 @@ void InstrumentClip::writeDataToFile(Serializer& writer, Song* song) {
+@@ -2392,6 +2477,16 @@ void InstrumentClip::writeDataToFile(Serializer& writer, Song* song) {
  	writer.writeAttribute("drumsZoomLevel", keyboardState.drums.zoom_level);
  	writer.writeAttribute("inKeyScrollOffset", keyboardState.inKey.scrollOffset);
  	writer.writeAttribute("inKeyRowInterval", keyboardState.inKey.rowInterval);
@@ -16986,7 +17345,7 @@ index babfd8541..d91d862ca 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -2589,6 +2683,22 @@ someError:
+@@ -2589,6 +2684,22 @@ someError:
  			keyboardState.inKey.scrollOffset = reader.readTagOrAttributeValueInt();
  		}
  
@@ -17009,7 +17368,7 @@ index babfd8541..d91d862ca 100644
  		else if (!strcmp(tagName, "inKeyRowInterval")) {
  			keyboardState.inKey.rowInterval = reader.readTagOrAttributeValueInt();
  		}
-@@ -3663,6 +3773,143 @@ void InstrumentClip::ensureScrollWithinKitBounds() {
+@@ -3663,6 +3774,143 @@ void InstrumentClip::ensureScrollWithinKitBounds() {
  }
  
  // Make sure not a Kit before calling this
@@ -17153,6 +17512,96 @@ index babfd8541..d91d862ca 100644
  bool InstrumentClip::isScrollWithinRange(int32_t scrollAmount, int32_t newYNote) {
  
  	if (output->type == OutputType::SYNTH) {
+@@ -3776,48 +4024,54 @@ Instrument* InstrumentClip::changeOutputType(ModelStackWithTimelineCounter* mode
+ 
+ 	// Synth / Kit
+ 	else {
+-		String newName;
+-		Error error;
+-
+-		newName.set(&backedUpInstrumentName[newOutputTypeAsIdx]);
+-		Browser::currentDir.set(&backedUpInstrumentDirPath[newOutputTypeAsIdx]);
+-
+-		if (Browser::currentDir.isEmpty()) {
+-			error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
+-			if (error != Error::NONE) {
+-				display->displayError(error);
+-				return nullptr;
+-			}
++		// Never been this type before: a default instrument set in SETTINGS > DEFAULTS > CLIP TYPE, else as stock
++		if (backedUpInstrumentDirPath[newOutputTypeAsIdx].isEmpty()) {
++			newInstrument = deluge::default_instruments::forNewTrack(modelStack->song, newOutputType);
+ 		}
++		if (newInstrument == nullptr) {
++			String newName;
++			Error error;
+ 
+-		FileItem* fileItem = D_TRY_CATCH(
+-		    loadInstrumentPresetUI.confirmPresetOrNextUnlaunchedOne(newOutputType, &newName, availabilityRequirement),
+-		    error, {
+-			    display->displayError(error);
+-			    return nullptr;
+-		    });
++			newName.set(&backedUpInstrumentName[newOutputTypeAsIdx]);
++			Browser::currentDir.set(&backedUpInstrumentDirPath[newOutputTypeAsIdx]);
+ 
+-		newInstrument = fileItem->instrument;
+-		bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
+-		instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
++			if (Browser::currentDir.isEmpty()) {
++				error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
++				if (error != Error::NONE) {
++					display->displayError(error);
++					return nullptr;
++				}
++			}
+ 
+-		if (!newInstrument) {
+-			String newPresetName;
+-			fileItem->getFilenameWithoutExtension(&newPresetName);
+-			error =
+-			    StorageManager::loadInstrumentFromFile(modelStack->song, nullptr, newOutputType, false, &newInstrument,
+-			                                           &fileItem->filePointer, &newPresetName, &Browser::currentDir);
+-		}
++			FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.confirmPresetOrNextUnlaunchedOne(
++			                                     newOutputType, &newName, availabilityRequirement),
++			                                 error, {
++				                                 display->displayError(error);
++				                                 return nullptr;
++			                                 });
++
++			newInstrument = fileItem->instrument;
++			bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
++			instrumentAlreadyInSong = newInstrument && fileItem->instrumentAlreadyInSong;
++
++			if (!newInstrument) {
++				String newPresetName;
++				fileItem->getFilenameWithoutExtension(&newPresetName);
++				error = StorageManager::loadInstrumentFromFile(modelStack->song, nullptr, newOutputType, false,
++				                                               &newInstrument, &fileItem->filePointer, &newPresetName,
++				                                               &Browser::currentDir);
++			}
+ 
+-		Browser::emptyFileItems();
++			Browser::emptyFileItems();
+ 
+-		if (error != Error::NONE) {
+-			display->displayError(error);
+-			return nullptr;
+-		}
++			if (error != Error::NONE) {
++				display->displayError(error);
++				return nullptr;
++			}
+ 
+-		if (isHibernating) {
+-			modelStack->song->removeInstrumentFromHibernationList(newInstrument);
++			if (isHibernating) {
++				modelStack->song->removeInstrumentFromHibernationList(newInstrument);
++			}
+ 		}
+ 
+ 		display->displayLoadingAnimationText("Loading");
 diff --git a/src/deluge/model/clip/instrument_clip.h b/src/deluge/model/clip/instrument_clip.h
 index b6e15e334..be16342a3 100644
 --- a/src/deluge/model/clip/instrument_clip.h
@@ -17223,10 +17672,18 @@ index b6e15e334..be16342a3 100644
  	int8_t backedUpInstrumentSlot[4]{};
  	int8_t backedUpInstrumentSubSlot[4]{};
 diff --git a/src/deluge/model/clip/instrument_clip_minder.cpp b/src/deluge/model/clip/instrument_clip_minder.cpp
-index 7bdb9004d..ec345f2c7 100644
+index 7bdb9004d..8bbc47b1e 100644
 --- a/src/deluge/model/clip/instrument_clip_minder.cpp
 +++ b/src/deluge/model/clip/instrument_clip_minder.cpp
-@@ -31,6 +31,7 @@
+@@ -17,6 +17,7 @@
+ 
+ #include "model/clip/instrument_clip_minder.h"
+ #include "definitions_cxx.hpp"
++#include "gui/context_menu/kit_presets.h"
+ #include "gui/l10n/l10n.h"
+ #include "gui/ui/keyboard/keyboard_screen.h"
+ #include "gui/ui/load/load_instrument_preset_ui.h"
+@@ -31,6 +32,7 @@
  #include "gui/views/arranger_view.h"
  #include "gui/views/automation_view.h"
  #include "gui/views/instrument_clip_view.h"
@@ -17234,7 +17691,30 @@ index 7bdb9004d..ec345f2c7 100644
  #include "gui/views/view.h"
  #include "hid/button.h"
  #include "hid/buttons.h"
-@@ -443,9 +444,15 @@ ActionResult InstrumentClipMinder::buttonAction(deluge::hid::Button b, bool on,
+@@ -44,6 +46,7 @@
+ #include "model/consequence/consequence.h"
+ #include "model/instrument/cv_instrument.h"
+ #include "model/instrument/midi_instrument.h"
++#include "model/instrument/preset_kit.h"
+ #include "model/scale/preset_scales.h"
+ #include "model/song/song.h"
+ #include "modulation/midi/midi_param.h"
+@@ -101,6 +104,14 @@ void InstrumentClipMinder::selectEncoderAction(int32_t offset) {
+ 		}
+ 	}
+ 	else {
++		// A preset kit steps through its own presets, so it stays an LXR, Cycles or GIN kit
++		if (getCurrentOutputType() == OutputType::KIT) {
++			const auto presetKit = deluge::preset_kit::typeOf(getCurrentKit());
++			if (presetKit != deluge::preset_kit::PresetKit::NONE
++			    && deluge::gui::context_menu::kitPresets.step(presetKit, offset)) {
++				return;
++			}
++		}
+ 		view.navigateThroughPresetsForInstrumentClip(offset, modelStack);
+ 	}
+ }
+@@ -443,9 +454,15 @@ ActionResult InstrumentClipMinder::buttonAction(deluge::hid::Button b, bool on,
  	else if (b == AFFECT_ENTIRE) {
  		if (on && currentUIMode == UI_MODE_NONE) {
  			if (getCurrentOutputType() == OutputType::KIT) {
@@ -17452,6 +17932,244 @@ index a58e4ff9f..98e162b82 100644
 +	int32_t monoOctave = 0;
 +	int32_t monoCustomMillivolts = -1;
  };
+diff --git a/src/deluge/model/instrument/default_instruments.cpp b/src/deluge/model/instrument/default_instruments.cpp
+new file mode 100644
+index 000000000..7bc83ad54
+--- /dev/null
++++ b/src/deluge/model/instrument/default_instruments.cpp
+@@ -0,0 +1,182 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#include "model/instrument/default_instruments.h"
++#include "gui/ui/browser/browser.h"
++#include "gui/ui/load/load_instrument_preset_ui.h"
++#include "hid/display/display.h"
++#include "model/instrument/kit.h"
++#include "model/instrument/preset_kit.h"
++#include "model/settings/runtime_feature_settings.h"
++#include "model/song/song.h"
++#include "modulation/params/param_manager.h"
++#include "processing/sound/sound_drum.h"
++#include "processing/sound/sound_instrument.h"
++#include "storage/flash_storage.h"
++#include "storage/storage_manager.h"
++
++namespace deluge::default_instruments {
++
++using dsp::drum_synth::PresetKit;
++using synth_instruments::kSynthInstruments;
++using synth_instruments::SynthInstrument;
++
++PresetKit kit() {
++	return (FlashStorage::defaultKitInstrument < util::to_underlying(PresetKit::NUM_KITS))
++	           ? static_cast<PresetKit>(FlashStorage::defaultKitInstrument)
++	           : PresetKit::NONE;
++}
++
++const SynthInstrument* synth() {
++	const uint8_t setting = FlashStorage::defaultSynthInstrument;
++	if (setting == 0 || setting > kSynthInstruments.size()) {
++		return nullptr;
++	}
++	const SynthInstrument& instrument = kSynthInstruments[setting - 1];
++	if (instrument.dx && !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine)) {
++		return nullptr;
++	}
++	return &instrument;
++}
++
++namespace {
++
++/// The first preset in folder (or its subfolders) not on a track of the song, loaded. nullptr if there's none.
++Instrument* firstFreePreset(Song* song, OutputType type, char const* folder) {
++	if (Browser::currentDir.set(folder) != Error::NONE) {
++		return nullptr;
++	}
++	auto result = loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
++	    song, type, Availability::INSTRUMENT_UNUSED);
++	if (!result || result.value()->instrumentAlreadyInSong) {
++		Browser::emptyFileItems();
++		return nullptr;
++	}
++
++	FileItem* fileItem = result.value();
++	Instrument* instrument = fileItem->instrument;
++	const bool hibernating = instrument != nullptr;
++	Error error = Error::NONE;
++	if (instrument == nullptr) {
++		String presetName;
++		fileItem->getFilenameWithoutExtension(&presetName);
++		error = StorageManager::loadInstrumentFromFile(song, nullptr, type, false, &instrument, &fileItem->filePointer,
++		                                               &presetName, &Browser::currentDir);
++	}
++	Browser::emptyFileItems();
++
++	if (error != Error::NONE) {
++		display->displayError(error);
++		return nullptr;
++	}
++	if (hibernating) {
++		song->removeInstrumentFromHibernationList(instrument);
++	}
++	return instrument;
++}
++
++/// A new name in folder, like KIT004 or SYNT012, for a blank instrument saved there
++bool unusedName(OutputType type, char const* folder, String* name) {
++	return Browser::currentDir.set(folder) == Error::NONE
++	       && loadInstrumentPresetUI.getUnusedSlot(type, name, (type == OutputType::KIT) ? "KIT" : "SYNT")
++	              == Error::NONE
++	       && !name->isEmpty();
++}
++
++/// A blank synth of the instrument's kind, which saves into its folder
++Instrument* blankSynth(Song* song, const SynthInstrument& instrument) {
++	String name;
++	if (!unusedName(OutputType::SYNTH, instrument.folder, &name)) {
++		return nullptr;
++	}
++	ParamManagerForTimeline paramManager;
++	auto* synth = static_cast<SoundInstrument*>(StorageManager::createNewInstrument(OutputType::SYNTH, &paramManager));
++	if (synth == nullptr) {
++		return nullptr;
++	}
++	synth->name.set(&name);
++	synth->dirPath.set(instrument.folder);
++	synth->setupAsBlankSynth(&paramManager, instrument.dx);
++	if (instrument.mode != synth->getSynthMode()) {
++		synth->setSynthMode(instrument.mode, song);
++	}
++	synth->editedByUser = true;
++	synth->mightExistOnCard = false;
++	song->backUpParamManager(synth, nullptr, &paramManager, true);
++	return synth;
++}
++
++/// A preset kit as SHIFT + KIT makes it: its rows bottom first, each with its sound's param manager backed up as a
++/// kit loaded from a file has them
++Instrument* blankKit(Song* song, PresetKit type) {
++	char const* folder = getInstrumentFolder(OutputType::KIT);
++	String name;
++	if (!unusedName(OutputType::KIT, folder, &name)) {
++		return nullptr;
++	}
++	ParamManagerForTimeline kitParamManager;
++	auto* kit = static_cast<Kit*>(StorageManager::createNewInstrument(OutputType::KIT, &kitParamManager));
++	if (kit == nullptr) {
++		return nullptr;
++	}
++	kit->name.set(&name);
++	kit->dirPath.set(folder);
++
++	for (const preset_kit::Row& row : preset_kit::rowsFor(type)) {
++		ParamManagerForTimeline paramManager;
++		SoundDrum* drum = preset_kit::makeDrum(row, type, paramManager);
++		if (drum == nullptr) {
++			display->displayError(Error::INSUFFICIENT_RAM);
++			break;
++		}
++		song->backUpParamManager(drum, nullptr, &paramManager, true);
++		kit->addDrum(drum);
++	}
++	kit->editedByUser = true;
++	kit->mightExistOnCard = false;
++	song->backUpParamManager(static_cast<ModControllableAudio*>(kit->toModControllable()), nullptr, &kitParamManager,
++	                         true);
++	return kit;
++}
++
++} // namespace
++
++Instrument* forNewTrack(Song* song, OutputType type) {
++	if (song == nullptr) {
++		return nullptr;
++	}
++	if (type == OutputType::KIT) {
++		const PresetKit preset = kit();
++		if (preset == PresetKit::NONE) {
++			return nullptr;
++		}
++		Instrument* instrument =
++		    (preset != PresetKit::GIN) ? firstFreePreset(song, type, preset_kit::folderFor(preset)) : nullptr;
++		return (instrument != nullptr) ? instrument : blankKit(song, preset);
++	}
++	if (type == OutputType::SYNTH) {
++		const SynthInstrument* instrument = synth();
++		if (instrument == nullptr) {
++			return nullptr;
++		}
++		Instrument* preset = firstFreePreset(song, type, instrument->folder);
++		return (preset != nullptr) ? preset : blankSynth(song, *instrument);
++	}
++	return nullptr;
++}
++
++} // namespace deluge::default_instruments
+diff --git a/src/deluge/model/instrument/default_instruments.h b/src/deluge/model/instrument/default_instruments.h
+new file mode 100644
+index 000000000..61180b22b
+--- /dev/null
++++ b/src/deluge/model/instrument/default_instruments.h
+@@ -0,0 +1,44 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "definitions_cxx.hpp"
++#include "dsp/drum_synth/drum_synth.h"
++#include "model/instrument/synth_instruments.h"
++
++class Instrument;
++class Song;
++
++/// The instruments new tracks start as, set in SETTINGS > DEFAULTS > CLIP TYPE: KIT INSTRUMENT (LXR, Cycles, GIN) and
++/// SYNTH INSTRUMENT (one of the SHIFT + SYNTH instruments). Off on either gives that type of track as stock.
++namespace deluge::default_instruments {
++
++/// The preset kit a new kit track starts as, or NONE for a stock kit
++dsp::drum_synth::PresetKit kit();
++
++/// The instrument a new synth track starts as, or nullptr for stock (also for DX7 with the DX7 engine off)
++const synth_instruments::SynthInstrument* synth();
++
++/// For a new synth or kit track, when a default instrument is set for its type: the first preset in that instrument's
++/// folder not on another track, loaded and out of hibernation, or if there's none a blank one (the kit as SHIFT + KIT
++/// makes it, or a blank synth of that kind). A GIN kit is always its first built in kit, the top of its list. Its
++/// audio files aren't loaded yet. nullptr if no default is set or it couldn't be made: the caller then goes on as
++/// stock.
++Instrument* forNewTrack(Song* song, OutputType type);
++
++} // namespace deluge::default_instruments
 diff --git a/src/deluge/model/instrument/kit.cpp b/src/deluge/model/instrument/kit.cpp
 index 4aac4577b..44d0d09d5 100644
 --- a/src/deluge/model/instrument/kit.cpp
@@ -18380,13 +19098,14 @@ index 55e809efa..9fcf5edc7 100644
  };
  
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index 4d3fe4159..b3e8cf3ce 100644
+index 4d3fe4159..d0a0756bf 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
-@@ -41,8 +41,10 @@
+@@ -41,8 +41,11 @@
  #include "model/clip/instrument_clip.h"
  #include "model/consequence/consequence_clip_existence.h"
  #include "model/instrument/cv_instrument.h"
++#include "model/instrument/default_instruments.h"
 +#include "model/instrument/kit.h"
  #include "model/instrument/midi_instrument.h"
  #include "model/mod_controllable/mod_controllable_audio.h"
@@ -18394,7 +19113,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  #include "model/sample/sample_recorder.h"
  #include "model/scale/preset_scales.h"
  #include "model/scale/scale_change.h"
-@@ -57,6 +59,7 @@
+@@ -57,6 +60,7 @@
  #include "processing/audio_output.h"
  #include "processing/engines/audio_engine.h"
  #include "processing/engines/cv_engine.h"
@@ -18402,7 +19121,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  #include "processing/sound/sound_instrument.h"
  #include "processing/stem_export/stem_export.h"
  #include "storage/flash_storage.h"
-@@ -160,6 +163,11 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
+@@ -160,6 +164,11 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
  	swingAmount = 0;
  
  	swingInterval = FlashStorage::defaultSwingInterval;
@@ -18414,7 +19133,52 @@ index 4d3fe4159..b3e8cf3ce 100644
  
  	songViewYScroll = 1 - kDisplayHeight;
  	arrangementYScroll = -kDisplayHeight;
-@@ -1203,6 +1211,13 @@ weAreInArrangementEditorOrInClipInstance:
+@@ -396,13 +405,16 @@ bool Song::ensureAtLeastOneSessionClip() {
+ 
+ 	std::expected<FileItem*, Error> result;
+ 
++	// The default synth instrument set in SETTINGS > DEFAULTS > CLIP TYPE: the first preset in its folder
++	const deluge::synth_instruments::SynthInstrument* defaultSynth = deluge::default_instruments::synth();
++
+ 	Error error;
+ 	error = StorageManager::initSD(); // Still want this here?
+ 	if (error != Error::NONE) {
+ 		goto couldntLoad;
+ 	}
+ 
+-	error = Browser::currentDir.set("SYNTHS");
++	error = Browser::currentDir.set((defaultSynth != nullptr) ? defaultSynth->folder : "SYNTHS");
+ 	if (error != Error::NONE) {
+ 		goto couldntLoad;
+ 	}
+@@ -433,7 +445,7 @@ couldntLoad:
+ 			while (1) {}
+ 		}
+ 
+-		error = newInstrument->dirPath.set("SYNTHS");
++		error = newInstrument->dirPath.set((defaultSynth != nullptr) ? defaultSynth->folder : "SYNTHS");
+ 		if (error != Error::NONE) {
+ 			display->displayError(error);
+ 			while (1) {}
+@@ -445,7 +457,16 @@ couldntLoad:
+ 			while (1) {}
+ 		}
+ 
+-		((SoundInstrument*)newInstrument)->setupAsDefaultSynth(&newParamManager);
++		// Nothing saved in the default instrument's folder: a blank synth of its kind
++		if (defaultSynth != nullptr && defaultSynth->dx) {
++			((SoundInstrument*)newInstrument)->setupAsBlankSynth(&newParamManager, true);
++		}
++		else {
++			((SoundInstrument*)newInstrument)->setupAsDefaultSynth(&newParamManager);
++		}
++		if (defaultSynth != nullptr && defaultSynth->mode != ((SoundInstrument*)newInstrument)->getSynthMode()) {
++			((SoundInstrument*)newInstrument)->setSynthMode(defaultSynth->mode, this);
++		}
+ 		display->displayError(error); // E.g. show the CARD error.
+ 	}
+ 
+@@ -1203,6 +1224,13 @@ weAreInArrangementEditorOrInClipInstance:
  	writer.writeAttribute("inputTickMagnitude", getInputTickMagnitude());
  	writer.writeAttribute("swingAmount", swingAmount);
  	writer.writeAbsoluteSyncLevelToFile(this, "swingInterval", (SyncLevel)swingInterval, true);
@@ -18428,7 +19192,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  
  	if (tripletsOn) {
  		writer.writeAttribute("tripletsLevel", tripletsLevel);
-@@ -1419,6 +1434,11 @@ Error Song::readFromFile(Deserializer& reader) {
+@@ -1419,6 +1447,11 @@ Error Song::readFromFile(Deserializer& reader) {
  
  	outputClipInstanceListIsCurrentlyInvalid = true;
  
@@ -18440,7 +19204,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  	D_PRINTLN("");
  	D_PRINTLN("loading song!!!!!!!!!!!!!!");
  
-@@ -1701,6 +1721,25 @@ unknownTag:
+@@ -1701,6 +1734,25 @@ unknownTag:
  				reader.exitTag("swingInterval");
  			}
  
@@ -18466,7 +19230,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  			else if (!strcmp(tagName, "tripletsLevel")) {
  				tripletsLevel = reader.readTagOrAttributeValueInt();
  				reader.exitTag("tripletsLevel");
-@@ -2325,6 +2364,7 @@ skipInstance:
+@@ -2325,6 +2377,7 @@ skipInstance:
  
  	AudioEngine::logAction("aaa4.2");
  
@@ -18474,7 +19238,7 @@ index 4d3fe4159..b3e8cf3ce 100644
  	setupPatchingForAllParamManagers();
  	AudioEngine::logAction("aaa4.3");
  
-@@ -2611,7 +2651,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
+@@ -2611,7 +2664,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
  }
  
  bool Song::hasAnySwing() {
@@ -18483,13 +19247,13 @@ index 4d3fe4159..b3e8cf3ce 100644
  }
  
  void Song::resyncLFOs() {
-@@ -3800,6 +3840,62 @@ void Song::setupPatchingForAllParamManagers() {
+@@ -3800,6 +3853,61 @@ void Song::setupPatchingForAllParamManagers() {
  	}
  }
  
 +// Files from before saturation was a param keep its drive on the sound, kit or audio output. Put it in every param
-+// manager that goes with it (each Clip's, each kit row's and the backed up ones), then forget it so it's only done once.
-+// With only, just that one: a preset that was just read, whose param managers are all backed up.
++// manager that goes with it (each Clip's, each kit row's and the backed up ones), then forget it so it's only done
++// once. With only, just that one: a preset that was just read, whose param managers are all backed up.
 +void Song::applyLoadedSaturationDrives(ModControllableAudio* only) {
 +	for (int32_t i = 0; i < backedUpParamManagers.getNumElements(); i++) {
 +		auto* backedUp = (BackedUpParamManager*)backedUpParamManagers.getElementAddress(i);
@@ -18504,8 +19268,7 @@ index 4d3fe4159..b3e8cf3ce 100644
 +
 +	for (Clip* clip : AllClips::everywhere(this)) {
 +		Output* output = clip->output;
-+		if (output->type != OutputType::SYNTH && output->type != OutputType::KIT
-+		    && output->type != OutputType::AUDIO) {
++		if (output->type != OutputType::SYNTH && output->type != OutputType::KIT && output->type != OutputType::AUDIO) {
 +			continue;
 +		}
 +		((ModControllableAudio*)output->toModControllable())->applyLoadedSaturationDrive(&clip->paramManager);
@@ -18546,7 +19309,78 @@ index 4d3fe4159..b3e8cf3ce 100644
  // Returns NULL if couldn't find one.
  // Supply stealInto to have it delete the "backed up" element, putting the contents into stealInto.
  ParamManager* Song::getBackedUpParamManagerForExactClip(ModControllableAudio* modControllable, Clip* clip,
-@@ -5716,29 +5812,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
+@@ -5051,39 +5159,43 @@ gotAnInstrument: {}
+ 
+ 	// Synth or Kit
+ 	else {
+-		Error error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
+-		if (error != Error::NONE) {
+-			display->displayError(error);
+-			return nullptr;
+-		}
++		// A default instrument set in SETTINGS > DEFAULTS > CLIP TYPE, else the first free preset as stock
++		newInstrument = deluge::default_instruments::forNewTrack(this, newOutputType);
++		if (newInstrument == nullptr) {
++			Error error = Browser::currentDir.set(getInstrumentFolder(newOutputType));
++			if (error != Error::NONE) {
++				display->displayError(error);
++				return nullptr;
++			}
+ 
+-		FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
+-		                                     this, newOutputType, Availability::INSTRUMENT_UNUSED),
+-		                                 error, {
+-			                                 display->displayError(error);
+-			                                 return nullptr;
+-		                                 });
++			FileItem* fileItem = D_TRY_CATCH(loadInstrumentPresetUI.findAnUnlaunchedPresetIncludingWithinSubfolders(
++			                                     this, newOutputType, Availability::INSTRUMENT_UNUSED),
++			                                 error, {
++				                                 display->displayError(error);
++				                                 return nullptr;
++			                                 });
+ 
+-		newInstrument = fileItem->instrument;
+-		bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
++			newInstrument = fileItem->instrument;
++			bool isHibernating = newInstrument && !fileItem->instrumentAlreadyInSong;
+ 
+-		if (!newInstrument) {
+-			String newPresetName;
+-			fileItem->getFilenameWithoutExtension(&newPresetName);
+-			error =
+-			    StorageManager::loadInstrumentFromFile(this, nullptr, newOutputType, false, &newInstrument,
+-			                                           &fileItem->filePointer, &newPresetName, &Browser::currentDir);
+-		}
++			if (!newInstrument) {
++				String newPresetName;
++				fileItem->getFilenameWithoutExtension(&newPresetName);
++				error = StorageManager::loadInstrumentFromFile(this, nullptr, newOutputType, false, &newInstrument,
++				                                               &fileItem->filePointer, &newPresetName,
++				                                               &Browser::currentDir);
++			}
+ 
+-		Browser::emptyFileItems();
++			Browser::emptyFileItems();
+ 
+-		if (error != Error::NONE) {
+-			display->displayError(error);
+-			return nullptr;
+-		}
++			if (error != Error::NONE) {
++				display->displayError(error);
++				return nullptr;
++			}
+ 
+-		if (isHibernating) {
+-			removeInstrumentFromHibernationList(newInstrument);
++			if (isHibernating) {
++				removeInstrumentFromHibernationList(newInstrument);
++			}
+ 		}
+ 
+ 		display->displayLoadingAnimationText("Loading");
+@@ -5716,29 +5828,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
  	return newClip;
  }
  
@@ -22532,6 +23366,81 @@ index 20b6b2894..1974c207f 100644
  
  	int16_t defaultRangeI; // -1 means none yet
  
+diff --git a/src/deluge/storage/flash_storage.cpp b/src/deluge/storage/flash_storage.cpp
+index 9b5e8d53f..766065750 100644
+--- a/src/deluge/storage/flash_storage.cpp
++++ b/src/deluge/storage/flash_storage.cpp
+@@ -18,6 +18,7 @@
+ #include "storage/flash_storage.h"
+ #include "RZA1/cpu_specific.h"
+ #include "definitions_cxx.hpp"
++#include "dsp/drum_synth/drum_synth.h"
+ #include "gui/l10n/l10n.h"
+ #include "gui/menu_item/colour.h"
+ #include "gui/ui/sound_editor.h"
+@@ -26,6 +27,7 @@
+ #include "io/midi/midi_device_manager.h"
+ #include "io/midi/midi_engine.h"
+ #include "io/midi/midi_transpose.h"
++#include "model/instrument/synth_instruments.h"
+ #include "model/scale/preset_scales.h"
+ #include "processing/engines/audio_engine.h"
+ #include "processing/engines/cv_engine.h"
+@@ -278,6 +280,8 @@ MenuHighlighting accessibilityMenuHighlighting = MenuHighlighting::FULL_INVERSIO
+ 
+ OutputType defaultNewClipType = OutputType::SYNTH;
+ bool defaultUseLastClipType = true;
++uint8_t defaultKitInstrument = 0;
++uint8_t defaultSynthInstrument = 0;
+ 
+ ThresholdRecordingMode defaultThresholdRecordingMode = ThresholdRecordingMode::OFF;
+ 
+@@ -388,6 +392,8 @@ void resetSettings() {
+ 
+ 	defaultNewClipType = OutputType::SYNTH;
+ 	defaultUseLastClipType = true;
++	defaultKitInstrument = 0;
++	defaultSynthInstrument = 0;
+ 
+ 	defaultThresholdRecordingMode = ThresholdRecordingMode::OFF;
+ 
+@@ -869,6 +875,11 @@ void readSettings() {
+ 		screensaverMode =
+ 		    (buffer[196] < kNumScreensaverModes) ? static_cast<ScreensaverMode>(buffer[196]) : kDefaultScreensaverMode;
+ 	}
++
++	// Anything out of range (never saved here) is off: new tracks as stock
++	defaultKitInstrument =
++	    (buffer[198] < util::to_underlying(deluge::dsp::drum_synth::PresetKit::NUM_KITS)) ? buffer[198] : 0;
++	defaultSynthInstrument = (buffer[199] <= deluge::synth_instruments::kSynthInstruments.size()) ? buffer[199] : 0;
+ }
+ 
+ /// Sanity-check the pre-c1.3 MIDI-follow block (bytes 126-145) before migrating it. Same checks the deleted
+@@ -1137,6 +1148,9 @@ void writeSettings() {
+ 	buffer[196] = util::to_underlying(screensaverMode);
+ 	buffer[197] = screensaverTimeoutMinutes;
+ 
++	buffer[198] = defaultKitInstrument;
++	buffer[199] = defaultSynthInstrument;
++
+ 	R_SFLASH_EraseSector(0x80000 - 0x1000, SPIBSC_CH, SPIBSC_CMNCR_BSZ_SINGLE, 1, SPIBSC_OUTPUT_ADDR_24);
+ 	R_SFLASH_ByteProgram(0x80000 - 0x1000, buffer.data(), 256, SPIBSC_CH, SPIBSC_CMNCR_BSZ_SINGLE, SPIBSC_1BIT,
+ 	                     SPIBSC_OUTPUT_ADDR_24);
+diff --git a/src/deluge/storage/flash_storage.h b/src/deluge/storage/flash_storage.h
+index 2d965a0de..5b8dc624c 100644
+--- a/src/deluge/storage/flash_storage.h
++++ b/src/deluge/storage/flash_storage.h
+@@ -78,6 +78,10 @@ extern MenuHighlighting accessibilityMenuHighlighting;
+ 
+ extern OutputType defaultNewClipType;
+ extern bool defaultUseLastClipType;
++/// The instrument a new kit track starts as: a PresetKit (LXR, Cycles, GIN), or 0 for a stock kit
++extern uint8_t defaultKitInstrument;
++/// The instrument a new synth track starts as: 1 + its place in synth_instruments::kSynthInstruments, or 0 for stock
++extern uint8_t defaultSynthInstrument;
+ /// What the screensaver shows, or OFF to disable it entirely.
+ extern ScreensaverMode screensaverMode;
+ /// Minutes without physical input before the screensaver appears, kMinScreensaverTimeoutMinutes to
 diff --git a/src/deluge/storage/storage_manager.cpp b/src/deluge/storage/storage_manager.cpp
 index fd2e3f80b..58281df04 100644
 --- a/src/deluge/storage/storage_manager.cpp
@@ -23665,10 +24574,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..2cbbf9c1b
+index 000000000..d210bfa8d
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,347 @@
+@@ -0,0 +1,353 @@
 +---
 +title: Drum Synth
 +---
@@ -23694,6 +24603,8 @@ index 000000000..2cbbf9c1b
 +   - **Cycles**: the Model:Cycles' usual six tracks as Cyc engine rows, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**. They play at the note, as the Cycles does at its default tune.
 +   - **GIN**: eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2** (choked by HAT1), **PERC1**, **PERC2**, **CLAP** and **OTHER**, playing GIN's first built in kit (808). Each row is tuned to its sound.
 +
++Picking **LXR**, **Cycles** or **GIN** goes straight into that kit's [Kit presets](#kit-presets) (from v1.19), playing the top one: the first preset in its folder, or the kit as described above if the folder is empty (on GIN, its first built in kit). Keep it with **SELECT**, or **BACK** to the New kit menu with the kit as described above.
++
 +The rows a preset kit makes have softly coloured audition pads, by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN (brighter on the selected row). You can add more rows above or below them: tap an empty audition pad and a new row appears there with **SYNTH MODE** open, so you can turn it into any engine, **Sample** or FM straight away (or hold the empty pad and press **LOAD** for a sample, **SYNTH** for a synth preset, **MIDI** or **CV**, as on any kit). Added rows aren't coloured. On a preset kit, **SHIFT + KIT** opens its [Kit presets](#kit-presets); **BACK** from there goes up to the Kit / LXR / Cycles / GIN menu, where its own type goes back into its presets. Once a preset kit has rows added, that menu won't swap it for another kit, which would leave the added rows without their sounds: the screen shows **CANT**. Without added rows, swapping keeps the pattern on the rows the new kit fills.
 +
 +Every other engine (Vtg Snr, clap eng, DXIA, DIIA) is a **SYNTH MODE** choice. You can turn any row of any kit, or any synth, into a drum synth: press the **SYNTH MODE** shortcut and choose an engine. That way sampled and synthesised drums can share a kit. See [Choosing an engine](#choosing-an-engine).
@@ -23706,7 +24617,11 @@ index 000000000..2cbbf9c1b
 +2. Turn **SELECT**. Each preset plays on the kit's preset rows straight away; the pattern, its notes and any rows you added stay as they are. The audition pads still play the rows.
 +3. Press **SELECT** (or **KIT**) to keep the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu, where you can swap to the other preset kit (if no rows have been added) or go back into the presets.
 +
++**Without the list** (from v1.19): in the clip, turning **SELECT** on a preset kit steps to the next or previous one in the same list and keeps it straight away, with the name on the screen. It goes round at the ends. Turning **SELECT** never swaps a preset kit for a sample kit.
++
 +The list is **Default** (the rows as SHIFT + KIT first makes them) then the presets in name order. On a GIN kit, **Default** is replaced by GIN's sixteen built in kits (see [GIN](#gin)), so they can be cycled through with nothing on the card; the one you keep is remembered like a preset. It opens on the one the kit is on, so you carry on from there: the last preset kept (saved with the kit), or the preset a kit loaded from the presets folder is named after. A kit on none of them gets **Current** at the top.
++
++**New kit tracks as a preset kit.** Set **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT INSTRUMENT** (**KIT**) to **LXR**, **Cycles** or **GIN** (from v1.19; **OFF**, the default, is stock). Then every new kit track (a new clip in song view, the **KIT** button on a clip that has never been a kit, a new arranger track) starts as that kit on its top preset that isn't on another track, or the kit as SHIFT + KIT makes it if there's none. A GIN track starts on GIN's first built in kit.
 +
 +**Making presets.** A preset is an ordinary kit file in **KITS/CYCLES** (Cycles kits), **KITS/LXR** (LXR kits) or **KITS/GIN** (GIN kits). LXR-02 kits (.SND files) convert with `lxr_to_deluge.py`, Model:Cycles kits with `cycles_to_deluge.py`. Set up a preset kit's rows the way you like, then save the kit into that folder. The folder is made the first time you open the Kit presets list, so it's there to save into. Only the preset rows are read back, bottom first: rows you added to the kit you saved from are ignored. A kit file made by hand with no preset rows gives its sound rows, bottom first. If a preset has fewer rows than the kit, the rest keep their sounds.
 +
@@ -24018,10 +24933,10 @@ index 000000000..2cbbf9c1b
 +The drum synth code is licensed GPL-3.0-only, with the additional terms in the LXR firmware's NOTICE.md: it is marked as a modified version, and no rights to the Erica Synths or LXR trademarks are granted.
 diff --git a/website/src/content/docs/features/synth_instruments.mdx b/website/src/content/docs/features/synth_instruments.mdx
 new file mode 100644
-index 000000000..dd0dad4a4
+index 000000000..1738e6fbb
 --- /dev/null
 +++ b/website/src/content/docs/features/synth_instruments.mdx
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,25 @@
 +---
 +title: Synth Instruments
 +---
@@ -24043,3 +24958,7 @@ index 000000000..dd0dad4a4
 +- On kit, MIDI and CV tracks, and with a menu open, **SHIFT + SYNTH** still makes a new blank synth. **MOD7 + SYNTH** still makes a new DX7 synth.
 +- Ringmod, the 303 and the drum synth engines aren't in the list: pick those in **SYNTH MODE**.
 +- The list is one table in the source (`model/instrument/synth_instruments.h`): a new instrument is one entry, its name, and its preset folder.
++
++## Default synth instrument
++
++From v1.19, **SETTINGS > DEFAULTS > UI > CLIP TYPE > SYNTH INSTRUMENT** (**SYNT**) picks the instrument every new synth track starts as: **OFF** (the default, stock), **Deluge**, **DLFM** or **DX7**. A new synth track (a new clip in song view, the **SYNTH** button on a clip that has never been a synth, a new arranger track, and the synth a new song starts with) then loads that instrument's first preset not on another track, or a blank synth of its kind if there's none. Turning **SELECT** steps through that folder's presets as usual. DX7 only applies with the DX7 engine on in Community Features. The kit equivalent, **KIT INSTRUMENT**, is in the [drum synth](../drum_synth/#kit-presets) page.
