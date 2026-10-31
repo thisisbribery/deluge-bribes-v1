@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.19
+# BRIBELUGE: Deluge Bribes FW v1.20
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -15,7 +15,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
 11. **[Affect all](#11-affect-all) (new in v1.15):** a performance snapshot for LXR, Cycles and GIN kits. SHIFT + AFFECT ENTIRE freezes the kit, then every gold knob turn moves all the drums at once, or the kit's FX, and SHIFT + AFFECT ENTIRE again snaps it all back on the next bar.
-12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout.
+12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout. New in v1.20: hold any shortcut pad and the 7-segment display scrolls the full name of what it changes.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
 14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
 
@@ -36,6 +36,8 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **New in v1.19: default instruments.** Set a default kit and a default synth in **SETTINGS > DEFAULTS > UI > CLIP TYPE**, and every new kit or synth track starts as that instrument, on its top preset. Turning SELECT on an LXR, Cycles or GIN kit now steps through that kit's presets instead of swapping it for a sample kit, and picking LXR, Cycles or GIN with SHIFT + KIT opens its presets straight away. See [Default instruments](#14-default-instruments).
 
+**New in v1.20: shortcut pad names.** On a 7-segment Deluge, hold SHIFT (or an audition pad) and hold any shortcut pad: the display scrolls the full name of what that pad changes, so you can learn the layout as you go. Let go and it shows the value. See [Pad names](#pad-names).
+
 [Back to top](#readme-top)
 
 ## About
@@ -51,9 +53,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.19.bin`](firmware/deluge-bribes-v1.19.bin)
+[`firmware/deluge-bribes-v1.20.bin`](firmware/deluge-bribes-v1.20.bin)
 
-SHA-256: `d52cabc1bc39f19cb92cec9e4af01051a79de283c99742aec0f5197f154fcb2d`
+SHA-256: `5f69b0703b9a73206bf97ebe956f95b879ca80ac99430ad346f8dd8ff3b4dde3`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -61,7 +63,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.19.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.20.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -100,6 +102,7 @@ To go back, install an official firmware file the same way.
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | Character A / B: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
 | **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one (Pad Guides) |
 | **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
+| **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
 | **SHIFT + SYNTH on a synth track** | Pick the instrument: **Deluge**, **DLFM** or **DX7**. SHIFT + SYNTH again moves on, SELECT loads its first preset (Synth instruments) |
 | **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
@@ -693,6 +696,15 @@ Visual guides to what each pad and gold knob does. **Pad Guides** (**GUID**) is 
 - Hold any gold knob button. Its two settings' names show as before, and their shortcut pads flash: **red** for the top knob, **yellow** for the bottom.
 - Works on every sound (synths, FM, the 303, drum synth rows, sample rows) and on kit, audio clip and song FX.
 - A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
+
+### Pad names
+
+New in v1.20, on a 7-segment Deluge.
+
+- Hold **SHIFT** (or an audition pad) and hold a shortcut pad. The display scrolls the full name of the setting it opens, the one the OLED shows as its title, instead of the four-letter name. On the drum synth pads that's the engine's own name for it, like Amp decay, Color or Shape.
+- Let go of the pad and the display shows the value. Turning SELECT while you hold shows the value straight away.
+- Press a pad twice for its second layer and that layer's name scrolls.
+- Works on every shortcut pad, on every sound, and on kit, audio clip and song FX. It doesn't depend on the Pad Guides setting.
 
 ### Drum synth knobs
 

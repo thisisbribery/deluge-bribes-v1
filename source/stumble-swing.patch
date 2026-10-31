@@ -14206,18 +14206,21 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index d3eae8c3c..52fcedefb 100644
+index d3eae8c3c..ca3775efb 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
-@@ -3,6 +3,7 @@
+@@ -2,7 +2,10 @@
+ #include "gui/ui/sound_editor.h"
  #include "definitions_cxx.hpp"
  #include "extern.h"
++#include "gui/l10n/l10n.h"
++#include "gui/l10n/language.h"
  #include "gui/l10n/strings.h"
 +#include "gui/menu_item/drum_synth/editor.h"
  #include "gui/menu_item/dx/param.h"
  #include "gui/menu_item/file_selector.h"
  #include "gui/menu_item/horizontal_menu.h"
-@@ -158,6 +159,21 @@ PLACE_SDRAM_RODATA constexpr RGB mono_mod_shortcut_colours [][kDisplayHeight] =
+@@ -158,6 +161,21 @@ PLACE_SDRAM_RODATA constexpr RGB mono_mod_shortcut_colours [][kDisplayHeight] =
  
  //clang-format on
  
@@ -14239,7 +14242,7 @@ index d3eae8c3c..52fcedefb 100644
  bool isRelevant(ModControllableAudio* forThing, MenuItem* menuitem, int32_t thing)
  {
  	// we have a menuitem, and we either have nothing to check or we checked and it's relevant
-@@ -176,7 +192,8 @@ void SoundEditor::renderMainShortcutsOnly(ModControllableAudio* forThing, RGB im
+@@ -176,7 +194,8 @@ void SoundEditor::renderMainShortcutsOnly(ModControllableAudio* forThing, RGB im
  		for (int32_t xDisplay = 0; xDisplay < kDisplayWidth; xDisplay++)
  		{
  			auto [menuitem, _] = get_basic_shortcut_action(xDisplay, yDisplay, doKitAffectEntire);
@@ -14249,7 +14252,7 @@ index d3eae8c3c..52fcedefb 100644
  			{
  				image[yDisplay][xDisplay] = shortcut_colours[xDisplay][yDisplay];
  			}
-@@ -215,7 +232,15 @@ bool SoundEditor::in_sound_editor() {
+@@ -215,7 +234,15 @@ bool SoundEditor::in_sound_editor() {
  bool SoundEditor::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                   uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth], bool drawUndefinedArea)
  {
@@ -14266,7 +14269,7 @@ index d3eae8c3c..52fcedefb 100644
  	if (!image)
  	{
  		D_PRINTLN("no image");
-@@ -249,6 +274,8 @@ bool SoundEditor::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth +
+@@ -249,6 +276,8 @@ bool SoundEditor::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth +
  	D_PRINTLN("rendering pad colours");
  
  	renderMainShortcutsOnly(currentModControllable, image, occupancyMask, editingKitAffectEntire());
@@ -14275,7 +14278,7 @@ index d3eae8c3c..52fcedefb 100644
  
  
  	MenuItem* item = getCurrentMenuItem();
-@@ -420,7 +447,40 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
+@@ -420,7 +449,40 @@ void SoundEditor::setCurrentSource(int32_t sourceIndex) {
  	}
  }
  
@@ -14316,7 +14319,7 @@ index d3eae8c3c..52fcedefb 100644
  	bool doGreyout = true;
  
  	RootUI* rootUI = getRootUI();
-@@ -452,6 +512,16 @@ bool SoundEditor::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
+@@ -452,6 +514,16 @@ bool SoundEditor::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
  		}
  		else {
  			*cols = 0xFFFFFFFE;
@@ -14333,7 +14336,7 @@ index d3eae8c3c..52fcedefb 100644
  		}
  		break;
  	case UIType::PERFORMANCE:
-@@ -963,9 +1033,15 @@ ActionResult SoundEditor::exitCompletely() {
+@@ -963,9 +1035,15 @@ ActionResult SoundEditor::exitCompletely() {
  
  bool SoundEditor::findPatchedParam(int32_t paramLookingFor, int32_t* xout, int32_t* yout, bool* isSecondLayerParamOut) {
  	bool found = false;
@@ -14350,7 +14353,7 @@ index d3eae8c3c..52fcedefb 100644
  				*isSecondLayerParamOut = false;
  				*xout = x;
  				*yout = y;
-@@ -1012,6 +1088,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
+@@ -1012,6 +1090,17 @@ void SoundEditor::updateSourceBlinks(MenuItem* currentItem) {
  
  void SoundEditor::setupShortcutsBlinkFromTable(MenuItem const* const currentItem,
                                                 MenuItem const* const items[kDisplayWidth][kDisplayHeight]) {
@@ -14368,7 +14371,7 @@ index d3eae8c3c..52fcedefb 100644
  	for (auto x = 0; x < kDisplayWidth; ++x) {
  		for (auto y = 0; y < kDisplayHeight; ++y) {
  			if (items[x][y] == currentItem) {
-@@ -1090,14 +1177,20 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
+@@ -1090,14 +1179,20 @@ void SoundEditor::updatePadLightsFor(MenuItem* currentItem) {
  			}
  
  			// First, see if there's a shortcut for the actual MenuItem we're currently on
@@ -14391,7 +14394,7 @@ index d3eae8c3c..52fcedefb 100644
  						if (x == 10 && y < 6 && editingReverbSidechain()) {
  							goto stopThat;
  						}
-@@ -1422,7 +1515,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1422,7 +1517,7 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  	}
  	else if (not editingNothing())
  	{
@@ -14400,7 +14403,50 @@ index d3eae8c3c..52fcedefb 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1586,10 +1679,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1430,7 +1525,42 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+ 
+ static const uint32_t shortcutPadUIModes[] = {UI_MODE_AUDITIONING, UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR, 0};
+ 
++/// While its shortcut pad is held, the 7SEG scrolls the full name of what the pad edits, so the shortcuts can be learnt.
++/// Letting go shows the value again.
++void SoundEditor::showShortcutName(int32_t x, int32_t y) {
++	if (!display->have7SEG() || getCurrentUI() != this) {
++		return;
++	}
++	// The OLED's titles, in English: the 7SEG's own names are cut down to four letters
++	const deluge::l10n::Language* language = deluge::l10n::chosenLanguage;
++	deluge::l10n::chosenLanguage = &deluge::l10n::built_in::english;
++	const std::string_view title = getCurrentMenuItem()->getTitle();
++	deluge::l10n::chosenLanguage = language;
++
++	char name[32];
++	const size_t length = std::min(title.size(), sizeof(name) - 1);
++	memcpy(name, title.data(), length);
++	name[length] = 0;
++	display->setScrollingText(name, 0, 400);
++	namedShortcutX = x;
++	namedShortcutY = y;
++}
++
++void SoundEditor::endShortcutName(int32_t x, int32_t y) {
++	if (x != namedShortcutX || y != namedShortcutY) {
++		return;
++	}
++	namedShortcutX = kNoSelection;
++	namedShortcutY = kNoSelection;
++	if (getCurrentUI() == this) {
++		getCurrentMenuItem()->readValueAgain();
++	}
++}
++
+ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool on) {
++	if (!on) {
++		endShortcutName(x, y);
++	}
+ 	// a bunch of other views call this, in which case we actually want to know if we *would* edit kit affect entire
+ 	// if we were to open a menu. There's a weird edge case in kits otherwise where trying to open a kit param that doesn't
+ 	// exist in the current selected drum row (like if a filter is off or different modfx) otherwise
+@@ -1586,10 +1716,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				//< randomizer shortcuts
  
  
@@ -14419,7 +14465,7 @@ index d3eae8c3c..52fcedefb 100644
  
  					// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  					secondLayerShortcutsToggled =
-@@ -1598,7 +1698,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1598,7 +1735,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  							? !secondLayerShortcutsToggled
  							: false;
  
@@ -14428,7 +14474,7 @@ index d3eae8c3c..52fcedefb 100644
  						if (const auto secondLayerItem = paramShortcutsForSoundsSecondLayer[x][y];
  							secondLayerItem != nullptr) {
  							item = secondLayerItem;
-@@ -1607,6 +1707,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1607,6 +1744,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			}
  		}
@@ -14448,7 +14494,7 @@ index d3eae8c3c..52fcedefb 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1631,7 +1744,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1631,7 +1781,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			// Special shortcut for Note Row Editor menu: [audition pad] + [sequence direction pad]
  			Clip* currentClip = getCurrentClip();
@@ -14461,7 +14507,7 @@ index d3eae8c3c..52fcedefb 100644
  			    && display->haveOLED() && runtimeFeatureSettings.get(HorizontalMenus) == On
  			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
  
-@@ -1650,6 +1767,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1650,11 +1804,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -14474,7 +14520,13 @@ index d3eae8c3c..52fcedefb 100644
  			if (!setupSuccess) {
  				return ActionResult::DEALT_WITH;
  			}
-@@ -1704,6 +1827,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+ 
+ 			enterOrUpdateSoundEditor(on);
++			showShortcutName(x, y);
+ 		}
+ 
+ 
+@@ -1704,6 +1865,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -14489,7 +14541,7 @@ index d3eae8c3c..52fcedefb 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2147,6 +2278,7 @@ doMIDIOrCV:
+@@ -2147,6 +2316,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -14498,7 +14550,7 @@ index d3eae8c3c..52fcedefb 100644
  
  	return true;
 diff --git a/src/deluge/gui/ui/sound_editor.h b/src/deluge/gui/ui/sound_editor.h
-index 85daba70e..3631e3642 100644
+index 85daba70e..1472f02a7 100644
 --- a/src/deluge/gui/ui/sound_editor.h
 +++ b/src/deluge/gui/ui/sound_editor.h
 @@ -59,6 +59,12 @@ public:
@@ -14514,6 +14566,26 @@ index 85daba70e..3631e3642 100644
  	Sound* currentSound;
  	bool allowsNoteTails;
  	ModControllableAudio* currentModControllable;
+@@ -114,6 +120,10 @@ public:
+ 	uint8_t paramShortcutBlinkFrequency;
+ 	uint32_t shortcutBlinkCounter;
+ 
++	/// The shortcut pad held down while the 7SEG scrolls the name of what it edits, or kNoSelection
++	uint8_t namedShortcutX = kNoSelection;
++	uint8_t namedShortcutY = kNoSelection;
++
+ 	uint32_t timeLastAttemptedAutomatedParamEdit;
+ 
+ 	int8_t numberScrollAmount;
+@@ -137,6 +147,8 @@ public:
+ 	void enterOrUpdateSoundEditor(bool on);
+ 	void blinkShortcut();
+ 	ActionResult potentialShortcutPadAction(int32_t x, int32_t y, bool on);
++	void showShortcutName(int32_t x, int32_t y);
++	void endShortcutName(int32_t x, int32_t y);
+ 	bool editingReverbSidechain();
+ 	MenuItem* getCurrentMenuItem();
+ 	bool inSettingsMenu();
 diff --git a/src/deluge/gui/ui_timer_manager.cpp b/src/deluge/gui/ui_timer_manager.cpp
 index 86bfc3fd6..264098dfe 100644
 --- a/src/deluge/gui/ui_timer_manager.cpp
@@ -24574,10 +24646,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..d210bfa8d
+index 000000000..fbe453a82
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,353 @@
+@@ -0,0 +1,355 @@
 +---
 +title: Drum Synth
 +---
@@ -24737,6 +24809,8 @@ index 000000000..d210bfa8d
 +## Shortcut pads
 +
 +Every drum engine has the same settings on the same pads, in the **MOD1** and **MOD2** columns (changed in v1.16). Hold **SHIFT** and press a pad to open its setting. The same pad does the same job on every engine: decay on one engine's decay pad is decay on all of them. An engine without a setting leaves its pad empty.
++
++On a 7-segment Deluge, while you hold a shortcut pad the display scrolls the full name of what it changes, and when you let go it shows the value (new in v1.20). This works on every shortcut pad, not just the drum synth ones.
 +
 +- **MOD1, from the bottom up:** Decay, Drive, Pitch, Pitch envelope amount, Pitch envelope speed, Character A, Character B, Extra 1.
 +- **MOD2, from the bottom up:** Extras 2 to 9, each engine's own settings.
