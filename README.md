@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.17
+# BRIBELUGE: Deluge Bribes FW v1.18
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -18,7 +18,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
 
-**Jump to:** [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
+**Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
 With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting (the tone starts flat). Songs saved before keep their own swing and sound the same through the delay.
 
@@ -31,13 +31,26 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 - **Drum synth hits stop when you can no longer hear them.** A hit now ends once it's 72 dB down, where it used to run on to 100 dB. Long tails (cymbals, open hats, toms, Chord, Tone) end about a quarter sooner, and that difference is far too quiet to hear. A Decay of 127 still holds for as long as the note does.
 - **Quiet tails are cut first.** When the CPU does run short, a drum synth hit that's already 40 dB down is cut before notes you can still hear.
 
-Running more than one drum synth kit at once can still use up the CPU.
+**New in v1.18: Cycles engines at a fraction of the cost.** The Cycles engines now build their sines from a lookup table, instead of working each one out every sample. By an estimate from the compiled code, Metal, Chord, Vtg Snr, Perc and Tone cost about a third to a quarter of what they did, and they sound the same. Tested on hardware: a Cycles kit and an LXR kit playing together with a 303 and another synth, with no voice stealing and the CPU peaking around 75 to 80%.
+
+[Back to top](#readme-top)
+
+## About
+
+My approach to Bribeluge isn't to stack features on top of the Deluge's existing architecture. It's to make the Deluge a more deliberate and direct instrument for my needs: almost a brand new ultra version of what the Deluge has been for me since about 2018.
+
+- **It isn't built for everyone.** I haven't optimised it for widespread use.
+- **Backwards compatibility isn't the priority.** I haven't worried too much about songs made on earlier firmware. That said, I've tested a lot of older songs I've cut in the past and haven't found errors in any of them, so most of it seems to be backwards compatible.
+- **Eight deep tracks, not sixteen.** I'm not working towards an instrument with 16 or more tracks playing at once, or a multitrack mini DAW. I'm working towards a really refined 8-track machine, with an exceptional amount of capability within those 8 tracks.
+- **Performance first.** I'd rather it be super optimised and performance friendly, with the features I've been missing since the Deluge was first released, like sample start offset.
+
+[Back to top](#readme-top)
 
 ## Download
 
-[`firmware/deluge-bribes-v1.17.bin`](firmware/deluge-bribes-v1.17.bin)
+[`firmware/deluge-bribes-v1.18.bin`](firmware/deluge-bribes-v1.18.bin)
 
-SHA-256: `5bd953ad9bf304e04a58764ffc998a351658adfcc798cebf71ba4b214f7f9a9f`
+SHA-256: `c900ed4842a98d3d72c40bfdb5d32e00f9e4d7f8b9ff4969c5af5aadb5e8c2eb`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -45,7 +58,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.17.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.18.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -497,6 +510,7 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 - The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
 - **From v1.17** each hit ends once it's 72 dB down (it was 100 dB, 80 on GIN). The Cyc engines fade out over the last few samples. When the CPU runs short, a hit that's 40 dB down is cut before notes you can still hear. See [New in v1.17](#readme-top) at the top.
+- **From v1.18** the Cycles engines build their sines from a lookup table and cost an estimated third to a quarter of what they did, for the same sound. Metal's feedback is chaotic, so its waveform never comes out exactly the same from one build to the next, but it sounds the same.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
 - Fixed in v1.15: CUSTOM 1 tunes rows loaded from preset kit files too (it was on portamento).
 - Kits with drum synth rows won't play those rows on firmware without them.
