@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.22.1
+# BRIBELUGE: Deluge Bribes FW v1.22.2
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -9,7 +9,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **[Autofill](#3-autofill):** TAP plays drum fills over your beat, with five fill types to pick from.
 4. **[Mono sequencer](#4-mono-sequencer):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row. From v1.16.1 a mono clip always plays in scale mode.
 5. **[Endless Record](#5-endless-record):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine. New in v1.21: **[ULTRAKIK](#ultrakik-new-in-v121)**, a kick engine with sixteen presets, from deep 808s to fully broken kicks.
+6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine. New in v1.21: **[ULTRAKIK](#ultrakik-new-in-v121)**, a kick engine with sixteen presets, from deep 808s to fully broken kicks. New in v1.22.2: the kick engines send full to the sidechain.
 7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound. New in v1.16.1: the drive can be learned to a gold knob, automated and MIDI learned.
 8. **[Sample start offset](#8-sample-start-offset):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
 9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11). New in v1.22: **DIRT**, a gritty, saturating version of the 303 filter that the drive pushes into, picked from the LPF MODE pad. Changed in v1.22.1: Drive is an overdrive after the filter, and Decay changes the sound across its whole knob.
@@ -18,7 +18,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout. New in v1.20: hold any shortcut pad and the 7-segment display scrolls the full name of what it changes.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
 14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
-15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate.
+15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate. Changed in v1.22.2: **GATE** is the first item in a row's menu, and CV clips keep off the kit's gates.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -49,6 +49,8 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **Changed in v1.22.1: 303 Drive and Decay.** Drive in v1.22 pushed the note into DIRT's clipper, which squashed the resonance and got a lot louder. It's now an overdrive after the filter, like a pedal after a 303, on all three filters: it keeps the squelch, keeps the bass full, takes the fizz off as it goes up and gets about 3 dB louder at the top. Decay barely changed a 16th-note pattern from the middle of its knob up; it now changes the sound evenly from about 30 ms to 2.8 s, acts as you turn it, and accented notes follow it too. Every 303 now loads on DIRT, and the LPF MORPH, ENV1 DECAY and ENV2 DECAY pads reach Drive, Amp decay and Decay. See [303 synth](#9-303-synth).
 
+**Changed in v1.22.2: Gate out on one press, and kicks on the sidechain.** **GATE** is now the first item in a kit row's menu: hold the row's audition pad, press SELECT, press SELECT on GATE and turn to **OFF** or gate **1** to **4**. CV clips and GATE rows can't use a gate the kit is on any more, and a new CV clip skips CV channels whose gate is taken. Cyc Kik, ULTRAKIK, the LXR kick and the GIN kick sounds send full to the sidechain, whether a whole kit loads or one is picked on a row or a synth. See [Gate out](#15-gate-out) and [Drum synth](#6-drum-synth).
+
 [Back to top](#readme-top)
 
 ## About
@@ -64,7 +66,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.22.1.bin`](firmware/deluge-bribes-v1.22.1.bin)
+[`firmware/deluge-bribes-v1.22.2.bin`](firmware/deluge-bribes-v1.22.2.bin)
 
 SHA-256: `a420462ff2291542cb1401bd170b8db4cb2b8f93925384cd65ed863a512aa103`
 
@@ -74,7 +76,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.22.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.22.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -127,6 +129,7 @@ To go back, install an official firmware file the same way.
 | **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
 | **SHIFT + LPF MODE pad on a 303** | The 303's filter: **303**, **LP18** or **DIRT** (303 synth, new in v1.22) |
 | **SHIFT + LPF MORPH / ENV1 DECAY / ENV2 DECAY pad on a 303** | Drive / Amp decay / Decay (303 synth, new in v1.22.1) |
+| **Audition pad + SELECT > GATE** | That kit row's gate output: off or 1 to 4 (Gate out, first in the row's menu from v1.22.2) |
 | **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
@@ -583,6 +586,7 @@ Its twelve continuous settings (everything on MOD1 and MOD2 except Pitch, Click 
 - **From v1.18** the Cycles engines build their sines from a lookup table and cost an estimated third to a quarter of what they did, for the same sound. Metal's feedback is chaotic, so its waveform never comes out exactly the same from one build to the next, but it sounds the same.
 - Fixed in v1.8: loading a song no longer resets the LXR transient level and speed, or DXIA's Freq 2 and 3.
 - Fixed in v1.15: CUSTOM 1 tunes rows loaded from preset kit files too (it was on portamento).
+- **Kicks send to the sidechain (from v1.22.2).** Cyc Kik, ULTRAKIK, the LXR kick and the GIN kick sounds send full to the sidechain when a preset kit loads, when one is picked on a row or a synth (SYNTH MODE, an ULTRAKIK preset, a GIN kick sound, the LXR kick preset), and when a kit or synth preset loads from the card (LXR drum and GIN sounds there only if named kick, kik or bd, as kick samples are). Picking something else lets go of the full send. Songs keep what they were saved with.
 - Kits with drum synth rows won't play those rows on firmware without them.
 - The full reference is in the source patch, at `website/src/content/docs/features/drum_synth.mdx`.
 
@@ -816,13 +820,13 @@ New in v1.22. **Gate out** (**GATE OUT**) sends a kit's bottom four rows out of 
 
 | Setting | Where | What it does |
 |---|---|---|
-| **Gate out** (**GATE OUT**) | The kit's menu (AFFECT ENTIRE on), after **Kit arp**; or the end of the **Drum synth** menu on a drum synth row | On or off for the whole kit. Off on new kits, saved with the song |
-| **Row gate** (**ROW GATE**) | The **Drum synth** menu, after Gate out | That row's gate: **AUTO** (by row, as above), **OFF**, or gate **1** to **4**. Two rows can share a gate. Saved with the row |
+| **Gate** (**GATE**) | First in a kit row's menu: hold the row's audition pad, press SELECT, press SELECT on GATE (changed in v1.22.2) | That row's gate: **OFF** or gate **1** to **4**, showing the gate it fires. On any sound row. Picking a gate on a kit that isn't on the gates puts that row alone on them; turning the last row off takes the kit off. Saved with the song |
+| **Gate out** (**GATE OUT**) | First in the kit's menu (AFFECT ENTIRE on) | On or off for the whole kit. Turning it on with no rows on a gate starts from rows 1 to 4 on gates 1 to 4. Off on new kits, saved with the song |
 
-- **One kit at a time.** Turning Gate out on for one kit turns it off for every other kit in the song.
+- **One kit at a time.** Turning Gate out on for one kit turns it off for every other kit in the song. Two rows can share a gate.
 - **Gate length.** A sound with a tail (a held note, a decay that holds) holds its gate for as long as the note plays. A one-shot hit sends a 12 ms trigger. A new hit drops the gate first, so every hit retriggers, and every gate stays high at least 12 ms so a module always sees it.
 - Any sound row in rows 1 to 4 fires a gate, samples included, and the arpeggiator's notes too. MIDI and gate rows don't.
-- CV clips or a kit's GATE rows on the same gate outputs still share them with Gate out, so keep them on different gates.
+- **The kit's gates are its own (from v1.22.2).** CV clips and a kit's GATE rows can't use a gate a Gate out row is on. A new CV clip skips CV channels whose gate is taken, and shows **no unused channels** if gates 1 and 2 both are. Move a row off gate 1 or 2 to free it.
 
 [Back to top](#readme-top)
 
