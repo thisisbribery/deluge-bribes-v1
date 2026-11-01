@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.21
+# BRIBELUGE: Deluge Bribes FW v1.22
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -12,12 +12,13 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine. New in v1.21: **[ULTRAKIK](#ultrakik-new-in-v121)**, a kick engine with sixteen presets, from deep 808s to fully broken kicks.
 7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound. New in v1.16.1: the drive can be learned to a gold knob, automated and MIDI learned.
 8. **[Sample start offset](#8-sample-start-offset):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
-9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11).
+9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11). New in v1.22: **DIRT**, a gritty, saturating version of the 303 filter that the drive pushes into, picked from the LPF MODE pad.
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
 11. **[Affect all](#11-affect-all) (new in v1.15):** a performance snapshot for LXR, Cycles and GIN kits. SHIFT + AFFECT ENTIRE freezes the kit, then every gold knob turn moves all the drums at once, or the kit's FX, and SHIFT + AFFECT ENTIRE again snaps it all back on the next bar.
 12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout. New in v1.20: hold any shortcut pad and the 7-segment display scrolls the full name of what it changes.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
 14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
+15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -42,6 +43,10 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **Fixed in v1.21: songs with named kits load again.** From v1.12 the firmware read a kit's own name as its Kit presets entry, so songs whose clips find their kit by name came up **CORRUPTED**, including songs made on official firmware. Nothing on the card was damaged: those songs load again now. Kits saved since v1.12 keep their Kit presets entry.
 
+**New in v1.22: DIRT, a dirtier 303 filter.** The 303 always ran on Open303's own filter, and that filter is clean: Open303 leaves its saturation out. DIRT adds it back, where the note meets the resonance, so high resonance squashes and growls instead of ringing clean. Drive now pushes the note into the filter, getting dirtier and louder as it goes up. A new 303 starts on DIRT, and on a 303 the LPF MODE pad picks between **303**, **LP18** and **DIRT** instead of the Deluge's filters (which the 303 never used). 303s saved before keep their sound. See [303 synth](#9-303-synth).
+
+**New in v1.22: Gate out.** Turn on **Gate out** for a kit and its bottom four rows fire gate outputs 1 to 4 as they play: held notes hold the gate, one-shot hits send a short trigger. See [Gate out](#15-gate-out).
+
 [Back to top](#readme-top)
 
 ## About
@@ -57,9 +62,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.21.bin`](firmware/deluge-bribes-v1.21.bin)
+[`firmware/deluge-bribes-v1.22.bin`](firmware/deluge-bribes-v1.22.bin)
 
-SHA-256: `1e673cf2f2d8217d1ea9dd5a2c7137e7f6eb3ffa800828caac2b5de7579b1e75`
+SHA-256: `80137cbe8f0d3818018664ed56dfd19167169f00644a5775d6f056a562e1cfa8`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -67,7 +72,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.21.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.22.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -118,6 +123,8 @@ To go back, install an official firmware file the same way.
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 | **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
 | **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
+| **SHIFT + LPF MODE pad on a 303** | The 303's filter: **303**, **LP18** or **DIRT** (303 synth, new in v1.22) |
+| **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
@@ -660,12 +667,12 @@ A 303 track always plays from the mono sequencer, so its grid becomes the 8 fixe
 | **Resonance** (**RES**) | Gold knob Cutoff/Res (bottom), SHIFT + LPF RESONANCE pad | Filter resonance |
 | **Env mod** (**ENV**) | Gold knob Mod rate/depth (bottom), SHIFT + MOD1 LEVEL or MOD FX DEPTH pad | How far the envelope opens the filter |
 | **Decay** (**DCAY**) | Gold knob Mod rate/depth (top), SHIFT + MOD2 LEVEL or MOD FX RATE pad | The filter envelope's decay, 200 to 2000 ms |
-| **Drive** (**DRIV**, new in v1.11) | Gold knob Attack/Release (top), SHIFT + OSC1 FEEDBACK pad | The drum synth engines' soft clipper. 0 is clean; low settings bite on accents first, and it gets much dirtier than it gets louder |
+| **Drive** (**DRIV**, new in v1.11) | Gold knob Attack/Release (top), SHIFT + OSC1 FEEDBACK pad | On **DIRT**, pushes the note up to 24 dB harder into the filter: dirtier and 8 to 12 dB louder as it goes up, never quieter (new in v1.22). On **303** and **LP18**, the drum synth engines' soft clipper after the filter: 0 is clean, low settings bite on accents first, and it gets much dirtier than it gets louder |
 | **Amp decay** (**ADEC**, new in v1.11) | Gold knob Attack/Release (bottom), SHIFT + OSC1 WAVE INDEX pad | How long each note's level dies away while held: 60 ms, Open303's own 1230 ms at the centre (where older 303s sit), holding at the top |
 | **Accent** (**ACC**) | Gold knob CUSTOM 2, SHIFT + OSC1 RETRIGGER pad | How hard accented notes hit |
 | **Saw-square** (**WAVE**) | Gold knob CUSTOM 3, SHIFT + OSC1 PULSE WIDTH or OSC2 FEEDBACK pad | Fades from saw (0) to square (50) |
 | **Slide time** (**SLID**) | Gold knob Portamento (bottom), SHIFT + MOD1 FEEDBACK pad | How long a slide takes to arrive |
-| **Filter** (**FILT**) | SHIFT + MOD2 FEEDBACK pad | **303**, a model of the TB-303's filter, or **LP18**, Open303's plainer 18 dB lowpass |
+| **Filter** (**FILT**) | SHIFT + LPF MODE or MOD2 FEEDBACK pad, the LPF MODE menu | **DIRT** (new in v1.22), the TB-303 filter with saturation where the note meets the resonance; **303**, Open303's clean model of the TB-303's filter; or **LP18**, Open303's plainer 18 dB lowpass. A new 303 starts on DIRT; 303s saved before v1.22 keep the filter they had |
 
 They're all in the sound menu under **303** too. Every one except Filter is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated.
 
@@ -676,7 +683,7 @@ They're all in the sound menu under **303** too. Every one except Filter is a De
 
 ### Good to know
 
-- The 303's own oscillator, filter and envelopes replace the Deluge's: the oscillator, filter, envelope and unison settings do nothing in 303 mode. **Saturation** (SHIFT + SATURATION pad) works as on any synth, and drives the 303 the way it drives a voice.
+- The 303's own oscillator, filter and envelopes replace the Deluge's: the oscillator, envelope and unison settings do nothing in 303 mode, nor do the HPF settings. From v1.22 the LPF MODE menu and pad pick the 303's own filter instead of the Deluge's. **Saturation** (SHIFT + SATURATION pad) works as on any synth, and drives the 303 the way it drives a voice.
 - Patch cables (LFOs and envelopes) don't reach the 303's controls yet. Gold knobs, menus, parameter locks and automation do.
 - Transpose, Fine tune and the arpeggiator all work. It's mono, so it plays one note at a time.
 - Songs and presets save the 303 setting. Firmware without it loads the sound as a normal subtractive synth.
@@ -800,6 +807,22 @@ With one set, a new track of that type starts on the instrument's top preset tha
 
 [Back to top](#readme-top)
 
+## 15. Gate out
+
+New in v1.22. **Gate out** (**GATE OUT**) sends a kit's bottom four rows out of the Deluge's four gate outputs as they play: row 1 to gate 1, row 2 to gate 2, row 3 to gate 3, row 4 to gate 4. On the LXR and Cycles preset kits that's kick, snare, hat 1 and hat 2, so a modular or another drum machine can follow the kit.
+
+| Setting | Where | What it does |
+|---|---|---|
+| **Gate out** (**GATE OUT**) | The kit's menu (AFFECT ENTIRE on), after **Kit arp**; or the end of the **Drum synth** menu on a drum synth row | On or off for the whole kit. Off on new kits, saved with the song |
+| **Row gate** (**ROW GATE**) | The **Drum synth** menu, after Gate out | That row's gate: **AUTO** (by row, as above), **OFF**, or gate **1** to **4**. Two rows can share a gate. Saved with the row |
+
+- **One kit at a time.** Turning Gate out on for one kit turns it off for every other kit in the song.
+- **Gate length.** A sound with a tail (a held note, a decay that holds) holds its gate for as long as the note plays. A one-shot hit sends a 12 ms trigger. A new hit drops the gate first, so every hit retriggers, and every gate stays high at least 12 ms so a module always sees it.
+- Any sound row in rows 1 to 4 fires a gate, samples included, and the arpeggiator's notes too. MIDI and gate rows don't.
+- CV clips or a kit's GATE rows on the same gate outputs still share them with Gate out, so keep them on different gates.
+
+[Back to top](#readme-top)
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -809,7 +832,8 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
-- **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build.
+- **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build, and so is the DIRT filter: Open303's filter with a saturating input stage added.
+- **Gate out** is an original design for this build, using the Deluge's own gate outputs.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
 - **Pad Guides, the standard drum pad layout and the synth instrument picker** are original designs for this build. The picker reuses the Deluge's own preset browsing.
