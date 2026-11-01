@@ -8957,10 +8957,10 @@ index 000000000..ce8acd265
 +} // namespace deluge::dsp
 diff --git a/src/deluge/dsp/tb303/open303.cpp b/src/deluge/dsp/tb303/open303.cpp
 new file mode 100644
-index 000000000..3d63015bf
+index 000000000..137fe7626
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.cpp
-@@ -0,0 +1,605 @@
+@@ -0,0 +1,616 @@
 +/*
 + * Copyright © 2026 Synthstrom Audible Limited
 + *
@@ -8981,7 +8981,6 @@ index 000000000..3d63015bf
 + */
 +#include "dsp/tb303/open303.h"
 +#include "definitions.h"
-+#include "dsp/drum_synth/cyc.h"
 +#include <algorithm>
 +#include <bit>
 +#include <cmath>
@@ -9191,7 +9190,6 @@ index 000000000..3d63015bf
 +void TeeBeeFilter::setResonance(float percent) {
 +	float r = 0.01f * percent;
 +	resonanceSkewed = (1.f - std::exp(-3.f * r)) / (1.f - std::exp(-3.f));
-+	updateDirt();
 +}
 +
 +TeeBeeFilter::Coefficients TeeBeeFilter::coefficientsFor(float cutoff) const {
@@ -9224,21 +9222,6 @@ index 000000000..3d63015bf
 +	tmp = wc2 * tmp + -1.666668203490468e-01f * wc + 1.000000012124230e+00f;
 +	tmp = wc2 * tmp + 3.999999999650040e+00f * wc + 4.000000000000113e+00f;
 +	return {1.f + a1, a1, r * tmp, 1.f};
-+}
-+
-+void TeeBeeFilter::setDrive(float drive) {
-+	dirtBoost = std::pow(10.f, 1.2f * drive * std::sqrt(drive));
-+	updateDirt();
-+}
-+
-+void TeeBeeFilter::updateDirt() {
-+	// At 0 a plain note sits in the soft part of the curve, so it stays close to CLASSIC until the resonance gets loud.
-+	// Up to 24 dB more input, held back at the bottom so the first half of the knob stays usable. Once the clipper
-+	// takes over, the resonance stops pulling the passband down and the level shoots up with the input (about 23 dB
-+	// over the knob, from half resonance up), so most of that comes back off, more the more resonance there is. It
-+	// gets 8 to 12 dB louder in all.
-+	dirtIn = 0.5f * dirtBoost;
-+	dirtOut = 4.f * std::pow(dirtBoost, -0.6f * std::sqrt(resonanceSkewed));
 +}
 +
 +void TeeBeeFilter::reset() {
@@ -9275,7 +9258,8 @@ index 000000000..3d63015bf
 +		filter.setResonance(controls.resonance);
 +	}
 +	filter.setMode(controls.filterMode);
-+	filter.setDrive(controls.drive);
++	setDrive(controls.drive);
++	mainEnvCoeff = std::exp(-1.f / (0.001f * (accented ? 0.5f : 1.f) * controls.decay * kSampleRate));
 +	pitchSlewCoeff = leakyCoeff(controls.slideTime, kSampleRate);
 +	ampDecayCoeff = envelopeCoeff(controls.ampDecay, kSampleRate);
 +	calculateEnvModScalerAndOffset();
@@ -9304,10 +9288,21 @@ index 000000000..3d63015bf
 +	return 8.1757989156437073f * std::exp(0.057762265046662109f * ((float)note + pitchOffset));
 +}
 +
++void Open303::setDrive(float drive) {
++	// Up to 30 dB into the clipper, evenly in dB. At 0 a plain note peaks near 0.4, barely touching the curve, and an
++	// accent near 1.2. The level out undoes the gain while the clipper is soft, then levels off as it flattens, so the
++	// pattern's level holds, and 3 dB goes on top over the knob. The tone lowpass closes from 12 kHz to 4 kHz as it
++	// goes up, to keep the fizz down.
++	driveIn = 0.4f * std::pow(10.f, 1.5f * drive);
++	driveOut = std::sqrt(1.f / (driveIn * driveIn) + 0.35f * 0.35f) * std::pow(10.f, 0.15f * drive);
++	driveToneCoeff = 1.f - std::exp(-2.f * kPiF * 12000.f * std::pow(1.f / 3.f, drive) / (kSampleRate * kOversampling));
++}
++
 +void Open303::setAccentState(bool accent) {
++	accented = accent;
 +	accentGain = accent ? 0.01f * controls.accent : 0.f;
-+	// Accented notes have a fixed 200 ms filter decay
-+	mainEnvCoeff = std::exp(-1.f / (0.001f * (accent ? 200.f : controls.decay) * kSampleRate));
++	// Accented notes' filter decay is half the knob's, 200 ms at the default, as on a 303
++	mainEnvCoeff = std::exp(-1.f / (0.001f * (accent ? 0.5f : 1.f) * controls.decay * kSampleRate));
 +	ampReleaseCoeff = envelopeCoeff(accent ? 50.f : 1.f, kSampleRate);
 +	// The accent's jump in envelope, or a new note's, lands at once, as on Open303
 +	filterJump = true;
@@ -9323,6 +9318,7 @@ index 000000000..3d63015bf
 +		notch.reset();
 +		antiAlias.reset();
 +		ampDeClicker.reset();
++		driveLowIn = driveLowOut = driveTone = 0.f;
 +	}
 +	setAccentState(accent);
 +	oscFreq = noteToFrequency(note);
@@ -9407,6 +9403,7 @@ index 000000000..3d63015bf
 +	notch.reset();
 +	antiAlias.reset();
 +	ampDeClicker.reset();
++	driveLowIn = driveLowOut = driveTone = 0.f;
 +}
 +
 +template <FilterMode mode>
@@ -9415,14 +9412,18 @@ index 000000000..3d63015bf
 +	const int32_t size = (int32_t)buffer.size();
 +	const float cutoffStep = (controls.cutoff - cutoffNow) / (float)size;
 +
-+	// Drive, the drum synth engines' curve. A plain note peaks near 1 and an accent near 3, so a quarter of that into
-+	// the clipper keeps plain notes clean at low settings and lets accents bite first. Half the drive gain is taken
-+	// back off, so it gets dirtier much faster than it gets louder. DIRT takes the drive into the filter instead.
-+	constexpr float kDriveIn = 0.25f;
-+	const bool driven = mode != FilterMode::DIRT && controls.drive > 0.f;
-+	const float driveGain = drum_synth::cyc::driveGainFor(controls.drive);
-+	const float driveIn = kDriveIn * driveGain;
-+	const float driveOut = 1.f / (kDriveIn * std::sqrt(driveGain));
++	// Drive: an overdrive pedal after the filter, run oversampled so it doesn't alias. The lows are cut 6 dB on the way
++	// into the clipper and put back after it, so the bass stays full but doesn't turn to mush, and accents, louder,
++	// bite first. A plain note peaks near 1 and an accent near 3.
++	constexpr float kDriveLowCut = 0.5f;
++	constexpr float kDriveLowCoeff = 2.f * kPiF * 250.f / (kSampleRate * kOversampling);
++	const bool driven = controls.drive > 0.f;
++	const float drivePre = driveIn;
++	const float drivePost = driveOut;
++	const float toneCoeff = driveToneCoeff;
++	float lowIn = driveLowIn;
++	float lowOut = driveLowOut;
++	float tone = driveTone;
 +
 +	// Fully saw or fully square only needs the one wavetable
 +	const float blend = controls.waveform;
@@ -9518,15 +9519,22 @@ index 000000000..3d63015bf
 +				}
 +				out = inputHighpass.process(-out);
 +				out = ladder.process<mode>(out);
++				if (driven) {
++					float x = out * amp * drivePre;
++					lowIn += kDriveLowCoeff * (x - lowIn);
++					x = overdrive(x - kDriveLowCut * lowIn);
++					x += kDriveLowCut * lowOut;
++					lowOut += kDriveLowCoeff * (x - lowOut);
++					tone += toneCoeff * (x - tone);
++					out = tone * drivePost;
++				}
 +				out = decimator.process(out);
 +			}
 +			out = allpass.process(out);
 +			out = highpass2.process(out);
 +			out = notch.process(out);
-+			out *= amp;
-+
-+			if (driven) {
-+				out = drum_synth::cyc::driveCurve(out * driveIn) * driveOut;
++			if (!driven) {
++				out *= amp;
 +			}
 +			out *= gain;
 +			*sample++ += (int32_t)std::clamp(out, -2147483520.f, 2147483520.f);
@@ -9539,6 +9547,9 @@ index 000000000..3d63015bf
 +	filter = ladder;
 +	antiAlias = decimator;
 +	lastAmp = amp;
++	driveLowIn = lowIn;
++	driveLowOut = lowOut;
++	driveTone = tone;
 +	cutoffNow = controls.cutoff;
 +}
 +
@@ -9568,10 +9579,10 @@ index 000000000..3d63015bf
 +} // namespace deluge::dsp::tb303
 diff --git a/src/deluge/dsp/tb303/open303.h b/src/deluge/dsp/tb303/open303.h
 new file mode 100644
-index 000000000..8c6e32bde
+index 000000000..065bfc2ba
 --- /dev/null
 +++ b/src/deluge/dsp/tb303/open303.h
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,343 @@
 +/*
 + * Copyright © 2026 Synthstrom Audible Limited
 + *
@@ -9638,13 +9649,13 @@ index 000000000..8c6e32bde
 +	float cutoff = 500.f;    // Hz, 314 to 2394 on the panel
 +	float resonance = 50.f;  // %
 +	float envMod = 25.f;     // %
-+	float decay = 400.f;     // ms, 200 to 2000 on the panel
++	float decay = 400.f;     // ms, 200 to 2000 on the panel (about 30 to 2800 on the Deluge)
 +	float accent = 50.f;     // %
 +	float waveform = 0.f;    // 0 saw to 1 square
 +	float slideTime = 60.f;  // ms, the time constant of the glide, as Open303 sets it up
 +	float ampDecay = 1230.f; // ms
 +	float ampSustain = 0.f;  // 0 to 1
-+	float drive = 0.f;       // 0 to 1. Into the filter on DIRT, else into the drum synth engines' soft clipper after it
++	float drive = 0.f;       // 0 to 1, an overdrive after the filter
 +	FilterMode filterMode = FilterMode::DIRT;
 +};
 +
@@ -9728,8 +9739,6 @@ index 000000000..8c6e32bde
 +	void setResonance(float percent);
 +	void setMode(FilterMode mode) { mode_ = mode; }
 +	FilterMode mode() const { return mode_; }
-+	/// DIRT's drive knob, 0 to 1
-+	void setDrive(float drive);
 +	Coefficients coefficientsFor(float cutoff) const;
 +
 +	/// Glides the coefficients from where they are to target over the next numSamples calls to step()
@@ -9767,13 +9776,14 @@ index 000000000..8c6e32bde
 +		}
 +		else if constexpr (mode == FilterMode::DIRT) {
 +			// The classic ladder, with the input and the resonance meeting in a saturating stage, as at a diode
-+			// ladder's input pair. Driven harder, the resonance squashes and growls instead of ringing clean.
-+			float y0 = dirt(dirtIn * in - feedbackHighpass.process(now.k * y4));
++			// ladder's input pair. A plain note sits in the soft part of the curve, and loud resonance squashes and
++			// growls instead of ringing clean.
++			float y0 = dirt(0.5f * in - feedbackHighpass.process(now.k * y4));
 +			y1 += 2.f * now.b0 * (y0 - y1 + y2);
 +			y2 += now.b0 * (y1 - 2.f * y2 + y3);
 +			y3 += now.b0 * (y2 - 2.f * y3 + y4);
 +			y4 += now.b0 * (y3 - 2.f * y4);
-+			return dirtOut * now.g * y4;
++			return 4.f * now.g * y4;
 +		}
 +		else {
 +			float y0 = 0.125f * in - feedbackHighpass.process(now.k * y4);
@@ -9796,17 +9806,12 @@ index 000000000..8c6e32bde
 +		return x - (4.f / 27.f) * x * x * x - kBiasOut;
 +	}
 +
-+	void updateDirt();
-+
 +	Coefficients now{0.f, 0.f, 0.f, 1.f};
 +	Coefficients step_{};
 +	float y1 = 0.f, y2 = 0.f, y3 = 0.f, y4 = 0.f;
 +	float resonanceSkewed = 0.f;
 +	float twoPiOverSampleRate = 0.f;
 +	FilterMode mode_ = FilterMode::DIRT;
-+	float dirtBoost = 1.f; // The drive's input gain over DIRT's at 0
-+	float dirtIn = 0.5f;
-+	float dirtOut = 4.f;
 +	OnePole feedbackHighpass;
 +};
 +
@@ -9819,8 +9824,7 @@ index 000000000..8c6e32bde
 +
 +	Open303();
 +
-+	/// Picks up the latest controls. Cutoff, envelope modulation, resonance, accent and waveform act at once;
-+	/// decay and slide act from the next note, as on Open303.
++	/// Picks up the latest controls. All act at once, except accent, which acts from the next note.
 +	void setControls(Controls const& controls);
 +
 +	void noteOn(int32_t note, int32_t velocity);
@@ -9853,6 +9857,15 @@ index 000000000..8c6e32bde
 +	void releaseNote();
 +	void setAccentState(bool accent);
 +	void calculateEnvModScalerAndOffset();
++	void setDrive(float drive);
++	/// The overdrive's clipper: a tanh-like soft clip, flat at +-1 from +-3, with an offset for even harmonics (the
++	/// offset's DC is taken back out, so silence stays silent)
++	[[gnu::always_inline]] static inline float overdrive(float x) {
++		constexpr float kBias = 0.2f;
++		constexpr float kBiasOut = kBias * (27.f + kBias * kBias) / (27.f + 9.f * kBias * kBias);
++		x = std::clamp(x + kBias, -3.f, 3.f);
++		return x * (27.f + x * x) / (27.f + 9.f * x * x) - kBiasOut;
++	}
 +	float noteToFrequency(int32_t note) const;
 +
 +	Controls controls;
@@ -9869,6 +9882,7 @@ index 000000000..8c6e32bde
 +	float envScaler = 1.f;
 +	float envOffset = 0.f;
 +	float accentGain = 0.f;
++	bool accented = false; // The note playing is accented
 +	bool sounding = false;
 +	bool filterJump = true; // The next coefficient update jumps rather than glides: a new note, accent or knob move
 +
@@ -9888,6 +9902,15 @@ index 000000000..8c6e32bde
 +	float lastAmp = 0.f; // After the declicker
 +	bool ampAttackPending = false;
 +	bool ampNoteOn = false;
++
++	// Overdrive: gain in and out, the tone lowpass's coefficient, and the state of the low shelf around the clipper
++	// and of the tone lowpass
++	float driveIn = 1.f;
++	float driveOut = 1.f;
++	float driveToneCoeff = 1.f;
++	float driveLowIn = 0.f;
++	float driveLowOut = 0.f;
++	float driveTone = 0.f;
 +
 +	// Leaky integrators
 +	float pitchSlew = 440.f;
@@ -14841,7 +14864,7 @@ index f4e341a9b..47b7c1a86 100644
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..fb077fbff 100644
+index 7bbd559f6..b5a5c28b0 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -15033,7 +15056,7 @@ index 7bbd559f6..fb077fbff 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1528,571 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1528,573 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -15569,18 +15592,20 @@ index 7bbd559f6..fb077fbff 100644
 +
 +// In 303 mode these pads take over from the FM operators' and the LPF's. The params sit where the automation view's
 +// grid already puts them, and OSC1 and the mod FX pads follow the drum synth layout: RETRIGGER accent, PULSE WIDTH
-+// saw-square, FEEDBACK drive, WAVE INDEX amp decay, mod FX rate / depth the filter envelope's decay / depth. The first
-+// pad for an item is the one that blinks.
++// saw-square, FEEDBACK drive, WAVE INDEX amp decay, mod FX rate / depth the filter envelope's decay / depth. The
++// Deluge's own filter drive (LPF MORPH) and envelope decay pads, which do nothing else on a 303, reach its drive and
++// decays too: ENV1 DECAY the amp decay, ENV2 DECAY the filter envelope's. The first pad for an item is the one that
++// blinks.
 +struct Tb303Shortcut {
 +	uint8_t x;
 +	uint8_t y;
 +	MenuItem* item;
 +};
 +PLACE_SDRAM_DATA Tb303Shortcut tb303Shortcuts[] = {
-+    {8, 7, &tb303CutoffMenu},   {8, 6, &tb303ResonanceMenu}, {4, 0, &tb303EnvModMenu}, {5, 0, &tb303DecayMenu},
-+    {2, 4, &tb303AccentMenu},   {2, 3, &tb303WaveformMenu},  {2, 5, &tb303DriveMenu},  {2, 6, &tb303AmpDecayMenu},
-+    {3, 5, &tb303WaveformMenu}, {4, 5, &tb303SlideMenu},     {5, 5, &tb303FilterMenu}, {12, 7, &tb303DecayMenu},
-+    {12, 6, &tb303EnvModMenu},
++    {8, 7, &tb303CutoffMenu},   {8, 6, &tb303ResonanceMenu}, {4, 0, &tb303EnvModMenu},   {5, 0, &tb303DecayMenu},
++    {2, 4, &tb303AccentMenu},   {2, 3, &tb303WaveformMenu},  {2, 5, &tb303DriveMenu},    {2, 6, &tb303AmpDecayMenu},
++    {3, 5, &tb303WaveformMenu}, {4, 5, &tb303SlideMenu},     {5, 5, &tb303FilterMenu},   {12, 7, &tb303DecayMenu},
++    {12, 6, &tb303EnvModMenu},  {8, 4, &tb303DriveMenu},     {8, 2, &tb303AmpDecayMenu}, {9, 2, &tb303DecayMenu},
 +};
 +
 +MenuItem* tb303ShortcutAt(int32_t x, int32_t y) {
@@ -15605,7 +15630,7 @@ index 7bbd559f6..fb077fbff 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2134,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2136,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -15617,7 +15642,7 @@ index 7bbd559f6..fb077fbff 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2163,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2165,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -15626,7 +15651,7 @@ index 7bbd559f6..fb077fbff 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2172,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2174,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -15635,7 +15660,7 @@ index 7bbd559f6..fb077fbff 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1703,6 +2326,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1703,6 +2328,9 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
          &randomizerMenu,
          &bendMenu,
          &cv2SourceMenu,
@@ -15645,7 +15670,7 @@ index 7bbd559f6..fb077fbff 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1833,6 +2459,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2461,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -15654,7 +15679,7 @@ index 7bbd559f6..fb077fbff 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1885,9 +2513,10 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
+@@ -1885,9 +2515,10 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
          &kitGlobalFXActionsMenu,
          &kitClipMasterMenu,
          &kitArpMenu,
@@ -15666,7 +15691,7 @@ index 7bbd559f6..fb077fbff 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2538,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2540,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -15674,7 +15699,7 @@ index 7bbd559f6..fb077fbff 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2581,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2583,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -15708,7 +15733,7 @@ index 7bbd559f6..fb077fbff 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2652,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2654,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -15717,7 +15742,7 @@ index 7bbd559f6..fb077fbff 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2676,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2678,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -24244,7 +24269,7 @@ index 000000000..f2809bb66
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 8dd1ce447..83c32b210 100644
+index 8dd1ce447..ede733092 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -67,10 +67,14 @@
@@ -24939,7 +24964,7 @@ index 8dd1ce447..83c32b210 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3566,92 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3566,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -24973,6 +24998,14 @@ index 8dd1ce447..83c32b210 100644
 +float tb303ExpKnobPosition(float value, float min, float max) {
 +	return std::log(value / min) / std::log(max / min);
 +}
++
++float tb303Decay(float position) {
++	return -kTb303DecayNote / std::log(kTb303DecayLeftMin + (kTb303DecayLeftMax - kTb303DecayLeftMin) * position);
++}
++
++float tb303DecayPosition(float ms) {
++	return (std::exp(-kTb303DecayNote / ms) - kTb303DecayLeftMin) / (kTb303DecayLeftMax - kTb303DecayLeftMin);
++}
 +} // namespace
 +
 +void Sound::setupTb303Defaults(ParamManager* paramManager) {
@@ -24983,7 +25016,7 @@ index 8dd1ce447..83c32b210 100644
 +	set(params::LOCAL_LPF_FREQ, tb303ExpKnobPosition(500.f, kTb303CutoffMin, kTb303CutoffMax));
 +	set(params::LOCAL_LPF_RESONANCE, 0.65f);
 +	set(kTb303EnvModParam, 0.45f);
-+	set(kTb303DecayParam, tb303ExpKnobPosition(400.f, kTb303DecayMin, kTb303DecayMax));
++	set(kTb303DecayParam, tb303DecayPosition(400.f));
 +	set(kTb303AccentParam, 0.6f);
 +	set(kTb303WaveformParam, 0.f);
 +	set(kTb303SlideParam, tb303ExpKnobPosition(60.f, kTb303SlideMin, kTb303SlideMax));
@@ -25001,7 +25034,7 @@ index 8dd1ce447..83c32b210 100644
 +	controls.cutoff = tb303ExpKnob(tb303Knob(patchedParams, params::LOCAL_LPF_FREQ), kTb303CutoffMin, kTb303CutoffMax);
 +	controls.resonance = 100.f * tb303Knob(patchedParams, params::LOCAL_LPF_RESONANCE);
 +	controls.envMod = 100.f * tb303Knob(patchedParams, kTb303EnvModParam);
-+	controls.decay = tb303ExpKnob(tb303Knob(patchedParams, kTb303DecayParam), kTb303DecayMin, kTb303DecayMax);
++	controls.decay = tb303Decay(tb303Knob(patchedParams, kTb303DecayParam));
 +	controls.accent = 100.f * tb303Knob(patchedParams, kTb303AccentParam);
 +	controls.waveform = tb303Knob(patchedParams, kTb303WaveformParam);
 +	controls.slideTime = tb303ExpKnob(tb303Knob(patchedParams, kTb303SlideParam), kTb303SlideMin, kTb303SlideMax);
@@ -25032,7 +25065,7 @@ index 8dd1ce447..83c32b210 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3765,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3773,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -25041,7 +25074,7 @@ index 8dd1ce447..83c32b210 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3405,6 +3958,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3405,6 +3966,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -25063,7 +25096,7 @@ index 8dd1ce447..83c32b210 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			patch->setEngineMode(reader.readTagOrAttributeValueInt());
-@@ -3424,6 +3992,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3424,6 +4000,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -25074,7 +25107,7 @@ index 8dd1ce447..83c32b210 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3634,6 +4206,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3634,6 +4214,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -25084,7 +25117,7 @@ index 8dd1ce447..83c32b210 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3758,6 +4333,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3758,6 +4341,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -25096,7 +25129,7 @@ index 8dd1ce447..83c32b210 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3847,6 +4427,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3847,6 +4435,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -25111,7 +25144,7 @@ index 8dd1ce447..83c32b210 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4029,9 +4617,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4029,9 +4625,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -25132,7 +25165,7 @@ index 8dd1ce447..83c32b210 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4111,6 +4710,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4111,6 +4718,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -25144,7 +25177,7 @@ index 8dd1ce447..83c32b210 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4125,6 +4729,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4125,6 +4737,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
  
@@ -25154,18 +25187,18 @@ index 8dd1ce447..83c32b210 100644
  	writer.writeOpeningTagEnd();
  
  	// Envelopes
-@@ -4173,6 +4780,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4173,6 +4788,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
-+	// Always written, as no attribute means CLASSIC (files from before DIRT)
++	// Always written, so a file says which filter it was made on
 +	if (synthMode == SynthMode::TB303) {
 +		writer.writeAttribute("tb303Filter", (int32_t)tb303FilterMode);
 +	}
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4432,6 +5043,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4432,6 +5051,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -25188,7 +25221,7 @@ index 8dd1ce447..83c32b210 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4939,6 +5566,9 @@ void Sound::killAllVoices() {
+@@ -4939,6 +5574,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -25199,7 +25232,7 @@ index 8dd1ce447..83c32b210 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 9d2550b65..449d00b5f 100644
+index 9d2550b65..e527f9937 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
 @@ -18,6 +18,7 @@
@@ -25210,7 +25243,7 @@ index 9d2550b65..449d00b5f 100644
  #include "model/mod_controllable/mod_controllable_audio.h"
  #include "model/sample/sample_recorder.h"
  #include "model/voiced.h"
-@@ -73,6 +74,27 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
+@@ -73,6 +74,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
  /// The depth of the VELOCITY -> LOCAL_VOLUME patch cable that Sound::setupAsSample() installs, as a user value.
  constexpr int32_t kSampleDrumVelocityCableUserValue = 50;
  
@@ -25225,11 +25258,15 @@ index 9d2550b65..449d00b5f 100644
 +// 1230 ms, which an osc 1 wavetable position left at its default gives older 303 sounds.
 +constexpr int32_t kTb303DriveParam = deluge::modulation::params::LOCAL_MODULATOR_1_FEEDBACK;
 +constexpr int32_t kTb303AmpDecayParam = deluge::modulation::params::LOCAL_OSC_A_WAVE_INDEX;
-+// Ranges, in Hz and ms. Cutoff and decay are the 303 panel's.
++// Ranges, in Hz and ms. Cutoff is the 303 panel's.
 +constexpr float kTb303CutoffMin = 314.f;
 +constexpr float kTb303CutoffMax = 2394.f;
-+constexpr float kTb303DecayMin = 200.f;
-+constexpr float kTb303DecayMax = 2000.f;
++// Decay sets how much of the filter envelope is left at the end of a 16th at 130 bpm: 3% at the bottom (about 30 ms)
++// to 96% at the top (about 2.8 s), so it changes a pattern evenly across the knob. On the 303 panel's exponential
++// 200 to 2000 ms, everything from the middle up sounded the same on 16ths.
++constexpr float kTb303DecayNote = 115.f;
++constexpr float kTb303DecayLeftMin = 0.03f;
++constexpr float kTb303DecayLeftMax = 0.96f;
 +constexpr float kTb303SlideMin = 10.f;
 +constexpr float kTb303SlideMax = 300.f;
 +constexpr float kTb303AmpDecayMin = 60.f;
@@ -25238,7 +25275,7 @@ index 9d2550b65..449d00b5f 100644
  class Sound : public ModControllableAudio, public virtual Voiced {
  public:
  	using ActiveVoice = AudioEngine::VoicePool::pointer_type;
-@@ -173,6 +195,7 @@ public:
+@@ -173,6 +199,7 @@ public:
  	virtual void setSkippingRendering(bool newSkipping);
  
  	ModFXType getModFXType() override;
@@ -25246,7 +25283,7 @@ index 9d2550b65..449d00b5f 100644
  	bool setModFXType(ModFXType newType) final;
  
  	void patchedParamPresetValueChanged(uint8_t p, ModelStackWithSoundFlags* modelStack, int32_t oldValue,
-@@ -236,7 +259,23 @@ public:
+@@ -236,7 +263,23 @@ public:
  	[[nodiscard]] SynthMode getSynthMode() const { return synthMode; }
  
  	virtual bool isDrum() { return false; }
@@ -25270,7 +25307,7 @@ index 9d2550b65..449d00b5f 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
-@@ -290,20 +329,38 @@ public:
+@@ -290,20 +333,38 @@ public:
  	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
  	virtual ArpeggiatorBase* getArp() = 0;
  	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
@@ -25308,13 +25345,13 @@ index 9d2550b65..449d00b5f 100644
 +	bool ensureTb303();
 +	/// Sets this sound's 303 knobs, and the gold knobs, to a starting acid sound
 +	void setupTb303Defaults(ParamManager* paramManager);
-+	// The TB-303 ladder model, Open303's plain 18 dB lowpass, or the ladder with dirt. Songs from before DIRT load as
-+	// CLASSIC; a fresh 303 starts on DIRT.
-+	deluge::dsp::tb303::FilterMode tb303FilterMode = deluge::dsp::tb303::FilterMode::CLASSIC;
++	// The TB-303 ladder model, Open303's plain 18 dB lowpass, or the ladder with dirt. Every 303 starts on DIRT,
++	// including ones saved before it.
++	deluge::dsp::tb303::FilterMode tb303FilterMode = deluge::dsp::tb303::FilterMode::DIRT;
  
  	/// @brief Get the number of active voices
  	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
-@@ -366,6 +423,12 @@ private:
+@@ -366,6 +427,12 @@ private:
  	// we're constantly cycling between a minimum and maximum number of voices.
  	deluge::fast_vector<ActiveVoice> voices_;
  
@@ -26940,10 +26977,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..2456ea832
+index 000000000..abb6f8193
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,438 @@
+@@ -0,0 +1,442 @@
 +---
 +title: Drum Synth
 +---
@@ -27164,9 +27201,13 @@ index 000000000..2456ea832
 +
 +The Cymbal / hat, DXIA and DIIA have no pitch envelope, so their mod rate / depth knobs keep the Deluge's usual LFO rate and vibrato. On the Cyc engines mod depth is now Sweep and mod rate Contour (before v1.16 it was the other way round), and Drive is the engine's drive, not Punch: 0 is clean, 100 is where it starts, 127 is full saturation. With Pad Guides off, the drum knobs keep the v1.11 layout (Cymbal / hat: transient speed / level; DXIA: Blendex 2 / 3; DIIA: Shape / Strike; Cyc: Sweep / Contour on rate / depth). The knobs are set whenever a sound loads or changes engine, so after switching Pad Guides, reload the song.
 +
-+**303.** A synth in the 303 synth mode follows the same layout: attack / release = **Drive / Amp decay**, mod rate / mod depth = the filter envelope's **Decay / Env mod**, Custom 1's portamento knob = **Slide time**, Custom 2 / Custom 3 = **Accent / Saw-square**. Cutoff and resonance stay on the filter knobs. Its pads match too: OSC1 RETRIGGER accent, PULSE WIDTH saw-square (a morph), FEEDBACK drive, WAVE INDEX amp decay, MOD FX RATE / DEPTH decay / env mod. Amp decay runs from 60 ms through Open303's own 1230 ms at the centre to holding at the top. 303s saved before keep their sound.
++**303.** A synth in the 303 synth mode follows the same layout: attack / release = **Drive / Amp decay**, mod rate / mod depth = the filter envelope's **Decay / Env mod**, Custom 1's portamento knob = **Slide time**, Custom 2 / Custom 3 = **Accent / Saw-square**. Cutoff and resonance stay on the filter knobs. Its pads match too: OSC1 RETRIGGER accent, PULSE WIDTH saw-square (a morph), FEEDBACK drive, WAVE INDEX amp decay, MOD FX RATE / DEPTH decay / env mod. Amp decay runs from 60 ms through Open303's own 1230 ms at the centre to holding at the top. From v1.22.1 the Deluge's LPF MORPH pad is Drive too, ENV1 DECAY is amp decay and ENV2 DECAY is the filter envelope's decay.
 +
-+**303 filter (new in v1.22).** On a 303 the LPF MODE pad and menu pick the 303's own filter instead of the Deluge's: **303** (Open303's model of the TB-303 ladder), **LP18** (Open303's plainer 18 dB lowpass) or **DIRT**. DIRT is the 303 ladder with a soft clipper where the note meets the resonance, so high resonance squashes and growls instead of ringing clean, with a little lopsided grit. A new 303 starts on DIRT. On DIRT, Drive pushes the note into the filter (up to 24 dB more), and the sound gets dirtier and 8 to 12 dB louder as it goes up, never quieter; at 0 it sits at the 303 filter's level. On 303 and LP18, Drive is the drum engines' soft clipper after the filter (0 is clean). 303s saved before v1.22 load on the filter they had.
++**Decay (changed in v1.22.1)** sets how much of the filter envelope is left at the end of a 16th at 130 bpm, from 3% at the bottom (about 30 ms) to 96% at the top (about 2.8 s), so it changes a pattern evenly across the knob. On the 303 panel's 200 to 2000 ms, everything from the middle up sounded the same on 16ths. It acts as you turn it, and accented notes follow it at half the time (200 ms at the default, as on a 303). It shapes the filter only, so it needs some Env mod to be heard. Songs saved before v1.22.1 keep their knob position, which now gives a different time.
++
++**303 filter (new in v1.22).** On a 303 the LPF MODE pad and menu pick the 303's own filter instead of the Deluge's: **303** (Open303's model of the TB-303 ladder), **LP18** (Open303's plainer 18 dB lowpass) or **DIRT**. DIRT is the 303 ladder with a soft clipper where the note meets the resonance, so high resonance squashes and growls instead of ringing clean, with a little lopsided grit. A new 303 starts on DIRT, and from v1.22.1 so does every 303 saved before v1.22.
++
++**Drive (changed in v1.22.1)** is an overdrive after the filter, on all three filters, like a pedal after a 303. It runs oversampled so it doesn't alias. The lows are cut going into the clipper and put back after it, so the bass stays full without turning to mush. The clip is soft and a little lopsided, accents bite first, and a tone lowpass closes from 12 kHz to 4 kHz as it goes up to keep the fizz down. Up to 30 dB goes in, and the level comes out about 3 dB louder at the top, with the resonance's squelch kept. 0 is clean. In v1.22 Drive pushed DIRT's own clipper, which squashed the resonance and got much louder; DIRT's grit now stays at its drive-0 amount.
 +
 +Custom 2 / Custom 3 never fall back to the Deluge's decimation and bitcrush on a drum synth row. The other gold knobs keep their usual Deluge jobs. Hold a step and turn a knob to parameter lock it.
 +
