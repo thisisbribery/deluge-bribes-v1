@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.22.2
+# BRIBELUGE: Deluge Bribes FW v1.23
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -18,11 +18,15 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout. New in v1.20: hold any shortcut pad and the 7-segment display scrolls the full name of what it changes.
 13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
 14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
-15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate. Changed in v1.22.2: **GATE** is the first item in a row's menu, and CV clips keep off the kit's gates.
+15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate. Changed in v1.22.2: **GATE** is the first item in a row's menu, and CV clips keep off the kit's gates. Changed in v1.23: a row's **MIDI** out sits right after GATE, so one row can fire a gate and a MIDI note together.
+16. **[MIDI kits](#16-midi-kits) (new in v1.23):** SHIFT + MIDI makes an **MKIT**, a kit of sixteen MIDI rows, so kit patterns and Autofill play your other gear. Three layouts: General MIDI drums on one channel, one channel per row, or blank. Each row's channel and note are on the row's menu.
+17. **[CV2 lock](#17-cv2-lock) (new in v1.23):** on a CV track using both outputs, CV 2 follows the gold knobs in semitones, so you can hold a step and lock an octave jump (or any interval) on CV 2 for just that step.
+18. **[Elektron P-locks](#18-elektron-p-locks) (new in v1.23):** an optional setting that makes parameter locks behave like an Elektron's: a lock stays on its own step, new notes don't pick it up, and deleting the note deletes the lock.
+19. **[Track types in song view](#19-track-types-in-song-view) (new in v1.23):** the section pads down the right of song view move by track type. Kits flash on the beat, synths breathe, MIDI pings, CV stays solid.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
-With these settings left at their defaults, the Deluge behaves exactly like the community beta, except that new songs start on Stumble swing (still straight until you turn the swing up), and the delay's feedback has its own setting (the tone starts flat). Songs saved before keep their own swing and sound the same through the delay.
+With these settings left at their defaults, the Deluge behaves exactly like the community firmware, except that new songs start on Stumble swing (still straight until you turn the swing up), the delay's feedback has its own setting (the tone starts flat), and song view's section pads move by track type. Songs saved before keep their own swing and sound the same through the delay.
 
 **Status: experimental.** Tested on a 7-segment Deluge. The OLED screens are written but not yet tested on hardware. Back up your SD card before installing.
 
@@ -51,6 +55,16 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **Changed in v1.22.2: Gate out on one press, and kicks on the sidechain.** **GATE** is now the first item in a kit row's menu: hold the row's audition pad, press SELECT, press SELECT on GATE and turn to **OFF** or gate **1** to **4**. CV clips and GATE rows can't use a gate the kit is on any more, and a new CV clip skips CV channels whose gate is taken. Cyc Kik, ULTRAKIK, the LXR kick and the GIN kick sounds send full to the sidechain, whether a whole kit loads or one is picked on a row or a synth. See [Gate out](#15-gate-out) and [Drum synth](#6-drum-synth).
 
+**New in v1.23: built on community firmware 1.3.0.** Bribeluge moves from the 1.3 beta to the final 1.3.0 release, with all of its fixes: memory safety fixes across loading and saving, the encoder missed-tick fix, kit preview level, a lighter analog delay, DX7 on kit rows, and more. Every Bribes feature carries over unchanged.
+
+**Fixed in v1.23: mono sequencer clips load whole.** From v1.2 to v1.22.2, loading a song with a mono sequencer clip lost the rest of that clip, notes included, and every clip after it in the song. The firmware then threw away any kit or synth left with no clip, which showed as **E044** on test builds. Nothing on the card was damaged: those songs load whole again now. If you loaded a song like that and saved over it, the parts that went missing are gone from that save.
+
+**New in v1.23: MIDI kits, CV2 lock and Elektron P-locks.** SHIFT + MIDI makes an **MKIT**, a kit of sixteen MIDI rows that kit patterns and Autofill play. A CV track on both outputs can lock CV 2 per step in semitones. And Community Features has an **Elektron P-locks** setting that keeps each parameter lock on its own step. See [MIDI kits](#16-midi-kits), [CV2 lock](#17-cv2-lock) and [Elektron P-locks](#18-elektron-p-locks).
+
+**New in v1.23: track types in song view.** The section pads down the right-hand side of song view keep their section colours and move by what kind of track each row is: kits flash on the beat, synths breathe, MIDI pings and fades, CV and audio stay solid. See [Track types in song view](#19-track-types-in-song-view).
+
+**Changed in v1.23: kit rows send MIDI from the top of the menu.** A kit row's **MIDI** settings (channel and note, so the row plays MIDI as it sounds) now sit second in the row's menu, after **GATE**, so a row can send a gate and a MIDI note at once. Rows that play one-shot samples hold their MIDI note for 12 ms instead of letting go straight away, which some gear ignored. See [Gate out](#15-gate-out).
+
 [Back to top](#readme-top)
 
 ## About
@@ -66,9 +80,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.22.2.bin`](firmware/deluge-bribes-v1.22.2.bin)
+[`firmware/deluge-bribes-v1.23.bin`](firmware/deluge-bribes-v1.23.bin)
 
-SHA-256: `a420462ff2291542cb1401bd170b8db4cb2b8f93925384cd65ed863a512aa103`
+SHA-256: `a1c84691b845ae51688657ab9c92a48c75fe381274d14ce6399d3dd131e10c70`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -76,7 +90,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.22.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.23.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -131,6 +145,12 @@ To go back, install an official firmware file the same way.
 | **SHIFT + LPF MORPH / ENV1 DECAY / ENV2 DECAY pad on a 303** | Drive / Amp decay / Decay (303 synth, new in v1.22.1) |
 | **Audition pad + SELECT > GATE** | That kit row's gate output: off or 1 to 4 (Gate out, first in the row's menu from v1.22.2) |
 | **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
+| **Audition pad + SELECT > MIDI** | That kit row's MIDI out: channel and note, sent as the row plays, gate or not (second in the row's menu from v1.23) |
+| **SHIFT + MIDI** | **MIDI** track or **MKIT**, then the MKIT layout: **1CH**, **16CH** or **BLNK**. SHIFT + MIDI again moves on, SELECT or MIDI picks (MIDI kits, new in v1.23) |
+| **Hold a MIDI row's audition pad + SELECT** | That row's **CHAN** and **NOTE**, first in the note row editor (MIDI kits, new in v1.23) |
+| **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
+| **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
+| **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
@@ -286,6 +306,7 @@ Mono is a setting on the clip, so it carries over if you switch the track betwee
 - **Holding a note** shows and sounds the note it actually plays, octave included.
 - **Always in scale (new in v1.16.1):** a mono clip's 8 rows are scale steps, so the clip always plays in scale mode. Turning Mono Seq on, or making the synth a 303, switches SCALE on (the song's scale is kept, or fitted to your notes), and songs saved with scale off come back in scale. Pressing SCALE on a mono clip shows **MSEQ** and leaves it on. Scales without seven notes and MIDI transpose clips are left as they are. Mono Seq belongs to the clip, so a new synth put on a mono clip stays mono: turn Mono Seq off in the clip menu to free it.
 - **Fixed in v1.16.2:** a new synth clip, or SHIFT + SYNTH's first preset, could come up as an old unsaved 303 left in memory, bringing the mono sequencer and scale lock with it. New synths now skip unsaved 303s, and SHIFT + SYNTH always loads a saved preset.
+- **Fixed in v1.23:** loading a song with a mono clip lost the rest of that clip (notes included) and every clip after it, and a kit or synth left with no clip was thrown away (**E044** on test builds). Mono clips now load whole. The files were never damaged.
 - **Gate %** (**GATE**), in the same menu, shortens every note's gate, from 1 to 100% of its drawn length. Notes still keep their own lengths.
 
 ### Slide
@@ -826,7 +847,87 @@ New in v1.22. **Gate out** (**GATE OUT**) sends a kit's bottom four rows out of 
 - **One kit at a time.** Turning Gate out on for one kit turns it off for every other kit in the song. Two rows can share a gate.
 - **Gate length.** A sound with a tail (a held note, a decay that holds) holds its gate for as long as the note plays. A one-shot hit sends a 12 ms trigger. A new hit drops the gate first, so every hit retriggers, and every gate stays high at least 12 ms so a module always sees it.
 - Any sound row in rows 1 to 4 fires a gate, samples included, and the arpeggiator's notes too. MIDI and gate rows don't.
+- **MIDI too (from v1.23).** Right after **GATE** in a row's menu, **MIDI** sets a channel and note the row sends as it plays, alongside its sound and its gate. On a one-shot row the MIDI note is held 12 ms, like the gate.
 - **The kit's gates are its own (from v1.22.2).** CV clips and a kit's GATE rows can't use a gate a Gate out row is on. A new CV clip skips CV channels whose gate is taken, and shows **no unused channels** if gates 1 and 2 both are. Move a row off gate 1 or 2 to free it.
+
+[Back to top](#readme-top)
+
+## 16. MIDI kits
+
+New in v1.23. An **MKIT** is a kit whose sixteen rows are MIDI rows. Kit pattern mode, Autofill, Affect Entire and everything else a kit does then play your other gear: a drum machine, a sampler, a rack of synths.
+
+### Making one
+
+1. In clip view on an empty clip, press **SHIFT + MIDI**.
+2. The display shows **MIDI**. Turn **SELECT** (or press SHIFT + MIDI again) to **MKIT** and press **SELECT**. Picking **MIDI** makes an ordinary MIDI track, as the MIDI button always has.
+3. Pick a layout and press **SELECT**:
+
+| Layout | Display | Rows |
+|---|---|---|
+| **1 channel, GM drums** | **1CH** | All on channel 10, on General MIDI drum notes. Rows 1 to 6 are kick 36, snare 38, hat 1 42, hat 2 46, perc 1 39 and perc 2 63, the same order kit patterns, Autofill and the Stolperbeats MIDI export use. Rows 7 to 16 are rim 37, low tom 45, mid tom 47, high tom 50, crash 49, ride 51, pedal hat 44, cowbell 56, tambourine 54 and claves 75 |
+| **16 channels** | **16CH** | Row 1 on channel 1, row 2 on channel 2 and so on, all on note 60 (C3). One voice per channel, as Elektron boxes and multitimbral synths expect |
+| **Blank** | **BLNK** | Every row on channel 1, note 60, ready to set up yourself |
+
+An MKIT can only be made on an empty clip (the display shows **CANT** otherwise), as notes can't move between a kit and a melodic track. It lights the KIT button, not MIDI, as it's a kit.
+
+### Setting a row's channel and note
+
+- **Hold the row's audition pad and press SELECT:** **CHAN** and **NOTE** are first in the menu. Turn SELECT to change them.
+- **Or hold the row's audition pad and turn a gold knob,** as on any MIDI row: one knob changes the channel, the other the note.
+- **Or press SELECT with the row selected** for the MIDI row's own menu, which has CHAN and NOTE first too.
+
+### Good to know
+
+- An MKIT is an ordinary kit once it's made: it saves with the song, saves as a kit preset, and takes sample or drum synth rows if you add them.
+- Autofill's pitched hits (Climb) shift a MIDI row's note, the same way they pitch a sound row.
+- Kit pattern mode covers the bottom six rows, and Autofill the bottom three, as on any kit.
+
+[Back to top](#readme-top)
+
+## 17. CV2 lock
+
+New in v1.23. A CV track on both outputs (**CV channel BOTH**) sends pitch on CV 1 and, by default, aftertouch on CV 2. **CV 2 Source** (**CV2**) has a new choice, **LOCK**, where CV 2 follows the gold knobs in semitones:
+
+- Each step of the knob is one semitone, so **12** is one octave (1 V) and **24** two. With the knob at zero CV 2 sits at 0 V.
+- **Hold a step and turn a gold knob** to lock CV 2 for that step: an octave jump, a fifth, anything. Steps without a lock play the knob's own value.
+- CV 2 is set before the step's gate fires, so a module that reads its pitch on the gate gets the locked value.
+- The mono sequencer's **CUSTOM** voltages still work alongside it: holding a row's audition pad and turning the lower gold knob sets that row's CV 1 voltage, as before.
+
+To set it up: open the CV clip's menu, set the channel to **BOTH**, then set **CV 2 Source** to **LOCK**.
+
+[Back to top](#readme-top)
+
+## 18. Elektron P-locks
+
+New in v1.23. On the Deluge, holding a step and turning a knob records the new value from that step up to the next note. Notes you add later in that stretch pick it up, a lone note on a row changes the whole row, and deleting the note leaves its value behind. Turn on **Elektron P-locks** and a lock belongs to its step, as on an Elektron:
+
+- A lock runs from its note up to the next note (on the row in a kit, across the clip otherwise), even when it's the only note on the row.
+- A new note placed inside a lock plays the unlocked value, and the lock before it stops at the new note.
+- Deleting a locked note deletes its lock: the note before it carries on to the next note with its own value.
+- Letting go of a held step with the transport stopped puts the unlocked value back on the knobs and the sound.
+
+To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Features** (**FEAT**) and turn **Elektron P-locks** (**ELEK**) on. It's off by default.
+
+### Good to know
+
+- Locks are still the Deluge's own automation, so songs open on any firmware. Each lock ends one tick before the next note, which keeps the unlocked value in the song; you won't hear the tick.
+- The new rules apply to notes you place and delete on the grid. Loading kit patterns, pasting and recording notes live leave locks as the Deluge always has.
+- Drawn automation (automation view) is left alone when you add notes. Deleting a note does move a drawn value that starts exactly on that note, as it can't be told apart from a lock. Patch cable amounts aren't covered.
+
+[Back to top](#readme-top)
+
+## 19. Track types in song view
+
+New in v1.23. In song view (rows layout), the section pads in the right-hand column keep their section colours and move by what kind of track each row's clip is on:
+
+| Track | Section pad |
+|---|---|
+| Kit | Flashes bright on every beat |
+| Synth | Breathes slowly, over two beats |
+| MIDI | Pings bright on the beat and fades, like a sawtooth |
+| CV and audio | Solid |
+
+It follows the playhead while playing, and the song's tempo when stopped. It pauses while the VU meter is showing, during MIDI learn, and while a menu is open over song view. Grid view isn't changed. It costs almost nothing: the pads are refreshed about 30 times a second, only when something has changed, and never while the pads' connection is busy.
 
 [Back to top](#readme-top)
 
@@ -840,7 +941,8 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build, and so is the DIRT filter: Open303's filter with a saturating input stage added.
-- **Gate out** is an original design for this build, using the Deluge's own gate outputs.
+- **Gate out** is an original design for this build, using the Deluge's own gate outputs. A kit row's MIDI out is the community firmware's own; v1.23 moves it up the menu and holds one-shot notes long enough to be seen.
+- **MIDI kits, CV2 lock, Elektron P-locks and the song view track types** are original designs for this build. MKIT rows are the Deluge's own MIDI rows; Elektron P-locks keep locks to their steps using the Deluge's own automation. Elektron is named for the behaviour only; no Elektron code or data is used.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
 - **Pad Guides, the standard drum pad layout and the synth instrument picker** are original designs for this build. The picker reuses the Deluge's own preset browsing.
@@ -865,7 +967,7 @@ Use it at your own risk, and please don't contact Making Sound Machines, Synthst
 
 The Deluge firmware is free software under the GNU General Public License v3, and so is this build. The full source is the official firmware plus one patch:
 
-- **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at commit `a616dd8e` (the `beta` tag, Deluge beta Release 20261016).
+- **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at the `v1.3.0` tag (commit `156500e7c`, community firmware 1.3.0). Up to v1.22.2 the base was commit `a616dd8e`, the 1.3 beta.
 - **Changes:** [`source/stumble-swing.patch`](source/stumble-swing.patch)
 
 To build it yourself:
@@ -873,7 +975,7 @@ To build it yourself:
 ```bash
 git clone https://github.com/SynthstromAudible/DelugeFirmware.git
 cd DelugeFirmware
-git checkout a616dd8e
+git checkout v1.3.0
 git apply /path/to/stumble-swing.patch
 ./dbt configure
 ./dbt build release
