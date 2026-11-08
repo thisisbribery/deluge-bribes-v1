@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.23
+# BRIBELUGE: Deluge Bribes FW v1.24
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -23,6 +23,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 17. **[CV2 lock](#17-cv2-lock) (new in v1.23):** on a CV track using both outputs, CV 2 follows the gold knobs in semitones, so you can hold a step and lock an octave jump (or any interval) on CV 2 for just that step.
 18. **[Elektron P-locks](#18-elektron-p-locks) (new in v1.23):** an optional setting that makes parameter locks behave like an Elektron's: a lock stays on its own step, new notes don't pick it up, and deleting the note deletes the lock.
 19. **[Track types in song view](#19-track-types-in-song-view) (new in v1.23):** the section pads down the right of song view move by track type. Kits flash on the beat, synths breathe, MIDI pings, CV stays solid.
+20. **[MIDI loop tracks](#20-midi-loop-tracks) (new in v1.24):** use the Deluge as a MIDI looper for your synths and drum machines, with their local control left on. SHIFT + MIDI makes a **LOOP** track that takes its channel from the first note you play into it and doesn't send your playing back, and every MIDI track gets an **ECHO** setting.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -65,6 +66,8 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **Changed in v1.23: kit rows send MIDI from the top of the menu.** A kit row's **MIDI** settings (channel and note, so the row plays MIDI as it sounds) now sit second in the row's menu, after **GATE**, so a row can send a gate and a MIDI note at once. Rows that play one-shot samples hold their MIDI note for 12 ms instead of letting go straight away, which some gear ignored. See [Gate out](#15-gate-out).
 
+**New in v1.24: MIDI loop tracks.** A MIDI track normally sends everything it receives straight back out, so a synth with local control on plays every note twice while you record it. **ECHO** (second in a MIDI track's menu) turns that off, or off only while recording. **LOOP** (SHIFT + MIDI) makes a MIDI track with ECHO off that takes its channel from the first note you play into it. With Endless Record on, hit RECORD, play the synth, hit RECORD again and the loop closes at the next bar and plays back to it. Knob moves record too, as long as the synth sends them as CC. See [MIDI loop tracks](#20-midi-loop-tracks).
+
 [Back to top](#readme-top)
 
 ## About
@@ -80,9 +83,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.23.bin`](firmware/deluge-bribes-v1.23.bin)
+[`firmware/deluge-bribes-v1.24.bin`](firmware/deluge-bribes-v1.24.bin)
 
-SHA-256: `a1c84691b845ae51688657ab9c92a48c75fe381274d14ce6399d3dd131e10c70`
+SHA-256: `3973244288ea761febb73fa5a4f00ba641edc7558b54e82c392beaddfcede401`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -90,7 +93,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.23.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.24.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -146,7 +149,8 @@ To go back, install an official firmware file the same way.
 | **Audition pad + SELECT > GATE** | That kit row's gate output: off or 1 to 4 (Gate out, first in the row's menu from v1.22.2) |
 | **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
 | **Audition pad + SELECT > MIDI** | That kit row's MIDI out: channel and note, sent as the row plays, gate or not (second in the row's menu from v1.23) |
-| **SHIFT + MIDI** | **MIDI** track or **MKIT**, then the MKIT layout: **1CH**, **16CH** or **BLNK**. SHIFT + MIDI again moves on, SELECT or MIDI picks (MIDI kits, new in v1.23) |
+| **SHIFT + MIDI** | **MIDI** track, **MKIT** or **LOOP**, then for MKIT the layout: **1CH**, **16CH** or **BLNK**. SHIFT + MIDI again moves on, SELECT or MIDI picks (MIDI kits, new in v1.23; LOOP, new in v1.24) |
+| **MIDI track menu > ECHO** | **ON**, **OFF** or **REC**: whether what you play into the track goes back out (MIDI loop tracks, new in v1.24) |
 | **Hold a MIDI row's audition pad + SELECT** | That row's **CHAN** and **NOTE**, first in the note row editor (MIDI kits, new in v1.23) |
 | **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
 | **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
@@ -369,6 +373,7 @@ On the stock Deluge, hitting RECORD while a new clip is already playing records 
 - Song view only, not the arranger.
 - With it on, the blink-and-stop-at-the-bar also applies when you record the stock way (stop, arm RECORD, press PLAY).
 - If you stop just after a bar line, the clip has already grown, so you'll get one extra empty bar.
+- From v1.24 it's what closes the loop on a [MIDI loop track](#20-midi-loop-tracks).
 
 [Back to top](#readme-top)
 
@@ -931,6 +936,48 @@ It follows the playhead while playing, and the song's tempo when stopped. It pau
 
 [Back to top](#readme-top)
 
+## 20. MIDI loop tracks
+
+New in v1.24. Use the Deluge as a MIDI looper: play a synth or drum machine on its own keys or pads, the Deluge records it, and the loop plays back to it. The synth's local control stays on, so its panel keeps working as normal.
+
+On the stock Deluge a MIDI track sends everything it receives straight back out on its channel. With local control on, the synth hears your playing twice while you record: once from its own keys, once from the Deluge. LOOP tracks don't send your playing back.
+
+### Setting up
+
+- **Cables:** the synth's MIDI out to the Deluge's MIDI in, the Deluge's MIDI out to the synth's MIDI in. A MIDI merger lets two or more synths share the Deluge's input, each on its own channel.
+- **On each synth:** have its MIDI out send only what you play, not pass through what comes in. Set its knobs to send **CC**, not NRPN: the Deluge records CCs, and NRPN knob moves come back as nonsense. On a Prophet '08, that's **Param Xmit** on **CC** and **Param Rcv** on **CC** or **All**.
+- **On the Deluge:** turn on [Endless Record](#5-endless-record) (**FEAT > ENDL**), so a loop closes at the next bar.
+
+### Recording a loop
+
+1. In clip view on a new clip, press **SHIFT + MIDI**, turn **SELECT** to **LOOP** and press **SELECT**. The display shows **LOOP**.
+2. Launch the clip in song view and press **PLAY**.
+3. Play a note on the synth. The track takes that note's channel, in and out, and the display shows **CH** and the channel (**CH2** for channel 2).
+4. Hit **RECORD**, play, then hit **RECORD** again. RECORD blinks, the loop closes at the next bar and plays back to the synth.
+5. For the next synth, make another LOOP track and play that synth. It takes that synth's channel, as the first one is taken.
+
+### ECHO
+
+Every MIDI track has **ECHO** in its menu, second after Actions:
+
+| Setting | Display | What you play into the track |
+|---|---|---|
+| **On** | **ON** | Goes back out, as on the stock Deluge. The default for MIDI tracks |
+| **Off** | **OFF** | Records, but never goes back out: notes, CCs, pitch bend and aftertouch. LOOP tracks start here |
+| **Off while recording** | **REC** | Goes back out, except while recording |
+
+Whatever the track plays back from its clip always goes out.
+
+### Good to know
+
+- A LOOP track only takes a channel nothing else is listening on: not another track's MIDI input, and not a MIDI Follow channel. Only a LOOP track you're looking at, or one that's launched, takes a channel. Learning its input by hand (LEARN + the clip's pad) still works and takes over.
+- If another MIDI track already sends on that channel, the LOOP track shares the channel as a second track on it.
+- With the arpeggiator on, a track sends its notes out whatever ECHO is set to, as they're the arpeggiator's notes, not yours.
+- Clock isn't changed. If the Deluge starts following a synth's clock, turn off the synth's clock out, or the Deluge's receive clock for its MIDI port.
+- ECHO and a LOOP track still waiting for its first note save with the song.
+
+[Back to top](#readme-top)
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -942,6 +989,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Saturation** is an original design: five antialiased curves on a single drive control with no level compensation, so it behaves like an overdriven input stage.
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build, and so is the DIRT filter: Open303's filter with a saturating input stage added.
 - **Gate out** is an original design for this build, using the Deluge's own gate outputs. A kit row's MIDI out is the community firmware's own; v1.23 moves it up the menu and holds one-shot notes long enough to be seen.
+- **MIDI loop tracks** are an original design for this build, on the Deluge's own MIDI tracks and Endless Record.
 - **MIDI kits, CV2 lock, Elektron P-locks and the song view track types** are original designs for this build. MKIT rows are the Deluge's own MIDI rows; Elektron P-locks keep locks to their steps using the Deluge's own automation. Elektron is named for the behaviour only; no Elektron code or data is used.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
