@@ -17,7 +17,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots an LXR, Cycles or GIN kit: every knob moves all the drums, and it snaps back on the next bar.
 12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads (purple on BRINGS and BROPHET), gold knob buttons flash theirs, shortcut pads blink their gold knob's button, and a held shortcut pad scrolls its name on the 7-segment display.
 13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, BROPHET, INIT), then BASS, LEAD, PAD or MISC (BROPHET: Pro-53's banks), then play through the presets. 99 wavetable, 37 BRINGS and 536 BROPHET presets included.
-14. **[Default instruments](#14-default-instruments):** The kit and synth type every new track starts as, on its top preset.
+14. **[Instrument Picker](#14-instrument-picker):** The kit and synth type every new track starts as, on its top preset.
 15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
 16. **[MIDI kits](#16-midi-kits):** SHIFT + MIDI makes an MKIT: sixteen MIDI rows that kit patterns and Autofill can play.
 17. **[CV2 lock](#17-cv2-lock):** CV 2 follows the gold knobs in semitones, lockable per step.
@@ -752,7 +752,7 @@ python3 tools/sort_synth_presets.py /Volumes/DELUGE
 
 [Back to top](#readme-top)
 
-## 14. Default instruments
+## 14. Instrument Picker
 
 Pick the instrument every new kit track and every new synth track starts as. Press **SHIFT + SELECT** to open Settings, then go to **DEFAULTS > UI > CLIP TYPE**:
 
@@ -1111,7 +1111,7 @@ The Attack and Release gold knobs stay on envelope 1, as on any synth. Every con
 | **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR** or **CLAS** (Crush types) |
 | **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
 | **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
-| **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Default instruments, new in v1.19) |
+| **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Instrument Picker, new in v1.19) |
 | **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
 | **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
 | **SHIFT + a MOD1 / MOD2 pad on a drum synth row** | That engine's setting: MOD1 from the bottom is Decay, Drive, Pitch, Pitch env amount, Pitch env speed, Character A, Character B, Extra 1; MOD2 holds Extras 2 to 9 (Drum synth, new in v1.16) |
@@ -1125,7 +1125,7 @@ The Attack and Release gold knobs stay on envelope 1, as on any synth. Every con
 | **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
 | **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
 | **SHIFT + SYNTH** | Synth browser: pick a type (**SUBT**, **FM**, **WAVE**, **RING**, **BRINGS**, **BROPHET**, **INIT**), then **BASS**, **LEAD**, **PAD** or **MISC** (BROPHET: **BNK1** to **BNK8**, **BRIB**), then turn SELECT to play through its presets. SHIFT + SYNTH again moves on, BACK goes up a level (Synth browser) |
-| **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
+| **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Instrument Picker, new in v1.19) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
 | **SHIFT + the pad below FOLD** | **Feedback** (**FDBK**): the voice's filter output fed back into its input (Feedback) |
 | **CUSTOM 2 / CUSTOM 3 gold knobs on a WAVE preset** | Wavetable position / Feedback (Synth browser) |
