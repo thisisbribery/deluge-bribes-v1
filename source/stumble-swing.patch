@@ -42,6 +42,278 @@ index 1cbefef8a..be4a96740 100644
  target_include_directories(deluge_dsp PRIVATE
    ${CMAKE_CURRENT_LIST_DIR}/..
    ${SHARED_INCLUDE}
+diff --git a/src/deluge/dsp/crusher.h b/src/deluge/dsp/crusher.h
+new file mode 100644
+index 000000000..168891c8f
+--- /dev/null
++++ b/src/deluge/dsp/crusher.h
+@@ -0,0 +1,266 @@
++/*
++ * Copyright © 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++#include <algorithm>
++#include <bit>
++#include <cmath>
++#include <cstddef>
++#include <cstdint>
++#include <cstring>
++#include <iterator>
++
++namespace deluge::dsp {
++
++/// What the Bitcrush and Decimation knobs sound like. CLASSIC is the original Deluge code, kept so old songs
++/// sound the same. The others hold each sample flat (zero-order hold) instead of drawing a line to the next one,
++/// so decimation aliases like a real low sample rate instead of acting like a lowpass filter, and their bit depth
++/// sweeps smoothly instead of in 8 steps.
++enum class CrushType : uint8_t {
++	CLASSIC,
++	HARD,    // pure digital: sample and hold, rounded levels, 12 bits down to 1
++	VINTAGE, // old sampler: soft input, 12-bit floor, 26 kHz-ish clock, one soft pole after the hold
++	ULAW,    // companded (mu-law style segments, after Mutable Instruments Clouds/Beads): quiet tails stay grainy
++	JITTER,  // unstable clock and a dithered threshold: noisy, crackly, sputtering
++	NUM_TYPES,
++};
++
++inline constexpr const char* kCrushTypeNames[] = {"classic", "hard", "vintage", "ulaw", "jitter"};
++static_assert(std::size(kCrushTypeNames) == static_cast<size_t>(CrushType::NUM_TYPES));
++
++inline const char* crushTypeToString(CrushType type) {
++	return kCrushTypeNames[static_cast<size_t>(type)];
++}
++inline CrushType stringToCrushType(const char* string) {
++	for (size_t i = 0; i < std::size(kCrushTypeNames); i++) {
++		if (!strcmp(string, kCrushTypeNames[i])) {
++			return static_cast<CrushType>(i);
++		}
++	}
++	return CrushType::CLASSIC;
++}
++
++/// Bitcrush + decimation for every type except CLASSIC. Works on q31 stereo in place.
++class Crusher {
++public:
++	/// unit is the q31 level normal signals peak at: 2^26 for a sound, 2^28 for a kit, audio clip or the song.
++	static constexpr float kSoundUnit = 67108864.f; // 2^26
++	static constexpr float kClipUnit = 268435456.f; // 2^28
++
++	struct State {
++		float heldL = 0.f;
++		float heldR = 0.f;
++		float countdown = 0.f; // samples until the next grab
++		float lpL = 0.f, lpR = 0.f;
++		uint32_t rng = 0x9E3779B9u;
++		bool active = false;
++	};
++
++	struct Config {
++		CrushType type = CrushType::HARD;
++		bool crush = false;
++		bool decimate = false;
++		float step = 0.f; // quantiser step, in units of normal peak level
++		float invStep = 0.f;
++		float muStep = 0.f; // ULAW: step as a fraction of each segment
++		float invMuStep = 0.f;
++		float muBias = 33.f;
++		float period = 1.f;   // samples per held sample
++		float jitter = 0.f;   // +- fraction of the period
++		float dither = 0.f;   // +- fraction of a step added before rounding
++		float lpCoef = 1.f;   // VINTAGE output filter
++		float inScale = 0.f;  // q31 -> 1 = normal peak
++		float outScale = 0.f; // back to q31
++	};
++
++	/// crushKnob and rateKnob are 0..1 along the part of the knob where each is on.
++	static Config configure(CrushType type, bool crush, float crushKnob, bool decimate, float rateKnob, float unit) {
++		Config c;
++		c.type = type;
++		c.crush = crush;
++		c.decimate = decimate;
++		// Levels are measured in units of normal peak level; louder signals go above 1 and aren't clipped
++		c.inScale = 1.f / unit;
++		c.outScale = unit;
++		crushKnob = std::clamp(crushKnob, 0.f, 1.f);
++		rateKnob = std::clamp(rateKnob, 0.f, 1.f);
++
++		// Bits, exponential along the knob so most of the travel is in the range that's audible
++		float bits = 0.f;
++		switch (type) {
++		case CrushType::VINTAGE:
++			// Always a 12-bit converter; the knob takes it down to 3
++			bits = crush ? 12.f * std::pow(3.f / 12.f, crushKnob) : 12.f;
++			c.crush = true;
++			break;
++		case CrushType::ULAW:
++			// Bits in each segment: 5 (smooth), 4 (8-bit telephone), down to 0 (one level per octave). Towards the
++			// end the bottom segments merge too, so quiet parts get coarse and gate
++			c.muStep = std::exp2(-(5.f - 5.f * crushKnob));
++			c.muBias = 33.f * std::exp2(6.f * crushKnob * crushKnob);
++			c.invMuStep = 1.f / c.muStep;
++			break;
++		default:
++			bits = 12.f * std::pow(1.f / 12.f, crushKnob);
++			break;
++		}
++		c.step = 2.f * std::exp2(-bits);
++		c.invStep = 1.f / c.step;
++
++		// Clock: up to 256x down (172 Hz), shaped so the middle of the knob is around 5 kHz
++		float octaves = 8.f * std::pow(rateKnob, 1.4f);
++		switch (type) {
++		case CrushType::VINTAGE:
++			// Starts at about 26 kHz, ends around 580 Hz
++			c.period = (44100.f / 26040.f) * std::exp2(5.5f * std::pow(rateKnob, 1.4f));
++			// One soft pole at the held rate: rounds the edges of the steps a little, keeps the aliasing
++			{
++				float fc = std::min(44100.f / c.period, 16000.f);
++				c.lpCoef = 1.f - std::exp(-6.2831853f * fc / 44100.f);
++			}
++			break;
++		default:
++			c.period = std::exp2(octaves);
++			break;
++		}
++		if (type == CrushType::JITTER) {
++			c.jitter = 0.5f;
++			c.dither = 0.4f;
++		}
++		return c;
++	}
++
++	static void process(const Config& c, int32_t* interleaved, size_t numFrames, State& s) {
++		if (!s.active) {
++			s = State{};
++			s.active = true;
++		}
++		switch (c.type) {
++		case CrushType::VINTAGE:
++			return run<CrushType::VINTAGE>(c, interleaved, numFrames, s);
++		case CrushType::ULAW:
++			return run<CrushType::ULAW>(c, interleaved, numFrames, s);
++		case CrushType::JITTER:
++			return run<CrushType::JITTER>(c, interleaved, numFrames, s);
++		default:
++			return run<CrushType::HARD>(c, interleaved, numFrames, s);
++		}
++	}
++
++	/// xorshift32, -1..1
++	static float noise(uint32_t& r) {
++		r ^= r << 13;
++		r ^= r >> 17;
++		r ^= r << 5;
++		return static_cast<float>(static_cast<int32_t>(r)) * (1.f / 2147483648.f);
++	}
++
++	/// No floor instruction on the A9 (std::floor is a library call), and the values here fit an int easily
++	static float fastFloor(float v) {
++		int32_t i = static_cast<int32_t>(v);
++		return static_cast<float>(i - (v < static_cast<float>(i)));
++	}
++
++	static int32_t toQ31(float v) { return static_cast<int32_t>(std::clamp(v, -2147483520.f, 2147483520.f)); }
++
++	template <CrushType T>
++	static float quantise(const Config& c, float x, float d) {
++		if constexpr (T == CrushType::ULAW) {
++			// G.711-style segments on a 13-bit scale: each octave of level gets the same number of steps
++			constexpr float kScale = 8159.f;
++			const float kBias = c.muBias;
++			if (x == 0.f) {
++				return 0.f; // otherwise silence turns into a tiny DC offset
++			}
++			float a = std::min(std::fabs(x), 8.f) * kScale + kBias; // up to 3 extra segments of headroom
++			uint32_t e = (std::bit_cast<uint32_t>(a) >> 23) & 0xFF; // floor(log2) + 127
++			float segment = std::bit_cast<float>(e << 23);          // 2^floor(log2 a)
++			float invSegment = std::bit_cast<float>((254u - e) << 23);
++			float step = segment * c.muStep;
++			float q = (fastFloor(a * invSegment * c.invMuStep) + 0.5f) * step;
++			q = std::max(q - kBias, 0.f) * (1.f / kScale);
++			return std::copysign(q, x);
++		}
++		else {
++			// Mid-tread rounding: no DC, quiet signals gate to zero at low bit depths
++			return fastFloor(std::clamp(x, -64.f, 64.f) * c.invStep + 0.5f + d) * c.step;
++		}
++	}
++
++	template <CrushType T>
++	static float shapeIn(float x) {
++		if constexpr (T == CrushType::VINTAGE) {
++			// Soft converter input: unity for small signals, rounds off above normal peak level, ceiling 1.33
++			x = std::clamp(x * 0.5f, -1.f, 1.f);
++			return 2.f * (x - x * x * x * (1.f / 3.f));
++		}
++		return x;
++	}
++
++	template <CrushType T>
++	static void run(const Config& c, int32_t* buf, size_t numFrames, State& s) {
++		for (size_t i = 0; i < numFrames; i++) {
++			float l = shapeIn<T>(static_cast<float>(buf[2 * i]) * c.inScale);
++			float r = shapeIn<T>(static_cast<float>(buf[2 * i + 1]) * c.inScale);
++
++			bool grab = true;
++			if (c.decimate) {
++				s.countdown -= 1.f;
++				grab = s.countdown <= 0.f;
++				if (grab) {
++					float period = c.period;
++					if constexpr (T == CrushType::JITTER) {
++						period *= 1.f + c.jitter * noise(s.rng);
++					}
++					s.countdown += period;
++					if (s.countdown < 0.f) { // the period got shorter a lot all at once
++						s.countdown = period;
++					}
++				}
++			}
++
++			if (grab) {
++				if (c.crush) {
++					float d = 0.f;
++					if constexpr (T == CrushType::JITTER) {
++						d = c.dither * noise(s.rng);
++					}
++					l = quantise<T>(c, l, d);
++					r = quantise<T>(c, r, d);
++				}
++				s.heldL = l;
++				s.heldR = r;
++			}
++			l = s.heldL;
++			r = s.heldR;
++
++			if constexpr (T == CrushType::VINTAGE) {
++				if (c.decimate) {
++					s.lpL += (l - s.lpL) * c.lpCoef;
++					s.lpR += (r - s.lpR) * c.lpCoef;
++					l = s.lpL;
++					r = s.lpR;
++				}
++			}
++
++			buf[2 * i] = toQ31(l * c.outScale);
++			buf[2 * i + 1] = toQ31(r * c.outScale);
++		}
++	}
++};
++
++} // namespace deluge::dsp
 diff --git a/src/deluge/dsp/delay/delay.cpp b/src/deluge/dsp/delay/delay.cpp
 index 43df3735d..67d5452c6 100644
 --- a/src/deluge/dsp/delay/delay.cpp
@@ -12916,6 +13188,19 @@ index adbcbc904..25b0e108a 100644
  		}
  
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
+diff --git a/src/deluge/gui/context_menu/context_menu.cpp b/src/deluge/gui/context_menu/context_menu.cpp
+index c102f75f3..642fe453f 100644
+--- a/src/deluge/gui/context_menu/context_menu.cpp
++++ b/src/deluge/gui/context_menu/context_menu.cpp
+@@ -200,7 +200,7 @@ void ContextMenu::drawCurrentOption() {
+ 	const auto options = getOptions();
+ 	if (display->have7SEG()) {
+ 		indicator_leds::ledBlinkTimeout(0, true);
+-		display->setText(options[currentOption], false, 255, true);
++		display->setBlinkingScrollingText(options[currentOption]);
+ 	}
+ }
+ 
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
 index 000000000..5c536c29b
@@ -14100,7 +14385,7 @@ index 000000000..c8a03a0a0
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..9dc3a4e90 100644
+index 683a26648..1d8d0d2da 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -14263,7 +14548,7 @@ index 683a26648..9dc3a4e90 100644
 +    "STRING_FOR_SYNTH_TYPE_FM": "FM",
 +    "STRING_FOR_SYNTH_TYPE_WAVE": "Wavetable",
 +    "STRING_FOR_SYNTH_TYPE_RING": "Ring mod",
-+    "STRING_FOR_SYNTH_TYPE_BRIB": "Bribering",
++    "STRING_FOR_SYNTH_TYPE_BRIB": "Brings",
 +    "STRING_FOR_SYNTH_TYPE_INIT": "Init",
 +    "STRING_FOR_SYNTH_CATEGORY": "Category",
 +    "STRING_FOR_SYNTH_CATEGORY_BASS": "Bass",
@@ -14309,7 +14594,7 @@ index 683a26648..9dc3a4e90 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -626,6 +797,13 @@
+@@ -626,6 +797,19 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -14320,10 +14605,16 @@ index 683a26648..9dc3a4e90 100644
 +    "STRING_FOR_SAT_CLIP": "Clip",
 +    "STRING_FOR_SAT_HARD": "Hard",
 +    "STRING_FOR_SAT_FOLD": "Fold",
++    "STRING_FOR_CRUSH_TYPE": "Crush type",
++    "STRING_FOR_CRUSH_CLASSIC": "Classic",
++    "STRING_FOR_CRUSH_HARD": "Hard",
++    "STRING_FOR_CRUSH_VINTAGE": "Vintage",
++    "STRING_FOR_CRUSH_ULAW": "u-Law",
++    "STRING_FOR_CRUSH_JITTER": "Jitter",
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -707,6 +885,12 @@
+@@ -707,6 +891,12 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -14336,7 +14627,7 @@ index 683a26648..9dc3a4e90 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -849,6 +1033,35 @@
+@@ -849,6 +1039,35 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -14372,7 +14663,7 @@ index 683a26648..9dc3a4e90 100644
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
-@@ -878,6 +1091,7 @@
+@@ -878,6 +1097,7 @@
      "STRING_FOR_LOOP_TOO_LONG": "Loop too long",
      "STRING_FOR_LOOP_DOUBLED": "Loop doubled",
      "STRING_FOR_WAVEFOLD": "Wavefold",
@@ -14380,7 +14671,7 @@ index 683a26648..9dc3a4e90 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1211,44 @@
+@@ -997,9 +1217,44 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -14427,7 +14718,7 @@ index 683a26648..9dc3a4e90 100644
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..409874f7f 100644
+index 0032e81ac..3fa18af1a 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -14590,7 +14881,7 @@ index 0032e81ac..409874f7f 100644
 +        {STRING_FOR_SYNTH_TYPE_FM, "FM"},
 +        {STRING_FOR_SYNTH_TYPE_WAVE, "Wavetable"},
 +        {STRING_FOR_SYNTH_TYPE_RING, "Ring mod"},
-+        {STRING_FOR_SYNTH_TYPE_BRIB, "Bribering"},
++        {STRING_FOR_SYNTH_TYPE_BRIB, "Brings"},
 +        {STRING_FOR_SYNTH_TYPE_INIT, "Init"},
 +        {STRING_FOR_SYNTH_CATEGORY, "Category"},
 +        {STRING_FOR_SYNTH_CATEGORY_BASS, "Bass"},
@@ -14636,7 +14927,7 @@ index 0032e81ac..409874f7f 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -639,6 +810,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -639,6 +810,19 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -14647,10 +14938,16 @@ index 0032e81ac..409874f7f 100644
 +        {STRING_FOR_SAT_CLIP, "Clip"},
 +        {STRING_FOR_SAT_HARD, "Hard"},
 +        {STRING_FOR_SAT_FOLD, "Fold"},
++        {STRING_FOR_CRUSH_TYPE, "Crush type"},
++        {STRING_FOR_CRUSH_CLASSIC, "Classic"},
++        {STRING_FOR_CRUSH_HARD, "Hard"},
++        {STRING_FOR_CRUSH_VINTAGE, "Vintage"},
++        {STRING_FOR_CRUSH_ULAW, "u-Law"},
++        {STRING_FOR_CRUSH_JITTER, "Jitter"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -720,6 +898,12 @@ PLACE_SDRAM_DATA Language english{
+@@ -720,6 +904,12 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -14663,7 +14960,7 @@ index 0032e81ac..409874f7f 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -862,6 +1046,35 @@ PLACE_SDRAM_DATA Language english{
+@@ -862,6 +1052,35 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -14699,7 +14996,7 @@ index 0032e81ac..409874f7f 100644
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
-@@ -891,6 +1104,7 @@ PLACE_SDRAM_DATA Language english{
+@@ -891,6 +1110,7 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_LOOP_TOO_LONG, "Loop too long"},
          {STRING_FOR_LOOP_DOUBLED, "Loop doubled"},
          {STRING_FOR_WAVEFOLD, "Wavefold"},
@@ -14707,7 +15004,7 @@ index 0032e81ac..409874f7f 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1224,45 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1230,45 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -14754,7 +15051,7 @@ index 0032e81ac..409874f7f 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..3c955ed6e 100644
+index 2024bd2f7..df4b564eb 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -14941,7 +15238,7 @@ index 2024bd2f7..3c955ed6e 100644
 +        {STRING_FOR_SYNTH_TYPE_FM, "FM"},
 +        {STRING_FOR_SYNTH_TYPE_WAVE, "WAVE"},
 +        {STRING_FOR_SYNTH_TYPE_RING, "RING"},
-+        {STRING_FOR_SYNTH_TYPE_BRIB, "BRIB"},
++        {STRING_FOR_SYNTH_TYPE_BRIB, "BRINGS"},
 +        {STRING_FOR_SYNTH_TYPE_INIT, "INIT"},
 +        {STRING_FOR_SYNTH_CATEGORY, "CATE"},
 +        {STRING_FOR_SYNTH_CATEGORY_BASS, "BASS"},
@@ -14977,7 +15274,7 @@ index 2024bd2f7..3c955ed6e 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -461,6 +660,14 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -461,6 +660,20 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -14989,10 +15286,16 @@ index 2024bd2f7..3c955ed6e 100644
 +        {STRING_FOR_SAT_CLIP, "CLIP"},
 +        {STRING_FOR_SAT_HARD, "HARD"},
 +        {STRING_FOR_SAT_FOLD, "FOLD"},
++        {STRING_FOR_CRUSH_TYPE, "CTYP"},
++        {STRING_FOR_CRUSH_CLASSIC, "CLAS"},
++        {STRING_FOR_CRUSH_HARD, "HARD"},
++        {STRING_FOR_CRUSH_VINTAGE, "VINT"},
++        {STRING_FOR_CRUSH_ULAW, "ULAW"},
++        {STRING_FOR_CRUSH_JITTER, "JITR"},
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +770,43 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +776,43 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -15014,7 +15317,7 @@ index 2024bd2f7..3c955ed6e 100644
 +        {STRING_FOR_MIDI_ECHO_REC, "REC"},
 +        {STRING_FOR_MIDI_LOOP_TRACK, "LOOP"},
 +        {STRING_FOR_NEW_MIDI_LOOP_TRACK, "LOOP"},
-+        {STRING_FOR_RINGS, "BRIB"},
++        {STRING_FOR_RINGS, "BRINGS"},
 +        {STRING_FOR_RINGS_MODAL_ENGINE, "BMOD"},
 +        {STRING_FOR_RINGS_SYMPATHETIC_ENGINE, "BSYM"},
 +        {STRING_FOR_RINGS_STRING_ENGINE, "BSTR"},
@@ -15037,7 +15340,7 @@ index 2024bd2f7..3c955ed6e 100644
      &built_in::english,
  };
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..ca879b00c 100644
+index bc5dd6c8c..d113b00a2 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,43 @@
@@ -15224,7 +15527,7 @@ index bc5dd6c8c..ca879b00c 100644
 +        "STRING_FOR_SYNTH_TYPE_FM": "FM",
 +        "STRING_FOR_SYNTH_TYPE_WAVE": "WAVE",
 +        "STRING_FOR_SYNTH_TYPE_RING": "RING",
-+        "STRING_FOR_SYNTH_TYPE_BRIB": "BRIB",
++        "STRING_FOR_SYNTH_TYPE_BRIB": "BRINGS",
 +        "STRING_FOR_SYNTH_TYPE_INIT": "INIT",
 +        "STRING_FOR_SYNTH_CATEGORY": "CATE",
 +        "STRING_FOR_SYNTH_CATEGORY_BASS": "BASS",
@@ -15260,7 +15563,7 @@ index bc5dd6c8c..ca879b00c 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -480,6 +679,21 @@
+@@ -480,6 +679,33 @@
          "STRING_FOR_TARGET_FULL": "FULL",
  
          "STRING_FOR_WAVEFOLD": "FOLD",
@@ -15279,10 +15582,22 @@ index bc5dd6c8c..ca879b00c 100644
 +        "STRING_FOR_SAT_HARD": "HARD",
 +
 +        "STRING_FOR_SAT_FOLD": "FOLD",
++
++        "STRING_FOR_CRUSH_TYPE": "CTYP",
++
++        "STRING_FOR_CRUSH_CLASSIC": "CLAS",
++
++        "STRING_FOR_CRUSH_HARD": "HARD",
++
++        "STRING_FOR_CRUSH_VINTAGE": "VINT",
++
++        "STRING_FOR_CRUSH_ULAW": "ULAW",
++
++        "STRING_FOR_CRUSH_JITTER": "JITR",
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +819,44 @@
+@@ -605,9 +831,44 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -15307,7 +15622,7 @@ index bc5dd6c8c..ca879b00c 100644
 +        "STRING_FOR_MIDI_ECHO_REC": "REC",
 +        "STRING_FOR_MIDI_LOOP_TRACK": "LOOP",
 +        "STRING_FOR_NEW_MIDI_LOOP_TRACK": "LOOP",
-+        "STRING_FOR_RINGS": "BRIB",
++        "STRING_FOR_RINGS": "BRINGS",
 +        "STRING_FOR_RINGS_MODAL_ENGINE": "BMOD",
 +        "STRING_FOR_RINGS_SYMPATHETIC_ENGINE": "BSYM",
 +        "STRING_FOR_RINGS_STRING_ENGINE": "BSTR",
@@ -15329,7 +15644,7 @@ index bc5dd6c8c..ca879b00c 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..e77d99131 100644
+index 2039f041f..6665493db 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -15527,7 +15842,7 @@ index 2039f041f..e77d99131 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -685,6 +852,13 @@ enum class String : size_t {
+@@ -685,6 +852,19 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -15538,10 +15853,16 @@ index 2039f041f..e77d99131 100644
 +	STRING_FOR_SAT_CLIP,
 +	STRING_FOR_SAT_HARD,
 +	STRING_FOR_SAT_FOLD,
++	STRING_FOR_CRUSH_TYPE,
++	STRING_FOR_CRUSH_CLASSIC,
++	STRING_FOR_CRUSH_HARD,
++	STRING_FOR_CRUSH_VINTAGE,
++	STRING_FOR_CRUSH_ULAW,
++	STRING_FOR_CRUSH_JITTER,
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -717,6 +891,10 @@ enum class String : size_t {
+@@ -717,6 +897,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -15552,7 +15873,7 @@ index 2039f041f..e77d99131 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -774,6 +952,12 @@ enum class String : size_t {
+@@ -774,6 +958,12 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -15565,7 +15886,7 @@ index 2039f041f..e77d99131 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -925,6 +1109,35 @@ enum class String : size_t {
+@@ -925,6 +1115,35 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -15601,7 +15922,7 @@ index 2039f041f..e77d99131 100644
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
-@@ -961,6 +1174,7 @@ enum class String : size_t {
+@@ -961,6 +1180,7 @@ enum class String : size_t {
  	STRING_FOR_LOOP_DOUBLED,
  
  	STRING_FOR_WAVEFOLD,
@@ -15609,7 +15930,7 @@ index 2039f041f..e77d99131 100644
  	STRING_FOR_MOD_MATRIX,
  
  	STRING_FOR_CHECKSUM_FAIL,
-@@ -1135,6 +1349,8 @@ enum class String : size_t {
+@@ -1135,6 +1355,8 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_CLIP_TYPE,
  	STRING_FOR_DEFAULT_NEW_CLIP_TYPE,
  	STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE,
@@ -15618,7 +15939,7 @@ index 2039f041f..e77d99131 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1361,39 @@ enum class String : size_t {
+@@ -1145,6 +1367,39 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -17421,71 +17742,83 @@ index 51b360b01..468572e63 100644
  	FilterInfo info;
  };
  
-diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/clipping.h
-deleted file mode 100644
-index 500789c93..000000000
+diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/crush_type.h
+similarity index 61%
+rename from src/deluge/gui/menu_item/fx/clipping.h
+rename to src/deluge/gui/menu_item/fx/crush_type.h
+index 500789c93..b2513dbb9 100644
 --- a/src/deluge/gui/menu_item/fx/clipping.h
-+++ /dev/null
-@@ -1,59 +0,0 @@
--/*
++++ b/src/deluge/gui/menu_item/fx/crush_type.h
+@@ -1,5 +1,5 @@
+ /*
 - * Copyright (c) 2014-2023 Synthstrom Audible Limited
-- *
-- * This file is part of The Synthstrom Audible Deluge Firmware.
-- *
-- * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
-- * terms of the GNU General Public License as published by the Free Software Foundation,
-- * either version 3 of the License, or (at your option) any later version.
-- *
-- * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-- * See the GNU General Public License for more details.
-- *
-- * You should have received a copy of the GNU General Public License along with this program.
-- * If not, see <https://www.gnu.org/licenses/>.
-- */
--#pragma once
++ * Copyright (c) 2026 thisisbribery
+  *
+  * This file is part of The Synthstrom Audible Deluge Firmware.
+  *
+@@ -15,45 +15,46 @@
+  * If not, see <https://www.gnu.org/licenses/>.
+  */
+ #pragma once
 -#include "gui/menu_item/integer.h"
--#include "gui/ui/sound_editor.h"
--#include "model/instrument/kit.h"
--#include "model/mod_controllable/mod_controllable_audio.h"
--#include "model/song/song.h"
++#include "dsp/crusher.h"
++#include "gui/menu_item/selection.h"
+ #include "gui/ui/sound_editor.h"
+ #include "model/instrument/kit.h"
+ #include "model/mod_controllable/mod_controllable_audio.h"
+ #include "model/song/song.h"
 -#include "processing/sound/sound.h"
--#include "processing/sound/sound_drum.h"
--#include <cstdint>
--
--namespace deluge::gui::menu_item::fx {
--
+ #include "processing/sound/sound_drum.h"
+ #include <cstdint>
+ 
+ namespace deluge::gui::menu_item::fx {
+ 
 -class Clipping final : public IntegerWithOff {
--public:
++/// What the Bitcrush and Decimation knobs sound like. Sets the sound being edited, or every sound in the kit if
++/// affect-entire is held.
++class CrushType final : public Selection {
+ public:
 -	using IntegerWithOff::IntegerWithOff;
--
++	using Selection::Selection;
+ 
 -	void readCurrentValue() override { this->setValue(soundEditor.currentModControllable->clippingAmount); }
--	bool usesAffectEntire() override { return true; }
--	void writeCurrentValue() override {
++	void readCurrentValue() override { this->setValue<dsp::CrushType>(soundEditor.currentModControllable->crushType); }
+ 	bool usesAffectEntire() override { return true; }
+ 	void writeCurrentValue() override {
 -		int32_t current_value = this->getValue();
 -
 -		// If affect-entire button held, do whole kit
--		if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
++		auto type = this->getValue<dsp::CrushType>();
+ 		if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
 -
--			Kit* kit = getCurrentKit();
+ 			Kit* kit = getCurrentKit();
 -
--			for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
--				if (thisDrum->type == DrumType::SOUND) {
+ 			for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
+ 				if (thisDrum->type == DrumType::SOUND) {
 -					auto* soundDrum = static_cast<SoundDrum*>(thisDrum);
 -					soundDrum->clippingAmount = current_value;
--				}
--			}
--		}
++					static_cast<SoundDrum*>(thisDrum)->crushType = type;
+ 				}
+ 			}
+ 		}
 -		// Or, the normal case of just one sound
--		else {
+ 		else {
 -			soundEditor.currentModControllable->clippingAmount = current_value;
--		}
--	}
++			soundEditor.currentModControllable->crushType = type;
+ 		}
+ 	}
 -	[[nodiscard]] int32_t getMaxValue() const override { return 15; }
 -	[[nodiscard]] RenderingStyle getRenderingStyle() const override { return BAR; }
--};
--
--} // namespace deluge::gui::menu_item::fx
++
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_CRUSH_CLASSIC), l10n::getView(STRING_FOR_CRUSH_HARD),
++		        l10n::getView(STRING_FOR_CRUSH_VINTAGE), l10n::getView(STRING_FOR_CRUSH_ULAW),
++		        l10n::getView(STRING_FOR_CRUSH_JITTER)};
++	}
+ };
+ 
+ } // namespace deluge::gui::menu_item::fx
 diff --git a/src/deluge/gui/menu_item/fx/saturation.h b/src/deluge/gui/menu_item/fx/saturation.h
 new file mode 100644
 index 000000000..32a60912f
@@ -18829,7 +19162,7 @@ index f4e341a9b..422d12415 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..f1e4c0247 100644
+index 7bbd559f6..23e40e4e0 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -18862,16 +19195,17 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/dx/browse.h"
  #include "gui/menu_item/dx/engine_select.h"
  #include "gui/menu_item/dx/global_params.h"
-@@ -77,7 +84,7 @@
+@@ -77,7 +84,8 @@
  #include "gui/menu_item/filter_route.h"
  #include "gui/menu_item/firmware/version.h"
  #include "gui/menu_item/flash/status.h"
 -#include "gui/menu_item/fx/clipping.h"
++#include "gui/menu_item/fx/crush_type.h"
 +#include "gui/menu_item/fx/saturation.h"
  #include "gui/menu_item/gate/mode.h"
  #include "gui/menu_item/gate/off_time.h"
  #include "gui/menu_item/gate/selection.h"
-@@ -87,6 +94,7 @@
+@@ -87,6 +95,7 @@
  #include "gui/menu_item/integer_range.h"
  #include "gui/menu_item/key_range.h"
  #include "gui/menu_item/keyboard/layout.h"
@@ -18879,7 +19213,7 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/lfo/sync.h"
  #include "gui/menu_item/lfo/type.h"
  #include "gui/menu_item/master_transpose.h"
-@@ -104,6 +112,7 @@
+@@ -104,6 +113,7 @@
  #include "gui/menu_item/midi/device_send_clock.h"
  #include "gui/menu_item/midi/device_send_thru.h"
  #include "gui/menu_item/midi/devices.h"
@@ -18887,7 +19221,7 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/midi/follow/follow_channel.h"
  #include "gui/menu_item/midi/follow/follow_feedback_automation.h"
  #include "gui/menu_item/midi/follow/follow_feedback_channel_type.h"
-@@ -189,6 +198,7 @@
+@@ -189,6 +199,7 @@
  #include "gui/menu_item/sample/repeat.h"
  #include "gui/menu_item/sample/reverse.h"
  #include "gui/menu_item/sample/start.h"
@@ -18895,7 +19229,7 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/sample/time_stretch.h"
  #include "gui/menu_item/sample/transpose.h"
  #include "gui/menu_item/sequence/direction.h"
-@@ -216,7 +226,10 @@
+@@ -216,7 +227,10 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -18906,7 +19240,7 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -243,6 +256,7 @@ namespace params = deluge::modulation::params;
+@@ -243,6 +257,7 @@ namespace params = deluge::modulation::params;
  // Include the autogenerated menu structures
  #include "gui/menu_item/audio_clip/specific_output_source_selector.h"
  #include "gui/menu_item/generate/g_menus.inc"
@@ -18914,7 +19248,7 @@ index 7bbd559f6..f1e4c0247 100644
  #include "gui/menu_item/midi/y_axis_to_cc1.h"
  
  // Arp --------------------------------------------------------------------------------------
-@@ -512,6 +526,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -512,6 +527,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
@@ -18925,7 +19259,7 @@ index 7bbd559f6..f1e4c0247 100644
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +539,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +540,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
@@ -18934,7 +19268,7 @@ index 7bbd559f6..f1e4c0247 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,20 +650,25 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,20 +651,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -18944,6 +19278,7 @@ index 7bbd559f6..f1e4c0247 100644
  PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
                                         RenderingStyle::BAR};
  PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
++PLACE_SDRAM_BSS fx::CrushType crushTypeMenu{STRING_FOR_CRUSH_TYPE, STRING_FOR_CRUSH_TYPE};
  PLACE_SDRAM_BSS patched_param::Integer foldMenu{STRING_FOR_WAVEFOLD, STRING_FOR_WAVEFOLD, params::LOCAL_FOLD,
                                                  RenderingStyle::BAR};
 +PLACE_SDRAM_BSS patched_param::Integer voiceFeedbackMenu{STRING_FOR_VOICE_FEEDBACK, STRING_FOR_VOICE_FEEDBACK,
@@ -18956,12 +19291,13 @@ index 7bbd559f6..f1e4c0247 100644
 +        &saturationTypeMenu,
          &bitcrushMenu,
          &srrMenu,
++        &crushTypeMenu,
          &foldMenu,
 +        &voiceFeedbackMenu,
      },
  };
  
-@@ -674,6 +699,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
+@@ -674,6 +702,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
  PLACE_SDRAM_BSS midi::Sub midiSubMenu{STRING_FOR_SUB_BANK_SHORT, STRING_FOR_MIDI_SUB_BANK};
  PLACE_SDRAM_BSS midi::PGM midiPGMMenu{STRING_FOR_PGM, STRING_FOR_MIDI_PGM_NUMB_MENU_TITLE};
  PLACE_SDRAM_BSS midi::MPEYToModWheel mpeyToModWheelMenu{STRING_FOR_Y_AXIS_CONVERSION, STRING_FOR_Y_AXIS_CONVERSION};
@@ -18969,7 +19305,7 @@ index 7bbd559f6..f1e4c0247 100644
  PLACE_SDRAM_BSS cv::DualCVSelection cv2SourceMenu{STRING_FOR_CV2_SOURCE};
  PLACE_SDRAM_BSS midi::AftertouchToMono midiAftertouchCollapseMenu{STRING_FOR_PATCH_SOURCE_AFTERTOUCH,
                                                                    STRING_FOR_PATCH_SOURCE_AFTERTOUCH};
-@@ -772,6 +798,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +801,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -18978,7 +19314,15 @@ index 7bbd559f6..f1e4c0247 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -855,6 +883,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -840,6 +871,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
+     {
+         &srrMenu,
+         &bitcrushMenu,
++        &crushTypeMenu,
+     },
+ };
+ 
+@@ -855,6 +887,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -18990,6 +19334,7 @@ index 7bbd559f6..f1e4c0247 100644
 +        &saturationTypeMenu,
 +        &srrMenu,
 +        &bitcrushMenu,
++        &crushTypeMenu,
 +    },
 +};
 +
@@ -19008,15 +19353,18 @@ index 7bbd559f6..f1e4c0247 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,6 +961,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,8 +966,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
 +        &saturationTypeMenu,
          &bitcrushMenu,
          &srrMenu,
++        &crushTypeMenu,
      },
-@@ -985,6 +1037,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+ };
+ 
+@@ -985,6 +1043,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -19028,7 +19376,7 @@ index 7bbd559f6..f1e4c0247 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1106,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1112,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -19036,7 +19384,7 @@ index 7bbd559f6..f1e4c0247 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1349,10 +1407,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+@@ -1349,10 +1413,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
  PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
      STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
  
@@ -19054,7 +19402,7 @@ index 7bbd559f6..f1e4c0247 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1534,610 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1540,610 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -19665,7 +20013,7 @@ index 7bbd559f6..f1e4c0247 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2179,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2185,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -19677,7 +20025,7 @@ index 7bbd559f6..f1e4c0247 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2208,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2214,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -19686,7 +20034,7 @@ index 7bbd559f6..f1e4c0247 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2217,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2223,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -19697,7 +20045,7 @@ index 7bbd559f6..f1e4c0247 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2247,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2253,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -19705,7 +20053,7 @@ index 7bbd559f6..f1e4c0247 100644
      },
  };
  
-@@ -1668,8 +2337,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2343,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -19719,7 +20067,7 @@ index 7bbd559f6..f1e4c0247 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2371,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2377,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -19736,7 +20084,7 @@ index 7bbd559f6..f1e4c0247 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2391,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2397,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -19745,7 +20093,7 @@ index 7bbd559f6..f1e4c0247 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2513,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2519,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -19754,7 +20102,7 @@ index 7bbd559f6..f1e4c0247 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2564,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2570,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -19769,7 +20117,7 @@ index 7bbd559f6..f1e4c0247 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2592,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2598,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -19777,7 +20125,7 @@ index 7bbd559f6..f1e4c0247 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2609,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2615,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -19786,7 +20134,7 @@ index 7bbd559f6..f1e4c0247 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1951,10 +2635,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2641,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -19820,7 +20168,7 @@ index 7bbd559f6..f1e4c0247 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2706,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2712,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -19829,7 +20177,7 @@ index 7bbd559f6..f1e4c0247 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2730,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2736,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -23314,6 +23662,75 @@ index 21f193b96..7253d3624 100644
  			}
  			else {
  				UI* currentUI = getCurrentUI();
+diff --git a/src/deluge/hid/display/display.h b/src/deluge/hid/display/display.h
+index 2480febb7..4adc2575a 100644
+--- a/src/deluge/hid/display/display.h
++++ b/src/deluge/hid/display/display.h
+@@ -103,6 +103,11 @@ public:
+ 	virtual void setTextWithMultipleDots(std::string_view newText, std::vector<uint8_t> dotPositions,
+ 	                                     bool alignRight = false, bool doBlink = false, uint8_t* newBlinkMask = nullptr,
+ 	                                     bool blinkImmediately = false) {}
++	/// A menu option that blinks; on 7SEG, one too long for the display blinks `flashes` times and then scrolls back
++	/// and forth until it's replaced
++	virtual void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) {
++		setText(newText, false, 255, true);
++	}
+ 	virtual NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0,
+ 	                                                    int32_t initialDelay = 600, int count = -1,
+ 	                                                    uint8_t fixedDot = 255) {
+diff --git a/src/deluge/hid/display/seven_segment.cpp b/src/deluge/hid/display/seven_segment.cpp
+index 3bbeaefde..c229ba074 100644
+--- a/src/deluge/hid/display/seven_segment.cpp
++++ b/src/deluge/hid/display/seven_segment.cpp
+@@ -253,6 +253,36 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
+ 	return newLayer;
+ }
+ 
++void SevenSegment::setBlinkingScrollingText(std::string_view newText, int32_t flashes) {
++	void* layerSpace = GeneralMemoryAllocator::get().allocLowSpeed(sizeof(NumericLayerScrollingText));
++	if (!layerSpace) {
++		setText(newText, false, 255, true);
++		return;
++	}
++	auto* scrolling = new (layerSpace) NumericLayerScrollingText(255);
++	scrolling->length = encodeText(newText, scrolling->text, false, {}, false);
++
++	// Blink it like any menu option
++	setText(newText, false, 255, true);
++
++	NumericLayer* blinking = topLayer;
++	while (blinking && blinking->next) {
++		blinking = blinking->next;
++	}
++	if (scrolling->length <= kNumericDisplayLength || !blinking) {
++		scrolling->~NumericLayerScrollingText();
++		delugeDealloc(scrolling);
++		return;
++	}
++
++	// Too long to read: after a few blinks the blinking layer gives way to the whole name scrolling under it
++	static_cast<NumericLayerBasicText*>(blinking)->blinkCount = flashes * 2;
++	scrolling->currentPos = 0;
++	scrolling->initialDelay = 600;
++	scrolling->scrollsCount = -1;
++	blinking->next = scrolling;
++}
++
+ void SevenSegment::replaceBottomLayer(NumericLayer* newLayer) {
+ 	NumericLayer** prevPointer = &topLayer;
+ 	while ((*prevPointer)->next) {
+diff --git a/src/deluge/hid/display/seven_segment.h b/src/deluge/hid/display/seven_segment.h
+index 8ba4446a9..bd9b4ac63 100644
+--- a/src/deluge/hid/display/seven_segment.h
++++ b/src/deluge/hid/display/seven_segment.h
+@@ -54,6 +54,7 @@ public:
+ 	void removeTopLayer();
+ 	NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0, int32_t initialDelay = 600,
+ 	                                            int count = -1, uint8_t fixedDot = 255) override;
++	void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) override;
+ 	int32_t getEncodedPosFromLeft(int32_t textPos, char const* text, bool* andAHalf) override;
+ 	void render();
+ 	void displayLoadingAnimation(bool delayed = false, bool transparent = false);
 diff --git a/src/deluge/io/midi/midi_engine.cpp b/src/deluge/io/midi/midi_engine.cpp
 index 18956ec02..c85c3235e 100644
 --- a/src/deluge/io/midi/midi_engine.cpp
@@ -24289,7 +24706,7 @@ index a7bbbd46a..02b2c7a57 100644
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
 diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
-index 5eb1c06d8..398586511 100644
+index 5eb1c06d8..3f18686d5 100644
 --- a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
 @@ -54,6 +54,7 @@ GlobalEffectableForClip::GlobalEffectableForClip() {
@@ -24324,6 +24741,16 @@ index 5eb1c06d8..398586511 100644
  		}
  	}
  
+@@ -132,7 +140,8 @@ GlobalEffectableForClip::GlobalEffectableForClip() {
+ 		processFilters(global_effectable_audio);
+ 
+ 		// Render FX
+-		processSRRAndBitcrushing(global_effectable_audio, &volumePostFX, paramManagerForClip);
++		processSRRAndBitcrushing(global_effectable_audio, &volumePostFX, paramManagerForClip,
++		                         deluge::dsp::Crusher::kClipUnit);
+ 	}
+ 
+ 	processFXForGlobalEffectable(global_effectable_audio, &volumePostFX, paramManagerForClip, delayWorkingState,
 diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.h b/src/deluge/model/global_effectable/global_effectable_for_clip.h
 index dd1533d47..3daa319bc 100644
 --- a/src/deluge/model/global_effectable/global_effectable_for_clip.h
@@ -25576,7 +26003,7 @@ index 000000000..b48b60583
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/synth_instruments.h b/src/deluge/model/instrument/synth_instruments.h
 new file mode 100644
-index 000000000..a66e35d67
+index 000000000..89a8c2380
 --- /dev/null
 +++ b/src/deluge/model/instrument/synth_instruments.h
 @@ -0,0 +1,70 @@
@@ -25628,7 +26055,7 @@ index 000000000..a66e35d67
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_FM, "SYNTHS/FM", SynthMode::FM, false, false, false, false},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_WAVE, "SYNTHS/WAVE", SynthMode::SUBTRACTIVE, false, true, false, false},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_RING, "SYNTHS/RING", SynthMode::RINGMOD, false, false, false, false},
-+    {l10n::String::STRING_FOR_SYNTH_TYPE_BRIB, "SYNTHS/BRIB", SynthMode::SUBTRACTIVE, false, false, true, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_BRIB, "SYNTHS/BRINGS", SynthMode::SUBTRACTIVE, false, false, true, false},
 +    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DX7, "SYNTHS/DX7", SynthMode::SUBTRACTIVE, true, false, false, false},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_INIT, "SYNTHS", SynthMode::SUBTRACTIVE, false, false, false, true},
 +}};
@@ -25651,7 +26078,7 @@ index 000000000..a66e35d67
 +
 +} // namespace deluge::synth_instruments
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04f..33c8d581f 100644
+index fd80ba04f..b88dd0ab2 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -25664,24 +26091,26 @@ index fd80ba04f..33c8d581f 100644
  	SyncLevel syncLevel;
  	Song* song = preLoadedSong;
  	if (!song) {
-@@ -90,7 +87,8 @@ ModControllableAudio::~ModControllableAudio() {
+@@ -90,7 +87,10 @@ ModControllableAudio::~ModControllableAudio() {
  void ModControllableAudio::cloneFrom(ModControllableAudio* other) {
  	lpfMode = other->lpfMode;
  	hpfMode = other->hpfMode;
 -	clippingAmount = other->clippingAmount;
 +	saturation = other->saturation;
++	crushType = other->crushType;
++	crushTypeInFile = other->crushTypeInFile;
 +	loadedSaturationDrive = other->loadedSaturationDrive;
  	modFXType_ = other->modFXType_;
  	bassFreq = other->bassFreq; // Eventually, these shouldn't be variables like this
  	trebleFreq = other->trebleFreq;
-@@ -137,6 +135,31 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
+@@ -137,6 +137,31 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
  
  	unpatchedParams->params[params::UNPATCHED_SIDECHAIN_SHAPE].setCurrentValueBasicForSetup(-601295438);
  	unpatchedParams->params[params::UNPATCHED_COMPRESSOR_THRESHOLD].setCurrentValueBasicForSetup(0);
 +
 +	// Half gain (13 of 50): a few repeats. 25 is unity, endless repeats.
 +	unpatchedParams->params[params::UNPATCHED_DELAY_FEEDBACK].setCurrentValueBasicForSetup(-1073741824);
-+	unpatchedParams->params[params::UNPATCHED_DELAY_TONE].setCurrentValueBasicForSetup(0); // Flat
++	unpatchedParams->params[params::UNPATCHED_DELAY_TONE].setCurrentValueBasicForSetup(0);           // Flat
 +	unpatchedParams->params[params::UNPATCHED_SATURATION].setCurrentValueBasicForSetup(-2147483648); // Off
 +}
 +
@@ -25706,7 +26135,56 @@ index fd80ba04f..33c8d581f 100644
  }
  
  bool ModControllableAudio::hasBassAdjusted(ParamManager* paramManager) {
-@@ -409,8 +432,9 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+@@ -276,12 +301,45 @@ bool ModControllableAudio::isSRREnabled(ParamManager* paramManager) {
+ 	return (unpatchedParams->getValue(params::UNPATCHED_SAMPLE_RATE_REDUCTION) != -2147483648);
+ }
+ 
+-void ModControllableAudio::processSRRAndBitcrushing(std::span<StereoSample> buffer, int32_t* postFXVolume,
+-                                                    ParamManager* paramManager) {
+-	uint32_t bitCrushMaskForSRR = 0xFFFFFFFF;
++void ModControllableAudio::resolveLoadedCrushType(ParamManager* paramManager) {
++	// Files from before the crush types (any firmware) have no crushType: if they use either effect, keep the
++	// original sound
++	if (!crushTypeInFile && paramManager && paramManager->containsAnyMainParamCollections()
++	    && (isBitcrushingEnabled(paramManager) || isSRREnabled(paramManager))) {
++		crushType = deluge::dsp::CrushType::CLASSIC;
++	}
++	crushTypeInFile = true;
++}
+ 
++void ModControllableAudio::processSRRAndBitcrushing(std::span<StereoSample> buffer, int32_t* postFXVolume,
++                                                    ParamManager* paramManager, float unit) {
+ 	bool srrEnabled = isSRREnabled(paramManager);
+ 
++	if (crushType != deluge::dsp::CrushType::CLASSIC) {
++		sampleRateReductionOnLastTime = false;
++		bool crushEnabled = isBitcrushingEnabled(paramManager);
++		if (!srrEnabled && !crushEnabled) {
++			crusherState_.active = false;
++			return;
++		}
++		UnpatchedParamSet* unpatchedParams = paramManager->getUnpatchedParamSet();
++		// Bitcrush is on from -2113929216 (a notch above the bottom), decimation anywhere above the bottom
++		float crushKnob =
++		    static_cast<float>(static_cast<int64_t>(unpatchedParams->getValue(params::UNPATCHED_BITCRUSHING))
++		                       + 2113929216)
++		    * (1.f / 4261412863.f);
++		float rateKnob =
++		    static_cast<float>(static_cast<uint32_t>(unpatchedParams->getValue(params::UNPATCHED_SAMPLE_RATE_REDUCTION))
++		                       ^ 0x80000000u)
++		    * (1.f / 4294967295.f);
++		auto config = deluge::dsp::Crusher::configure(crushType, crushEnabled, crushKnob, srrEnabled, rateKnob, unit);
++		deluge::dsp::Crusher::process(config, reinterpret_cast<int32_t*>(buffer.data()), buffer.size(), crusherState_);
++		return;
++	}
++	crusherState_.active = false;
++
++	uint32_t bitCrushMaskForSRR = 0xFFFFFFFF;
++
+ 	// Bitcrushing ------------------------------------------------------------------------------
+ 	if (isBitcrushingEnabled(paramManager)) {
+ 		uint32_t positivePreset =
+@@ -409,9 +467,12 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
  	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
@@ -25716,9 +26194,12 @@ index fd80ba04f..33c8d581f 100644
 +	if (saturation.type != deluge::dsp::SaturationSettings{}.type) {
 +		writer.writeAttribute("satType", deluge::dsp::saturationTypeToString(saturation.type));
  	}
++	// Always written: a file without it is from before the crush types and loads as classic
++	writer.writeAttribute("crushType", deluge::dsp::crushTypeToString(crushType));
  }
  
-@@ -503,6 +527,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
+ void ModControllableAudio::writeTagsToFile(Serializer& writer) {
+@@ -503,6 +564,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	unpatchedParams->writeParamAsAttribute(writer, "compressorThreshold", params::UNPATCHED_COMPRESSOR_THRESHOLD,
  	                                       writeAutomation, false, valuesForOverride);
@@ -25727,7 +26208,7 @@ index fd80ba04f..33c8d581f 100644
  
  	unpatchedParams->writeParamAsAttribute(writer, "arpeggiatorGate", params::UNPATCHED_ARP_GATE, writeAutomation);
  	unpatchedParams->writeParamAsAttribute(writer, "noteProbability", params::UNPATCHED_NOTE_PROBABILITY,
-@@ -615,6 +641,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
+@@ -615,6 +678,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
  		                           readAutomationUpToPos);
  		reader.exitTag("compressorThreshold");
  	}
@@ -25738,7 +26219,7 @@ index fd80ba04f..33c8d581f 100644
  
  	// Arpeggiator stuff
  
-@@ -734,9 +764,22 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -734,9 +801,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  	}
  
  	else if (!strcmp(tagName, "clippingAmount")) {
@@ -25754,6 +26235,11 @@ index fd80ba04f..33c8d581f 100644
 +		saturation.type = deluge::dsp::stringToSaturationType(reader.readTagOrAttributeValue());
 +		reader.exitTag("satType");
 +	}
++	else if (!strcmp(tagName, "crushType")) {
++		crushType = deluge::dsp::stringToCrushType(reader.readTagOrAttributeValue());
++		crushTypeInFile = true;
++		reader.exitTag("crushType");
++	}
 +	else if (!strcmp(tagName, "satDrive")) {
 +		loadedSaturationDrive =
 +		    std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, deluge::dsp::SaturationSettings::kMaxDrive);
@@ -25762,7 +26248,7 @@ index fd80ba04f..33c8d581f 100644
  
  	// Arpeggiator
  
-@@ -806,6 +849,7 @@ doReadPatchedParam:
+@@ -806,6 +891,7 @@ doReadPatchedParam:
  					PatchedParamSet* patchedParams = (PatchedParamSet*)patchedParamsSummary->paramCollection;
  					patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_DELAY_FEEDBACK,
  					                         readAutomationUpToPos);
@@ -25771,18 +26257,31 @@ index fd80ba04f..33c8d581f 100644
  				reader.exitTag();
  			}
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.h b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-index 64f25db18..9d3b53c1f 100644
+index 64f25db18..6096dc6ef 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.h
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-@@ -21,6 +21,7 @@
+@@ -20,7 +20,9 @@
+ #include "definitions_cxx.hpp"
  #include "deluge/dsp/granular/GranularProcessor.h"
  #include "dsp/compressor/rms_feedback.h"
++#include "dsp/crusher.h"
  #include "dsp/delay/delay.h"
 +#include "dsp/saturator.h"
  #include "dsp/stereo_sample.h"
  #include "hid/button.h"
  #include "model/fx/stutterer.h"
-@@ -66,10 +67,18 @@ public:
+@@ -58,7 +60,9 @@ public:
+ 	void writeTagsToFile(Serializer& writer);
+ 	virtual Error readTagFromFile(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
+ 	                              int32_t readAutomationUpToPos, ArpeggiatorSettings* arpSettings, Song* song);
+-	void processSRRAndBitcrushing(std::span<StereoSample> buffer, int32_t* postFXVolume, ParamManager* paramManager);
++	/// unit: deluge::dsp::Crusher::kSoundUnit for a sound, kClipUnit for a kit, audio clip or the song
++	void processSRRAndBitcrushing(std::span<StereoSample> buffer, int32_t* postFXVolume, ParamManager* paramManager,
++	                              float unit = deluge::dsp::Crusher::kSoundUnit);
+ 	static void writeParamAttributesToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
+ 	                                       int32_t* valuesForOverride = nullptr);
+ 	static void writeParamTagsToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
+@@ -66,10 +70,18 @@ public:
  	static bool readParamTagFromFile(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
  	                                 int32_t readAutomationUpToPos);
  	static void initParams(ParamManager* paramManager);
@@ -25801,11 +26300,17 @@ index 64f25db18..9d3b53c1f 100644
  	virtual bool setModFXType(ModFXType newType);
  	bool offerReceivedCCToLearnedParamsForClip(MIDICable& cable, uint8_t channel, uint8_t ccNumber, uint8_t value,
  	                                           ModelStackWithTimelineCounter* modelStack, int32_t noteRowIndex = -1);
-@@ -104,7 +113,30 @@ public:
+@@ -104,7 +116,36 @@ public:
  	StutterConfig stutterConfig;
  
  	bool sampleRateReductionOnLastTime;
 -	uint8_t clippingAmount; // Song probably doesn't currently use this?
++	// What Bitcrush and Decimation sound like. New sounds get HARD; files without the setting load as CLASSIC if
++	// they have either effect on (resolveLoadedCrushType), so old songs sound the same.
++	deluge::dsp::CrushType crushType = deluge::dsp::CrushType::HARD;
++	bool crushTypeInFile = false;
++	void resolveLoadedCrushType(ParamManager* paramManager);
++	deluge::dsp::Crusher::State crusherState_;
 +	// Saturation. Song doesn't use this, only sounds, kits and audio clips. The drive is the UNPATCHED_SATURATION
 +	// param, copied in by setSaturationDriveFromParams() before each render.
 +	deluge::dsp::SaturationSettings saturation;
@@ -26150,7 +26655,7 @@ index a39f698ae..fd99159a3 100644
  };
  
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index d935c3c5f..2a487331e 100644
+index d935c3c5f..61ce61597 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
 @@ -40,10 +40,14 @@
@@ -26302,7 +26807,7 @@ index d935c3c5f..2a487331e 100644
  }
  
  void Song::resyncLFOs(bool reset_state) {
-@@ -3822,6 +3876,61 @@ void Song::setupPatchingForAllParamManagers() {
+@@ -3822,6 +3876,66 @@ void Song::setupPatchingForAllParamManagers() {
  	}
  }
  
@@ -26314,12 +26819,15 @@ index d935c3c5f..2a487331e 100644
 +		auto* backedUp = (BackedUpParamManager*)backedUpParamManagers.getElementAddress(i);
 +		if (!only || backedUp->modControllable == only) {
 +			backedUp->modControllable->applyLoadedSaturationDrive(&backedUp->paramManager);
++			backedUp->modControllable->resolveLoadedCrushType(&backedUp->paramManager);
 +		}
 +	}
 +	if (only) {
 +		only->loadedSaturationDrive = -1;
++		only->crushTypeInFile = true;
 +		return;
 +	}
++	globalEffectable.resolveLoadedCrushType(&paramManager);
 +
 +	for (Clip* clip : AllClips::everywhere(this)) {
 +		Output* output = clip->output;
@@ -26327,6 +26835,7 @@ index d935c3c5f..2a487331e 100644
 +			continue;
 +		}
 +		((ModControllableAudio*)output->toModControllable())->applyLoadedSaturationDrive(&clip->paramManager);
++		((ModControllableAudio*)output->toModControllable())->resolveLoadedCrushType(&clip->paramManager);
 +
 +		if (output->type == OutputType::KIT) {
 +			InstrumentClip* instrumentClip = (InstrumentClip*)clip;
@@ -26334,6 +26843,7 @@ index d935c3c5f..2a487331e 100644
 +				NoteRow* noteRow = instrumentClip->noteRows.getElement(i);
 +				if (noteRow->drum && noteRow->drum->type == DrumType::SOUND) {
 +					((SoundDrum*)noteRow->drum)->applyLoadedSaturationDrive(&noteRow->paramManager);
++					((SoundDrum*)noteRow->drum)->resolveLoadedCrushType(&noteRow->paramManager);
 +				}
 +			}
 +		}
@@ -26364,7 +26874,7 @@ index d935c3c5f..2a487331e 100644
  // Returns NULL if couldn't find one.
  // Supply stealInto to have it delete the "backed up" element, putting the contents into stealInto.
  ParamManager* Song::getBackedUpParamManagerForExactClip(ModControllableAudio* modControllable, Clip* clip,
-@@ -5073,39 +5182,43 @@ gotAnInstrument: {}
+@@ -5073,39 +5187,43 @@ gotAnInstrument: {}
  
  	// Synth or Kit
  	else {
@@ -26435,7 +26945,7 @@ index d935c3c5f..2a487331e 100644
  		}
  
  		display->displayLoadingAnimationText("Loading");
-@@ -5334,6 +5447,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
+@@ -5334,6 +5452,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
  		if (availabilityRequirement == Availability::ANY) {
  			break;
  		}
@@ -26444,7 +26954,7 @@ index d935c3c5f..2a487331e 100644
  		else if (availabilityRequirement == Availability::INSTRUMENT_AVAILABLE_IN_SESSION) {
  			if (!newInstrument || !getClipWithOutput(newInstrument, true)) {
  				break;
-@@ -5740,29 +5855,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
+@@ -5740,29 +5860,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
  	return newClip;
  }
  
@@ -29485,7 +29995,7 @@ index 98ff45ddd..1943aaffa 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 818e72233..ca36b4782 100644
+index 818e72233..fdc665300 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -39,6 +39,7 @@
@@ -29549,6 +30059,17 @@ index 818e72233..ca36b4782 100644
 +	}
  
  	scheduleMidiGateOutISR(numSamples);
+ 
+@@ -1086,8 +1098,8 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
+ 	if (currentSong) {
+ 		currentSong->globalEffectable.setupFilterSetConfig(&masterVolumeAdjustmentL, &currentSong->paramManager);
+ 		currentSong->globalEffectable.processFilters(renderingBuffer);
+-		currentSong->globalEffectable.processSRRAndBitcrushing(renderingBuffer, &masterVolumeAdjustmentL,
+-		                                                       &currentSong->paramManager);
++		currentSong->globalEffectable.processSRRAndBitcrushing(
++		    renderingBuffer, &masterVolumeAdjustmentL, &currentSong->paramManager, deluge::dsp::Crusher::kClipUnit);
+ 
+ 		masterVolumeAdjustmentR = masterVolumeAdjustmentL; // This might have changed in the above function calls
  
 diff --git a/src/deluge/processing/engines/cpu_meter.h b/src/deluge/processing/engines/cpu_meter.h
 new file mode 100644

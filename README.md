@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.26
+# BRIBELUGE: Deluge Bribes FW v1.27
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -16,7 +16,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** Delay amount and feedback on separate controls, plus a DJ filter in the loop, one SHIFT layer down.
 11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots an LXR, Cycles or GIN kit: every knob moves all the drums, and it snaps back on the next bar.
 12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads, gold knob buttons flash theirs, and a held shortcut pad scrolls its name on the 7-segment display.
-13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRIB, INIT), then BASS, LEAD, PAD or MISC, then play through the presets. 99 wavetable and 37 BRIB presets included.
+13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, INIT), then BASS, LEAD, PAD or MISC, then play through the presets. 99 wavetable and 37 BRINGS presets included.
 14. **[Default instruments](#14-default-instruments):** The kit and synth type every new track starts as, on its top preset.
 15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
 16. **[MIDI kits](#16-midi-kits):** SHIFT + MIDI makes an MKIT: sixteen MIDI rows that kit patterns and Autofill can play.
@@ -26,6 +26,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 20. **[MIDI loop tracks](#20-midi-loop-tracks):** LOOP tracks and ECHO turn the Deluge into a MIDI looper for synths with their local control on.
 21. **[BRIBERING MODE](#21-bribering-mode):** A resonator synth engine after Mutable Instruments Rings: five models, and Bow to keep it sounding. On synths and kit rows.
 22. **[Feedback](#22-feedback):** Feeds each synth voice's filter output back into its input: thicker, driven low end, and self-oscillation from patch cables.
+23. **[Crush types](#23-crush-types):** Bitcrush and Decimation that sound like real low bit depths and sample rates: Hard, Vintage, u-Law and Jitter, plus the original.
 
 **Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -33,22 +34,22 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.26.bin`](firmware/deluge-bribes-v1.26.bin)
+[`firmware/deluge-bribes-v1.27.bin`](firmware/deluge-bribes-v1.27.bin)
 
-SHA-256: `d0a4c23fe4abaeca58b73a6321a3f71f0683209022f6c548bdddbf4b09c972f7`
+SHA-256: `d51a89dd78aaac4a951c13d8d5ebf05921f0e0eea4673307b29ead1e8985bad6`
 
 Presets (optional), copied to the same place on the SD card:
 
 - [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR`. The GIN kits are built into the firmware.
 - [`presets/SYNTHS/WAVE`](presets/SYNTHS/WAVE) to `SYNTHS/WAVE`. These play the free **BVKER Custom Wavetables** pack, which isn't included here: download it from [bvker.com/free-serum-wavetables](https://bvker.com/free-serum-wavetables/) and unzip it into `SAMPLES/WAVETABLES`, so the card has `SAMPLES/WAVETABLES/BVKER - Custom Wavetables/Analog` and the other folders.
-- [`presets/SYNTHS/BRIB`](presets/SYNTHS/BRIB) to `SYNTHS/BRIB`.
+- [`presets/SYNTHS/BRINGS`](presets/SYNTHS/BRINGS) to `SYNTHS/BRINGS`. If your card has `SYNTHS/BRIB` from v1.26, rename it to `BRINGS`.
 - Your own synth presets: [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies them into the synth browser's folders (see [Synth browser](#13-synth-browser)).
 
 [Back to top](#readme-top)
 
 ## Install
 
-1. Copy `deluge-bribes-v1.26.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.27.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -706,7 +707,7 @@ Drum synth rows' gold knobs follow the shared pad layout (see [Gold knobs](#gold
 | **FM** | **FM** | `SYNTHS/FM` | FM synths |
 | **Wavetable** | **WAVE** | `SYNTHS/WAVE` | Wavetable synths: 99 presets on the free BVKER wavetables |
 | **Ring mod** | **RING** | `SYNTHS/RING` | Ring mod synths |
-| **Bribering** | **BRIB** | `SYNTHS/BRIB` | [BRIBERING MODE](#21-bribering-mode) sounds: 37 presets |
+| **Brings** | **BRINGS** | `SYNTHS/BRINGS` | [BRIBERING MODE](#21-bribering-mode) sounds: 37 presets |
 | **DX7** | **DX7** | `SYNTHS/DX7` | DX7 patches, listed only with the DX7 engine on in Community Features |
 | **Init** | **INIT** | | The stock blank synth |
 
@@ -722,11 +723,12 @@ Every type's folder holds four categories: **BASS**, **LEAD**, **PAD** and **MIS
 - It works on synth, MIDI and CV tracks, and on a kit track with no notes or sounds yet.
 - A type's folders are made the first time you pick it, ready to save into. A type with no presets yet gives a blank synth of that type that saves into its folder.
 - Presets kept loose in a type's folder, outside the categories, open as one flat list.
+- On the 7-segment display, a type, category or option longer than four letters (like **BRINGS**) blinks twice, then scrolls back and forth so you can read it. This works in every context menu.
 
 ### The presets
 
 - **WAVE:** 99 presets, one or more for each wavetable in the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which you download yourself (see [Download](#download)). Leads, pads and bells play with the filter wide open, so you hear the wavetable itself; basses and plucks start lower and open on each note with envelope 2. On every WAVE preset **CUSTOM 2** moves the wavetable position and **CUSTOM 3** is [Feedback](#22-feedback).
-- **BRIB:** 37 BRIBERING MODE presets across all five models: basses, plucked and struck leads, bowed and chordal pads, bells and drones.
+- **BRINGS:** 37 BRIBERING MODE presets across all five models: basses, plucked and struck leads, bowed and chordal pads, bells and drones.
 - **Your own presets:** [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies every synth preset in `SYNTHS` (and its other folders, like `DLFM`) into the right type and category, by name first (bass, pad, lead, pluck, bell), then by how it sounds (low transpose, slow attack, long release, mono, arpeggiator). The originals stay where they are, and a preset that lands in the wrong category can be moved by hand.
 
 ```bash
@@ -743,7 +745,7 @@ Pick the instrument every new kit track and every new synth track starts as. Pre
 | Setting | Screen | Options |
 |---|---|---|
 | **Kit Instrument** | **KIT** | **OFF** (stock), **LXR**, **Cycles**, **GIN** |
-| **Synth Instrument** | **SYNT** | **OFF** (stock), **SUBT**, **FM**, **WAVE**, **RING**, **BRIB**, **DX7** (DX7 only with the DX7 engine on in Community Features) |
+| **Synth Instrument** | **SYNT** | **OFF** (stock), **SUBT**, **FM**, **WAVE**, **RING**, **BRINGS**, **DX7** (DX7 only with the DX7 engine on in Community Features) |
 
 With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth type's folder, BASS first (see [Synth browser](#13-synth-browser)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
 
@@ -977,6 +979,36 @@ Poly sets the sound's Max voices to match (4 or 2), so a note past the limit let
 
 [Back to top](#readme-top)
 
+## 23. Crush types
+
+The Deluge's own Bitcrush and Decimation sound more like filters than crushers. Decimation draws a line from each sample it keeps to the next, which smooths the top end away instead of aliasing. Bitcrush jumps through eight steps, adds a DC offset and drops the volume near the top. **Crush type** sets how both of them sound: four types that hold each sample flat and sweep smoothly, and the original kept as Classic.
+
+### Where it is
+
+- **FX > DISTORTION > Crush type** (**CTYP**), after **Bitcrush** (**CRUSH**) and **Decimation**, on any synth, kit row or audio clip.
+- For a whole kit, turn **Affect Entire** on first: the kit's own **FX > DISTORTION** menu has it too. For the song, press **SELECT** in song view, then **FX > DISTORTION**.
+- Hold **Affect Entire** while turning it in a kit row's menu to set every row at once.
+
+The type only changes the sound once **Bitcrush** or **Decimation** is turned up.
+
+| Type | 7-seg | Bitcrush | Decimation |
+|---|---|---|---|
+| **Hard** | **HARD** | The default. Clean digital steps from 12 bits down to 1; at the end quiet parts drop out. | Sample and hold: bright, metallic aliasing. Around 5 kHz at the middle of the knob, down to 172 Hz. |
+| **Vintage** | **VINT** | An old 12-bit sampler: 12 bits as soon as either control is on, down to 3, with a softly rounded input. | The clock starts around 26 kHz and goes down to about 580 Hz, with the steps a little softened. |
+| **u-Law** | **ULAW** | Companded: every octave of level gets the same number of steps, so quiet tails stay grainy instead of dropping out. The top of the knob gets properly broken. | As Hard. |
+| **Jitter** | **JITR** | A noisy threshold: crackles and sputters. | The clock wobbles by up to half a sample period each time: noisy and broken rather than tonal. |
+| **Classic** | **CLAS** | The original. | The original. |
+
+### Good to know
+
+- The level stays put as you turn either control up, with no DC offset. Jitter gets a little louder at the top.
+- New sounds, kits, audio clips and songs start on **Hard**. Songs and presets saved before v1.27 that use Bitcrush or Decimation load as **Classic**, so they sound the same; ones that didn't start on **Hard** when you turn them up.
+- Bitcrush and Decimation are still parameters: gold knobs, automation, MIDI learn and parameter locks work as before, and the type changes how they sound.
+- Songs and presets save it (`crushType`). Other firmware ignores it and plays the original.
+- It costs a few operations per sample, only while Bitcrush or Decimation is on.
+
+[Back to top](#readme-top)
+
 ## Quick reference
 
 | Control | What it does |
@@ -997,6 +1029,7 @@ Poly sets the sound's Max voices to match (4 or 2), so a note past the limit let
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
+| **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR** or **CLAS** (Crush types) |
 | **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
 | **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
 | **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Default instruments, new in v1.19) |
@@ -1011,7 +1044,7 @@ Poly sets the sound's Max voices to match (4 or 2), so a note past the limit let
 | **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
 | **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
 | **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
-| **SHIFT + SYNTH** | Synth browser: pick a type (**SUBT**, **FM**, **WAVE**, **RING**, **BRIB**, **INIT**), then **BASS**, **LEAD**, **PAD** or **MISC**, then turn SELECT to play through its presets. SHIFT + SYNTH again moves on, BACK goes up a level (Synth browser) |
+| **SHIFT + SYNTH** | Synth browser: pick a type (**SUBT**, **FM**, **WAVE**, **RING**, **BRINGS**, **INIT**), then **BASS**, **LEAD**, **PAD** or **MISC**, then turn SELECT to play through its presets. SHIFT + SYNTH again moves on, BACK goes up a level (Synth browser) |
 | **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
 | **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
 | **SHIFT + the pad below FOLD** | **Feedback** (**FDBK**): the voice's filter output fed back into its input (Feedback) |
@@ -1060,6 +1093,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.27: Crush types, BRINGS and scrolling names.** **Crush type** sets how Bitcrush and Decimation sound: Hard, Vintage, u-Law, Jitter, or Classic for the original. The BRIB synth type is now **BRINGS** (folder `SYNTHS/BRINGS`: rename yours), and 7-segment context menu options longer than four letters blink, then scroll. *Why:* the stock Decimation smoothed between samples, so turning it up sounded like closing a cheap low pass filter, and Bitcrush had only eight steps, a DC offset and volume drops. *Learned:* at half the knob, the stock Decimation had about 20 dB less top end above 6 kHz than a true sample and hold. Airwindows DeRez3 was considered and dropped: its curved rebuild between samples is smoother still.
 - **v1.26: Synth browser and Feedback.** SHIFT + SYNTH became a full browser: type, then BASS, LEAD, PAD or MISC, then presets playing as you turn, with 99 wavetable presets on the free BVKER tables and 37 BRIBERING MODE presets, plus a tool to sort your own. New **Feedback** control on every synth. *Why:* the v1.16 picker (Deluge, DLFM, DX7) only loaded one folder's first preset, so finding a sound meant scrolling hundreds of files by name. *Learned:* the first WAVE presets had the filter half closed, which hid what makes each wavetable different, so they're wide open now except where the sweep is the sound (basses, plucks). Their CUSTOM 2 and 3 both moved the wavetable position and felt like one knob, so CUSTOM 3 became Feedback. If your default synth was DX7, pick it again: the setting's list changed.
 - **v1.25: BRIBERING MODE.** A resonator synth engine on the DSP of Mutable Instruments Rings: five models, Bow and Poly. *Why:* Rings-style strikes and strings, polyphonic, inside the Deluge's own voices and FX. *Learned:* sympathetic and chord voices with four strings each cut out when four notes played at once, purely from CPU, so Poly trades voices for strings the way the module does: 4 voices of 2 strings by default, or 2 of 4.
 - **v1.24: MIDI loop tracks.** LOOP tracks and ECHO. *Why:* a MIDI track sends what it receives straight back out, so looping a synth with local control on played every note twice.
@@ -1115,7 +1149,8 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
 - **Pad Guides, the standard drum pad layout and the synth browser** are original designs for this build. The browser reuses the Deluge's own preset browsing.
 - **Feedback** is an original design for this build, inside the Deluge's own filters.
-- **The WAVE presets** were made for this build and play the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which isn't included here: all credit for the wavetables goes to BVKER. The BRIB presets were made for this build.
+- **Crush types** are an original design for this build. u-Law uses the segmented μ-law companding of the G.711 telephone standard, the scheme Mutable Instruments Clouds and Beads use for their lo-fi modes.
+- **The WAVE presets** were made for this build and play the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which isn't included here: all credit for the wavetables goes to BVKER. The BRINGS presets were made for this build.
 - **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
 - **The Cycles presets** are my own Model:Cycles kits, made on my own machine and converted for the Cyc engines.
 - **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), converted for the drum synth. All credit for those sounds goes to Hrtl.
