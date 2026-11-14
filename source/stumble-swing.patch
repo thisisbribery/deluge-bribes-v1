@@ -22054,7 +22054,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index 1cd5b7410..c57dafafa 100644
+index 1cd5b7410..90baa0fbd 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -2,7 +2,10 @@
@@ -22247,7 +22247,7 @@ index 1cd5b7410..c57dafafa 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1476,7 +1569,42 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1476,7 +1569,111 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  
  static const uint32_t shortcutPadUIModes[] = {UI_MODE_AUDITIONING, UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR, 0};
  
@@ -22283,6 +22283,75 @@ index 1cd5b7410..c57dafafa 100644
 +	}
 +}
 +
++namespace {
++/// Whether a gold knob set to knobParam (a sound's mod knob param) edits the param a menu item edits. SHIFT + the
++/// delay knobs edit delay feedback and tone, so those count too.
++bool soundKnobEdits(ParamDescriptor knobParam, deluge::modulation::params::Kind kind, uint32_t paramIndex) {
++	namespace params = deluge::modulation::params;
++	switch (kind) {
++	case params::Kind::PATCHED:
++		return paramIndex < params::UNPATCHED_START && knobParam.isSetToParamWithNoSource(paramIndex);
++	case params::Kind::UNPATCHED_SOUND:
++	case params::Kind::UNPATCHED_GLOBAL:
++		return knobParam.isSetToParamWithNoSource(params::UNPATCHED_START + paramIndex)
++		       || (paramIndex == params::UNPATCHED_DELAY_FEEDBACK
++		           && knobParam.isSetToParamWithNoSource(params::GLOBAL_DELAY_FEEDBACK))
++		       || (paramIndex == params::UNPATCHED_DELAY_TONE
++		           && knobParam.isSetToParamWithNoSource(params::GLOBAL_DELAY_RATE));
++	case params::Kind::PATCH_CABLE:
++		return !knobParam.isJustAParam() && knobParam.data == paramIndex;
++	default:
++		return false;
++	}
++}
++
++bool globalKnobEdits(int32_t knobParam, deluge::modulation::params::Kind kind, uint32_t paramIndex) {
++	namespace params = deluge::modulation::params;
++	if (kind != params::Kind::UNPATCHED_GLOBAL || knobParam == 255) {
++		return false;
++	}
++	return static_cast<uint32_t>(knobParam) == paramIndex
++	       || (paramIndex == params::UNPATCHED_DELAY_FEEDBACK && knobParam == params::UNPATCHED_DELAY_AMOUNT)
++	       || (paramIndex == params::UNPATCHED_DELAY_TONE && knobParam == params::UNPATCHED_DELAY_RATE);
++}
++} // namespace
++
++/// The reverse of the mod button pad flash: a shortcut pad whose param sits on a gold knob blinks that knob's mod
++/// button LED. Only reads the knob assignments (12 per sound), once per press.
++void SoundEditor::blinkModButtonFor(MenuItem* item) {
++	if (item == nullptr || getCurrentUI() != this
++	    || !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides)) {
++		return;
++	}
++	const deluge::modulation::params::Kind kind = item->getParamKind();
++	if (kind == deluge::modulation::params::Kind::NONE) {
++		return;
++	}
++	const uint32_t paramIndex = item->getParamIndex();
++
++	GlobalEffectable* global = nullptr;
++	if (currentSound == nullptr && currentModControllable != nullptr
++	    && (editingKitAffectEntire() || getCurrentOutputType() == OutputType::AUDIO)) {
++		global = static_cast<GlobalEffectable*>(currentModControllable);
++	}
++	if (currentSound == nullptr && global == nullptr) {
++		return;
++	}
++
++	for (int32_t button = 0; button < kNumModButtons; button++) {
++		for (int32_t knob = 0; knob < kNumPhysicalModKnobs; knob++) {
++			const bool edits =
++			    currentSound != nullptr
++			        ? soundKnobEdits(currentSound->modKnobs[button][knob].paramDescriptor, kind, paramIndex)
++			        : globalKnobEdits(global->knobParamForModButton(button, knob), kind, paramIndex);
++			if (edits) {
++				indicator_leds::blinkLed(indicator_leds::modLed[button], 4);
++				return;
++			}
++		}
++	}
++}
++
  ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool on) {
 +	if (!on) {
 +		endShortcutName(x, y);
@@ -22290,7 +22359,7 @@ index 1cd5b7410..c57dafafa 100644
  	// a bunch of other views call this, in which case we actually want to know if we *would* edit kit affect entire
  	// if we were to open a menu. There's a weird edge case in kits otherwise where trying to open a kit param that
  	// doesn't exist in the current selected drum row (like if a filter is off or different modfx) otherwise
-@@ -1614,10 +1742,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1614,10 +1811,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  			        (x == 15 && y >= 1 && y <= 3))) {
  				//< randomizer shortcuts
  
@@ -22309,7 +22378,7 @@ index 1cd5b7410..c57dafafa 100644
  
  				// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  				secondLayerShortcutsToggled =
-@@ -1626,7 +1761,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1626,7 +1830,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				        ? !secondLayerShortcutsToggled
  				        : false;
  
@@ -22318,7 +22387,7 @@ index 1cd5b7410..c57dafafa 100644
  					if (const auto secondLayerItem = paramShortcutsForSoundsSecondLayer[x][y];
  					    secondLayerItem != nullptr) {
  						item = secondLayerItem;
-@@ -1634,6 +1769,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1634,6 +1838,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				}
  			}
  		}
@@ -22338,7 +22407,7 @@ index 1cd5b7410..c57dafafa 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1658,7 +1806,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1658,7 +1875,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			// Special shortcut for Note Row Editor menu: [audition pad] + [sequence direction pad]
  			Clip* currentClip = getCurrentClip();
@@ -22351,7 +22420,7 @@ index 1cd5b7410..c57dafafa 100644
  			    && runtimeFeatureSettings.get(HorizontalMenus) == On
  			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
  
-@@ -1677,11 +1829,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1677,11 +1898,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -22367,10 +22436,11 @@ index 1cd5b7410..c57dafafa 100644
  
  			enterOrUpdateSoundEditor(on);
 +			showShortcutName(x, y);
++			blinkModButtonFor(const_cast<MenuItem*>(item));
  		}
  	}
  
-@@ -1727,6 +1886,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1727,6 +1956,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -22385,7 +22455,7 @@ index 1cd5b7410..c57dafafa 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2170,6 +2337,7 @@ doMIDIOrCV:
+@@ -2170,6 +2407,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -22394,7 +22464,7 @@ index 1cd5b7410..c57dafafa 100644
  
  	return true;
 diff --git a/src/deluge/gui/ui/sound_editor.h b/src/deluge/gui/ui/sound_editor.h
-index 68735d042..349355da6 100644
+index 68735d042..2c7f6ebe5 100644
 --- a/src/deluge/gui/ui/sound_editor.h
 +++ b/src/deluge/gui/ui/sound_editor.h
 @@ -59,6 +59,12 @@ public:
@@ -22421,12 +22491,14 @@ index 68735d042..349355da6 100644
  	uint32_t timeLastAttemptedAutomatedParamEdit;
  
  	int8_t numberScrollAmount;
-@@ -136,6 +146,8 @@ public:
+@@ -136,6 +146,10 @@ public:
  	void enterOrUpdateSoundEditor(bool on);
  	void blinkShortcut();
  	ActionResult potentialShortcutPadAction(int32_t x, int32_t y, bool on);
 +	void showShortcutName(int32_t x, int32_t y);
 +	void endShortcutName(int32_t x, int32_t y);
++	/// Blinks the mod button LED whose gold knobs edit what this shortcut item edits (Pad Guides)
++	void blinkModButtonFor(MenuItem* item);
  	bool editingReverbSidechain();
  	MenuItem* getCurrentMenuItem();
  	bool inSettingsMenu();
@@ -26411,6 +26483,30 @@ index a7bbbd46a..02b2c7a57 100644
  		delayWorkingState.delayFeedbackAmount =
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
+diff --git a/src/deluge/model/global_effectable/global_effectable.h b/src/deluge/model/global_effectable/global_effectable.h
+index 24472813b..808b95c86 100644
+--- a/src/deluge/model/global_effectable/global_effectable.h
++++ b/src/deluge/model/global_effectable/global_effectable.h
+@@ -67,6 +67,19 @@ public:
+ 
+ 	ModFXType getModFXType() override;
+ 
++	/// The unpatched param a gold knob edits under another mod button, or 255. Reads only.
++	int32_t knobParamForModButton(int32_t modButton, int32_t whichModEncoder) {
++		uint8_t* mode = getModKnobMode();
++		if (mode == nullptr) {
++			return 255;
++		}
++		const uint8_t saved = *mode;
++		*mode = modButton;
++		const int32_t paramId = getParameterFromKnob(whichModEncoder);
++		*mode = saved;
++		return paramId;
++	}
++
+ protected:
+ 	int maxCompParam = 0;
+ 	virtual int32_t getParameterFromKnob(int32_t whichModEncoder);
 diff --git a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp b/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
 index 5eb1c06d8..3f18686d5 100644
 --- a/src/deluge/model/global_effectable/global_effectable_for_clip.cpp
@@ -35075,10 +35171,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..587284cbe
+index 000000000..7219b93a1
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,445 @@
 +---
 +title: Drum Synth
 +---
@@ -35324,6 +35420,7 @@ index 000000000..587284cbe
 +- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** tints the MOD1 / MOD2 pads that have a setting soft pink (and ULTRAKIK's OSC1 pads), blended over the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
 +- **Gold knobs.** Drum synth rows use the layout above.
 +- **Mod button pads.** Holding any gold knob button still shows its two settings' names, and now also flashes their shortcut pads: red for the top knob's, yellow for the bottom's. This works on every sound type, and on kit, audio clip and song FX. A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
++- **Shortcut pad knob LED (new in v1.29).** The other way round: press a shortcut pad (SHIFT or audition + pad) and, if that setting sits on a gold knob, that knob's mod button LED blinks four times. LPF FREQ or RES blinks CUTOFF / RES, the delay feedback and tone pads blink DELAY (SHIFT + the delay knobs edit them). It reads the sound's own knob layout, so learned knobs, the 303 and the drum and synth engines' knobs count, and kit FX (AFFECT ENTIRE) and audio clips use theirs. One LED covers both knobs, so it shows the pair, not top or bottom.
 +
 +## DXIA and DIIA
 +

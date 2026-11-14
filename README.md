@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.28
+# BRIBELUGE: Deluge Bribes FW v1.29
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -15,7 +15,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 9. **[303 synth](#9-303-synth):** A TB-303 voice from Open303 with accent and slide from the mono sequencer, three filters (303, LP18, DIRT) and an overdrive after them.
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** Delay amount and feedback on separate controls, plus a DJ filter in the loop, one SHIFT layer down.
 11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots an LXR, Cycles or GIN kit: every knob moves all the drums, and it snaps back on the next bar.
-12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads (purple on BRINGS and BROPHET), gold knob buttons flash theirs, and a held shortcut pad scrolls its name on the 7-segment display.
+12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads (purple on BRINGS and BROPHET), gold knob buttons flash theirs, shortcut pads blink their gold knob's button, and a held shortcut pad scrolls its name on the 7-segment display.
 13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, BROPHET, INIT), then BASS, LEAD, PAD or MISC (BROPHET: Pro-53's banks), then play through the presets. 99 wavetable, 37 BRINGS and 536 BROPHET presets included.
 14. **[Default instruments](#14-default-instruments):** The kit and synth type every new track starts as, on its top preset.
 15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
@@ -35,7 +35,7 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.28.bin`](firmware/deluge-bribes-v1.28.bin)
+[`firmware/deluge-bribes-v1.29.bin`](firmware/deluge-bribes-v1.29.bin)
 
 SHA-256: `16824e59c59ae9c85c4b93258e72206bbf6cf2400e7f13f256fab3daf3091d55`
 
@@ -51,7 +51,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.28.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.29.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -685,6 +685,15 @@ Visual guides to what each pad and gold knob does. **Pad Guides** (**GUID**) is 
 - Works on every sound (synths, FM, the 303, drum synth rows, sample rows) and on kit, audio clip and song FX.
 - A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
 
+### Knob buttons
+
+New in v1.29: the same thing the other way round.
+
+- Press a shortcut pad (SHIFT or an audition pad + the pad). If that setting is on a gold knob, the knob's button LED blinks four times. **LPF FREQ** or **LPF RES** blinks **CUTOFF / RES**.
+- It reads the sound's own knobs, so knobs you've learned count, and so do the 303's and the drum and synth engines' layouts.
+- Kit FX (AFFECT ENTIRE) and audio clips use their own knob layout. The delay feedback and delay tone pads blink **DELAY**, since SHIFT + the delay knobs edit them.
+- One LED covers both knobs, so it shows the pair, not top or bottom.
+
 ### Pad names
 
 New in v1.20, on a 7-segment Deluge.
@@ -1111,6 +1120,7 @@ The Attack and Release gold knobs stay on envelope 1, as on any synth. Every con
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | Character A / B: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
 | **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one; purple on BRINGS and BROPHET (Pad Guides) |
 | **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
+| **SHIFT + a shortcut pad** | If the setting is on a gold knob, that knob's button LED blinks (Pad Guides, new in v1.29) |
 | **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
 | **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
 | **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
@@ -1166,6 +1176,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.29: Knob button LEDs.** Pressing a shortcut pad blinks the button of the gold knob that edits the same setting, the reverse of the gold knob buttons flashing their pads. *Why:* to learn which pads sit on the knobs from either side. *Learned:* the knob layouts already live in one table per sound, so the lookup is twelve comparisons on a press and costs the audio nothing.
 - **v1.28: BROPHET.** A two-oscillator poly engine from Pro-54, the open source port of NI's Pro-53, with its filter in every LPF list and all 512 Pro-53 programs in the synth browser. BRINGS and BROPHET now lay out on the OSC1, OSC2 and FM MOD pads by their labels, and glow purple. *Why:* Pro-54's release put a classic poly voice in the open, written for 2002 CPUs. *Learned:* Cmajor starts every variable at zero and C++ doesn't, so the first translation left two of sync's anti-aliasing terms holding junk. The first CPU pass took an 8-note chord from 64% to 59%; a second one, which swapped float compares for NEON tricks in the middle of the oscillator maths, measured slower and was rolled back.
 - **v1.27: Crush types, BRINGS and scrolling names.** **Crush type** sets how Bitcrush and Decimation sound: Hard, Vintage, u-Law, Jitter, or Classic for the original. The BRIB synth type is now **BRINGS** (folder `SYNTHS/BRINGS`: rename yours), and 7-segment context menu options longer than four letters blink, then scroll. *Why:* the stock Decimation smoothed between samples, so turning it up sounded like closing a cheap low pass filter, and Bitcrush had only eight steps, a DC offset and volume drops. *Learned:* at half the knob, the stock Decimation had about 20 dB less top end above 6 kHz than a true sample and hold. Airwindows DeRez3 was considered and dropped: its curved rebuild between samples is smoother still.
 - **v1.26: Synth browser and Feedback.** SHIFT + SYNTH became a full browser: type, then BASS, LEAD, PAD or MISC, then presets playing as you turn, with 99 wavetable presets on the free BVKER tables and 37 BRIBERING MODE presets, plus a tool to sort your own. New **Feedback** control on every synth. *Why:* the v1.16 picker (Deluge, DLFM, DX7) only loaded one folder's first preset, so finding a sound meant scrolling hundreds of files by name. *Learned:* the first WAVE presets had the filter half closed, which hid what makes each wavetable different, so they're wide open now except where the sweep is the sound (basses, plucks). Their CUSTOM 2 and 3 both moved the wavetable position and felt like one knob, so CUSTOM 3 became Feedback. If your default synth was DX7, pick it again: the setting's list changed.
