@@ -4,7 +4,7 @@
 usage: sort_synth_presets.py CARD [--dry-run]
 
 CARD is the SD card (or a copy of it). Every synth preset in SYNTHS and its folders (except the type folders
-SUBT, FM, WAVE, RING, BRINGS and DX7) is COPIED to SYNTHS/<TYPE>/<CATEGORY>/:
+SUBT, FM, WAVE, RING, BRINGS, DX7 and BROPHET) is COPIED to SYNTHS/<TYPE>/<CATEGORY>/:
 
   TYPE      SUBT (subtractive), WAVE (subtractive with a wavetable oscillator), FM, RING (ring mod)
   CATEGORY  BASS, LEAD, PAD or MISC
@@ -20,7 +20,7 @@ import shutil
 import sys
 import xml.etree.ElementTree as ET
 
-TYPE_FOLDERS = {"SUBT", "FM", "WAVE", "RING", "BRINGS", "DX7"}
+TYPE_FOLDERS = {"SUBT", "FM", "WAVE", "RING", "BRINGS", "DX7", "BROPHET"}
 
 
 def value(el, name):
