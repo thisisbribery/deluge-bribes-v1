@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.24
+# BRIBELUGE: Deluge Bribes FW v1.25
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -24,6 +24,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 18. **[Elektron P-locks](#18-elektron-p-locks) (new in v1.23):** an optional setting that makes parameter locks behave like an Elektron's: a lock stays on its own step, new notes don't pick it up, and deleting the note deletes the lock.
 19. **[Track types in song view](#19-track-types-in-song-view) (new in v1.23):** the section pads down the right of song view move by track type. Kits flash on the beat, synths breathe, MIDI pings, CV stays solid.
 20. **[MIDI loop tracks](#20-midi-loop-tracks) (new in v1.24):** use the Deluge as a MIDI looper for your synths and drum machines, with their local control left on. SHIFT + MIDI makes a **LOOP** track that takes its channel from the first note you play into it and doesn't send your playing back, and every MIDI track gets an **ECHO** setting.
+21. **[BRIBERING MODE](#21-bribering-mode) (new in v1.25):** a resonator synth engine, after Mutable Instruments Rings. Every note strikes its own resonator: a modal bank of tuned partials, sympathetic strings, an inharmonic string, a 2-op FM voice, or strings tuned to a chord. Structure, Brightness, Damping and Position shape it as on Rings, and **Bow** keeps it sounding for as long as you hold a note. Picked in SYNTH MODE, on synths and kit rows.
 
 **Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -68,6 +69,8 @@ With these settings left at their defaults, the Deluge behaves exactly like the 
 
 **New in v1.24: MIDI loop tracks.** A MIDI track normally sends everything it receives straight back out, so a synth with local control on plays every note twice while you record it. **ECHO** (second in a MIDI track's menu) turns that off, or off only while recording. **LOOP** (SHIFT + MIDI) makes a MIDI track with ECHO off that takes its channel from the first note you play into it. With Endless Record on, hit RECORD, play the synth, hit RECORD again and the loop closes at the next bar and plays back to it. Knob moves record too, as long as the synth sends them as CC. See [MIDI loop tracks](#20-midi-loop-tracks).
 
+**New in v1.25: BRIBERING MODE.** A new synth engine in SYNTH MODE (**BMOD**, **BSYM**, **BSTR**, **BFM**, **BCHD**), built on the DSP of Mutable Instruments Rings. Each note strikes a resonator that rings on in its own time: modal bells, bars and plates, sympathetic and inharmonic strings, FM tones, and chords of strings. Its knobs are on the gold knobs and the MOD1 pads, it plays polyphonic through the Deluge's own voices, envelopes, filters and FX, and **Bow** excites it continuously for pads and drones. See [BRIBERING MODE](#21-bribering-mode).
+
 [Back to top](#readme-top)
 
 ## About
@@ -83,9 +86,9 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 ## Download
 
-[`firmware/deluge-bribes-v1.24.bin`](firmware/deluge-bribes-v1.24.bin)
+[`firmware/deluge-bribes-v1.25.bin`](firmware/deluge-bribes-v1.25.bin)
 
-SHA-256: `3973244288ea761febb73fa5a4f00ba641edc7558b54e82c392beaddfcede401`
+SHA-256: `7bd9194e20fe8decebbac1b69bbdd6a9f0691635aed5c5b8f189e0c043692440`
 
 Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
 
@@ -93,7 +96,7 @@ Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`pres
 
 ## Install
 
-1. Copy `deluge-bribes-v1.24.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.25.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -143,6 +146,7 @@ To go back, install an official firmware file the same way.
 | **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
 | **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
 | **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
+| **SYNTH MODE pad, choose BMOD, BSYM, BSTR, BFM or BCHD** | Turn a synth or kit row into BRIBERING MODE on that model (BRIBERING MODE, new in v1.25) |
 | **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
 | **SHIFT + LPF MODE pad on a 303** | The 303's filter: **303**, **LP18** or **DIRT** (303 synth, new in v1.22) |
 | **SHIFT + LPF MORPH / ENV1 DECAY / ENV2 DECAY pad on a 303** | Drive / Amp decay / Decay (303 synth, new in v1.22.1) |
@@ -435,6 +439,7 @@ Every engine and variant is in one list, **SYNTH MODE**. Hold a row's audition p
 | Cyc engines | Cyc Kik, Cyc Snr, Cyc Metal, Cyc Perc, Cyc Tone, Cyc Chord, Vtg Snr, clap eng |
 | GIN | GIN (starts on the 808 kick) |
 | ULTRAKIK | ULTRAKIK (starts on its ULTRA preset, at C2 on a kit row) |
+| [BRIBERING MODE](#21-bribering-mode) | Bribering modal, sympathetic, string, FM, chord (new in v1.25; listed after 303) |
 
 - Each engine you pick starts from its defaults, set up as its kit row is (new in v1.12): transpose, envelopes, filters open (the high pass on for the cymbal), osc 2 and noise off, tune centred, whatever the row was before. So what SYNTH MODE previews is what the kit plays. FX are left alone.
 - **Envelopes (new in v1.12):** every drum engine shapes its hits with its own decay (the LXR voices' Decay, DXIA and DIIA's engine decay, the Cyc engines' amp decay). The Deluge envelope around it is open (attack 0, sustain full) with a release long enough for that decay to ring out after the note ends, so one tap plays the whole hit and gated sounds follow the note.
@@ -978,6 +983,70 @@ Whatever the track plays back from its clip always goes out.
 
 [Back to top](#readme-top)
 
+## 21. BRIBERING MODE
+
+New in v1.25. A resonator synth engine. Each note strikes a resonator, and the resonator rings on in its own time, the way a bell, a bar or a string does: hit it again and it's struck again, ringing from wherever it was. Its DSP is built on Mutable Instruments Rings, one resonator per Deluge voice, so it plays polyphonically through the Deluge's own envelopes, filters, mod FX, delay, reverb and sidechain.
+
+### Turning it on
+
+1. On a synth track, press the **SYNTH MODE** shortcut pad (or find **Synth mode** in the sound menu). On a kit row, hold the row's audition pad and press SYNTH MODE.
+2. Choose a model. They're listed after **303** (straight after Ringmod on a kit row):
+
+| Display | OLED | Model | What it is |
+|---|---|---|---|
+| **BMOD** | Bribering modal | Modal | A bank of 24 tuned band passes, the partials of a struck object: from harmonic, string-like tones through bars and glass to bells and plates |
+| **BSYM** | Bribering sympathetic | Sympathetic strings | A struck string, with more strings tuned around it that ring in sympathy |
+| **BSTR** | Bribering string | Inharmonic string | One plucked string, with stiffness and dispersion that pull it out of tune, from clean to buzzy and metallic |
+| **BFM** | Bribering FM | FM | A two-operator FM voice with its own strike envelope |
+| **BCHD** | Bribering chord | Chord | Sympathetic strings tuned to a chord, which Structure picks |
+
+A new BRIBERING sound starts at the note played (no transpose), with envelope 1 fully open while the note is held and a release long enough for it to ring out after you let go. Moving between the models keeps your knobs, as switching models on Rings does.
+
+### Controls
+
+| Control | Display | Pad (SHIFT + pad) | Gold knob | What it does |
+|---|---|---|---|---|
+| **Structure** | **STRU** | MOD1 row 7 | CUSTOM 3 | Modal: the partials' spacing, from harmonic to bell and plate. Sympathetic: the intervals the other strings are tuned to. String: dispersion, a curved bridge at the bottom, clean around a quarter, stiff and inharmonic towards the top. FM: the frequency ratio. Chord: which chord |
+| **Brightness** | **BRIT** | MOD1 row 6 | CUSTOM 2 | How bright the strike is and how long the high partials last. FM: the modulation depth |
+| **Damping** | **DAMP** | MOD1 row 1 (bottom) | Attack / Release (bottom) | How long it rings: a short knock at the bottom, many seconds near the top. From about 121 it fades towards ringing forever, which it does at 127 |
+| **Position** | **POSI** | MOD1 row 4 | Mod depth | Where the resonator is struck and heard from: near the end is bright and full, the middle is hollow and comb-like. FM: feedback |
+| **Bow** | **BOW** | MOD1 row 5 | Mod rate | A continuous noise excitation, bowing or blowing the resonator for as long as the note sounds, on top of each strike. 0 is off: struck only |
+| **Drive** | **DRIV** | MOD1 row 2 | Attack / Release (top) | A soft clip on the output. 0 is clean |
+| **Pitch** | | MOD1 row 3 | CUSTOM 1 (tune) | The Deluge's own transpose and tune |
+| **Model** | **MODL** | MOD1 row 8 (top) | | **MODA**, **SYMP**, **STRG**, **FM** or **CHRD** |
+| **Poly** | **POLY** | MOD2 row 1 (bottom) | | Sympathetic and chord only: **4** voices or **2** (see below) |
+
+They're all in the sound menu under **Drum synth**, and in the drum synth pad editor (BRIBERING has its own page: the model, poly, its knobs, then transpose, release and the filters). Every one except Model and Poly is a Deluge parameter, so it can be parameter locked (hold a step and turn), automated, MIDI learned and modulated from the mod matrix: an LFO on Position, an envelope on Brightness, velocity on Structure.
+
+### Poly: strings per voice
+
+Rings shares eight strings between its voices, and BRIBERING MODE does the same on the two string-bank models:
+
+| Poly | Voices | Strings a voice | Sound |
+|---|---|---|---|
+| **4** (default) | 4 | 2 | Each note is a struck string and one sympathetic string. On Chord, each note plays a two-note chord: an octave down, a 2nd, minor or major 3rd, 4th, 5th, 6th, minor or major 7th, an octave up, or octaves either side |
+| **2** | 2 | 4 | Fuller: three sympathetic strings a note. On Chord, each note plays a four-note chord: octaves, 5th, sus4, minor, m7, m9, m11, 6/9, M9, M7 or major |
+
+Poly sets the sound's Max voices to match (4 or 2), so a note past the limit lets the oldest go. The other models play up to the Deluge's usual 8 voices.
+
+### How it plays
+
+- **Strike and ring:** every note on strikes the resonator, the way Rings' internal exciter does when it's strummed. The resonator then rings with its own decay (Damping), inside the Deluge's envelope.
+- **Velocity** sets the level through the Deluge's usual velocity cable. Patch it to Brightness or Structure as well for a strike that changes with how hard you play.
+- **Legato and portamento:** in Legato mode a new note retunes the ringing resonator without striking it again.
+- **Bow** keeps a note sounding for as long as you hold it, so the Deluge's envelope shapes it like any synth: pads, drones, bowed metal.
+- **A note ends** once its resonator has died away to silence, even with the key still held (unless Bow is up), so long chords of short notes don't keep using CPU.
+
+### Good to know
+
+- **CPU:** Modal and String are the lightest models and FM the heaviest; all three play up to 8 voices. Sympathetic and Chord are held to 4 or 2 voices by Poly, so they can't run away with the CPU. In a busy song, watch the LOAD menu if you hold big FM chords.
+- On a kit row it plays at the row's note (C3), for tuned percussion, bells and plucks in a kit.
+- The lowest a string goes is about 21.5 Hz, so on notes below about F1 the octave-down string of a chord stops at that.
+- Rings' stereo outputs and its reverb model aren't used: the voice is mono into the Deluge's stereo, and the Deluge's own reverb is there instead.
+- Songs and presets save the model, Poly and every knob. Bribes firmware from before v1.25 loads the sound on its last drum engine (ULTRAKIK from v1.21) instead.
+
+[Back to top](#readme-top)
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -990,6 +1059,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **The 303 synth's** voice is ported from [Open303](https://github.com/RobinSchmidt/Open303) by Robin Schmidt (MIT licence), in single precision so it runs on the Deluge. Its Deluge integration, controls and the mono sequencer's slide steps were designed for this build, and so is the DIRT filter: Open303's filter with a saturating input stage added.
 - **Gate out** is an original design for this build, using the Deluge's own gate outputs. A kit row's MIDI out is the community firmware's own; v1.23 moves it up the menu and holds one-shot notes long enough to be seen.
 - **MIDI loop tracks** are an original design for this build, on the Deluge's own MIDI tracks and Endless Record.
+- **BRIBERING MODE's** resonators, exciters and models are ported from the open source firmware of [Mutable Instruments Rings](https://github.com/pichenettes/eurorack) by Emilie Gillet (MIT licence), with its copyright and licence notice kept in the source. The port runs one Rings voice per Deluge voice at 44.1 kHz, rewritten on NEON for the Deluge's CPU. Its Deluge integration, controls, Bow and Poly were designed for this build.
 - **MIDI kits, CV2 lock, Elektron P-locks and the song view track types** are original designs for this build. MKIT rows are the Deluge's own MIDI rows; Elektron P-locks keep locks to their steps using the Deluge's own automation. Elektron is named for the behaviour only; no Elektron code or data is used.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
@@ -1005,9 +1075,9 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering** or **Sonic Charge**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, and the OP-1 and PO-32 are products of Teenage Engineering. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering**, **Sonic Charge** or **Mutable Instruments**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, the OP-1 and PO-32 are products of Teenage Engineering, and Rings is a product of Mutable Instruments. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
-Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio or Teenage Engineering for help with this build.
+Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio, Teenage Engineering or Mutable Instruments for help with this build.
 
 [Back to top](#readme-top)
 
