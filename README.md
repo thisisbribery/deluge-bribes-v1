@@ -1,173 +1,62 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.25
+# BRIBELUGE: Deluge Bribes FW v1.26
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
-1. **[Stumble swing](#1-stumble-swing):** four alternative swing styles with seven levels each, and quick shortcuts on the TEMPO knob. New songs start on Stumble, SQEZ style (new in v1.8).
-2. **[Kit pattern mode](#2-kit-pattern-mode):** a pattern store for the first six rows of a kit. Step each row through saved patterns, load whole banks, and save over them.
-3. **[Autofill](#3-autofill):** TAP plays drum fills over your beat, with five fill types to pick from.
-4. **[Mono sequencer](#4-mono-sequencer):** a mono step sequencer for synth, MIDI and CV tracks, with an octave per note, slide steps (new in v1.7), gate control and, on CV, a custom voltage for each row. From v1.16.1 a mono clip always plays in scale mode.
-5. **[Endless Record](#5-endless-record):** hit RECORD while playing and keep recording past the end of the loop, then stop at the next bar.
-6. **[Drum synth](#6-drum-synth):** synthesised drums on any kit row: the LXR-02's kick / tom, snare and cymbal / hat voices, DXIA and DIIA, and eight Cyc engines modelled on the Model:Cycles and Syntakt machines (new in v1.8). Every engine is picked in SYNTH MODE and shares one shortcut pad layout and one Cycles-style gold knob layout, and SHIFT + KIT makes a whole LXR or Cycles kit (new in v1.11), then browses its presets with the pattern running, sixteen Cycles kits of my own and sixteen LXR kits by Hrtl included (new in v1.12). New in v1.13: **GIN**, the PO-32 style drum voice from SquareWave Studio's GIN for the OP-1, with sixteen eight-sound kits built in. The Deluge's envelopes, filters and FX all work on top, and their settings can be parameter locked. New in v1.14: every engine's settings can be modulated from the mod matrix, and automation view's grid follows the drum synth pads. New in v1.16: every engine's settings sit on the MOD1 and MOD2 pads in one standard layout, the same pad doing the same job on every engine. New in v1.21: **[ULTRAKIK](#ultrakik-new-in-v121)**, a kick engine with sixteen presets, from deep 808s to fully broken kicks. New in v1.22.2: the kick engines send full to the sidechain.
-7. **[Saturation](#7-saturation):** the Deluge's saturation rebuilt as a one-knob drive that gets louder and denser as you turn it up, ending in a hard clip, with five curve types. Old songs keep the original sound. New in v1.16.1: the drive can be learned to a gold knob, automated and MIDI learned.
-8. **[Sample start offset](#8-sample-start-offset):** move where a sample starts playing, per step. Draw it in automation view, parameter lock it or modulate it, and it wraps around the sample, loops included.
-9. **[303 synth](#9-303-synth) (new in v1.7):** a TB-303 style bass voice as a synth mode, ported from the open source Open303. It plays from the mono sequencer, with accent and slide per step, and runs through the Deluge's saturation and FX. Its knobs follow the drum synth layout, with its own drive and amp decay (new in v1.11). New in v1.22: **DIRT**, a gritty, saturating version of the 303 filter that the drive pushes into, picked from the LPF MODE pad. Changed in v1.22.1: Drive is an overdrive after the filter, and Decay changes the sound across its whole knob.
-10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** the delay's amount and feedback on separate controls (new in v1.9), and a DJ-style filter in the delay loop (new in v1.10). Amount sets how loud the echoes are, Feedback how many come back, and Tone darkens or thins each repeat. Both live one layer under SHIFT: on the gold knobs, or press the delay pad twice.
-11. **[Affect all](#11-affect-all) (new in v1.15):** a performance snapshot for LXR, Cycles and GIN kits. SHIFT + AFFECT ENTIRE freezes the kit, then every gold knob turn moves all the drums at once, or the kit's FX, and SHIFT + AFFECT ENTIRE again snaps it all back on the next bar.
-12. **[Pad Guides](#12-pad-guides) (new in v1.16):** hold SHIFT on a drum synth and its setting pads glow pink. Hold any gold knob button and its two settings' pads flash, red for the top knob and yellow for the bottom. Drum synth gold knobs follow the shared pad layout. New in v1.20: hold any shortcut pad and the 7-segment display scrolls the full name of what it changes.
-13. **[Synth instruments](#13-synth-instruments) (new in v1.16):** SHIFT + SYNTH on a synth track picks Deluge, DLFM (FM) or DX7, each with its own preset folder, and loads that instrument's first preset.
-14. **[Default instruments](#14-default-instruments) (new in v1.19):** pick the kit (LXR, Cycles or GIN) and the synth (Deluge, DLFM or DX7) every new track starts as, already on that instrument's top preset. SELECT on an LXR, Cycles or GIN kit steps through its presets in place.
-15. **[Gate out](#15-gate-out) (new in v1.22):** a kit's bottom four rows (kick, snare, hat 1, hat 2 on the preset kits) play out of the Deluge's four gate outputs, so a modular or another drum machine can follow the kit. One kit at a time, and each row can pick its own gate. Changed in v1.22.2: **GATE** is the first item in a row's menu, and CV clips keep off the kit's gates. Changed in v1.23: a row's **MIDI** out sits right after GATE, so one row can fire a gate and a MIDI note together.
-16. **[MIDI kits](#16-midi-kits) (new in v1.23):** SHIFT + MIDI makes an **MKIT**, a kit of sixteen MIDI rows, so kit patterns and Autofill play your other gear. Three layouts: General MIDI drums on one channel, one channel per row, or blank. Each row's channel and note are on the row's menu.
-17. **[CV2 lock](#17-cv2-lock) (new in v1.23):** on a CV track using both outputs, CV 2 follows the gold knobs in semitones, so you can hold a step and lock an octave jump (or any interval) on CV 2 for just that step.
-18. **[Elektron P-locks](#18-elektron-p-locks) (new in v1.23):** an optional setting that makes parameter locks behave like an Elektron's: a lock stays on its own step, new notes don't pick it up, and deleting the note deletes the lock.
-19. **[Track types in song view](#19-track-types-in-song-view) (new in v1.23):** the section pads down the right of song view move by track type. Kits flash on the beat, synths breathe, MIDI pings, CV stays solid.
-20. **[MIDI loop tracks](#20-midi-loop-tracks) (new in v1.24):** use the Deluge as a MIDI looper for your synths and drum machines, with their local control left on. SHIFT + MIDI makes a **LOOP** track that takes its channel from the first note you play into it and doesn't send your playing back, and every MIDI track gets an **ECHO** setting.
-21. **[BRIBERING MODE](#21-bribering-mode) (new in v1.25):** a resonator synth engine, after Mutable Instruments Rings. Every note strikes its own resonator: a modal bank of tuned partials, sympathetic strings, an inharmonic string, a 2-op FM voice, or strings tuned to a chord. Structure, Brightness, Damping and Position shape it as on Rings, and **Bow** keeps it sounding for as long as you hold a note. Picked in SYNTH MODE, on synths and kit rows.
+1. **[Stumble swing](#1-stumble-swing):** Four extra swing styles (HOPP, DEEP, SQEZ, FOLD), seven levels each, on SHIFT + TEMPO. New songs start on Stumble SQEZ.
+2. **[Kit pattern mode](#2-kit-pattern-mode):** 24 saved patterns for each of a kit's bottom six rows. Step a row through them or load a whole bank.
+3. **[Autofill](#3-autofill):** TAP plays a fill to the end of the bar: Ghost, Drive, Build, Climb or Stutter.
+4. **[Mono sequencer](#4-mono-sequencer):** A bassline step sequencer for synth, MIDI and CV tracks: octave per note, slide steps, gate control and a voltage per row on CV.
+5. **[Endless Record](#5-endless-record):** RECORD while playing keeps recording past the end of the loop. RECORD again stops at the next bar.
+6. **[Drum synth](#6-drum-synth):** Synthesised drums on any kit row: LXR voices, DXIA, DIIA, eight Cyc engines, GIN and the ULTRAKIK kick. One pad layout, Cycles-style gold knobs, preset kits on SHIFT + KIT.
+7. **[Saturation](#7-saturation):** A one-knob drive that gets louder and denser all the way to a hard clip, with five curves. Learnable to a gold knob.
+8. **[Sample start offset](#8-sample-start-offset):** Move where a sample starts, per step: draw it, lock it, modulate it.
+9. **[303 synth](#9-303-synth):** A TB-303 voice from Open303 with accent and slide from the mono sequencer, three filters (303, LP18, DIRT) and an overdrive after them.
+10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** Delay amount and feedback on separate controls, plus a DJ filter in the loop, one SHIFT layer down.
+11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots an LXR, Cycles or GIN kit: every knob moves all the drums, and it snaps back on the next bar.
+12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads, gold knob buttons flash theirs, and a held shortcut pad scrolls its name on the 7-segment display.
+13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRIB, INIT), then BASS, LEAD, PAD or MISC, then play through the presets. 99 wavetable and 37 BRIB presets included.
+14. **[Default instruments](#14-default-instruments):** The kit and synth type every new track starts as, on its top preset.
+15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
+16. **[MIDI kits](#16-midi-kits):** SHIFT + MIDI makes an MKIT: sixteen MIDI rows that kit patterns and Autofill can play.
+17. **[CV2 lock](#17-cv2-lock):** CV 2 follows the gold knobs in semitones, lockable per step.
+18. **[Elektron P-locks](#18-elektron-p-locks):** Optional: a parameter lock stays on its own step and goes with its note.
+19. **[Track types in song view](#19-track-types-in-song-view):** Section pads move by track type: kits flash, synths breathe, MIDI pings, CV stays solid.
+20. **[MIDI loop tracks](#20-midi-loop-tracks):** LOOP tracks and ECHO turn the Deluge into a MIDI looper for synths with their local control on.
+21. **[BRIBERING MODE](#21-bribering-mode):** A resonator synth engine after Mutable Instruments Rings: five models, and Bow to keep it sounding. On synths and kit rows.
+22. **[Feedback](#22-feedback):** Feeds each synth voice's filter output back into its input: thicker, driven low end, and self-oscillation from patch cables.
 
-**Jump to:** [About](#about) · [Download](#download) · [Install](#install) · [Quick reference](#quick-reference) · [Design and credit](#design-and-credit) · [Source code](#source-code)
+**Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
-With these settings left at their defaults, the Deluge behaves exactly like the community firmware, except that new songs start on Stumble swing (still straight until you turn the swing up), the delay's feedback has its own setting (the tone starts flat), and song view's section pads move by track type. Songs saved before keep their own swing and sound the same through the delay.
-
-**Status: experimental.** Tested on a 7-segment Deluge. The OLED screens are written but not yet tested on hardware. Back up your SD card before installing.
-
-**New in v1.17: lighter on the CPU.** Earlier versions ran out of CPU much sooner than the community beta once drum synth kits or a 303 were playing, so the Deluge started cutting notes, even on old, ordinary patches. v1.17 brings that back down without changing the sound:
-
-- **Every voice is smaller.** Each voice carried room for the drum synth engines whether it used them or not, which made it about seven times the size of a stock voice. Now only drum synth rows get that memory, so ordinary synth and sample voices are back to normal size, and the Deluge's fast internal memory has its room back.
-- **The drum synths and the 303 do the same work for less.** Settings are worked out when they change instead of on every sample, and parts of a hit that can no longer be heard are skipped. The sound stays the same.
-- **Drum synth hits stop when you can no longer hear them.** A hit now ends once it's 72 dB down, where it used to run on to 100 dB. Long tails (cymbals, open hats, toms, Chord, Tone) end about a quarter sooner, and that difference is far too quiet to hear. A Decay of 127 still holds for as long as the note does.
-- **Quiet tails are cut first.** When the CPU does run short, a drum synth hit that's already 40 dB down is cut before notes you can still hear.
-
-**New in v1.18: Cycles engines at a fraction of the cost.** The Cycles engines now build their sines from a lookup table, instead of working each one out every sample. By an estimate from the compiled code, Metal, Chord, Vtg Snr, Perc and Tone cost about a third to a quarter of what they did, and they sound the same. Tested on hardware: a Cycles kit and an LXR kit playing together with a 303 and another synth, with no voice stealing and the CPU peaking around 75 to 80%.
-
-**New in v1.19: default instruments.** Set a default kit and a default synth in **SETTINGS > DEFAULTS > UI > CLIP TYPE**, and every new kit or synth track starts as that instrument, on its top preset. Turning SELECT on an LXR, Cycles or GIN kit now steps through that kit's presets instead of swapping it for a sample kit, and picking LXR, Cycles or GIN with SHIFT + KIT opens its presets straight away. See [Default instruments](#14-default-instruments).
-
-**New in v1.20: shortcut pad names.** On a 7-segment Deluge, hold SHIFT (or an audition pad) and hold any shortcut pad: the display scrolls the full name of what that pad changes, so you can learn the layout as you go. Let go and it shows the value. See [Pad names](#pad-names).
-
-**New in v1.21: ULTRAKIK.** A kick engine for the drum synth. It starts as a thick, low thump with drive and grit already on and a short tail, and bends into long gliding 808s, hard 909s and fully broken kicks. Sixteen presets, clean at the top of the list and crunchier and crazier further down, all tuned to C: hold SHIFT, press OSC1 WAVE INDEX on an ULTRAKIK row and turn SELECT to play through them. See [ULTRAKIK](#ultrakik-new-in-v121).
-
-**Fixed in v1.21: songs with named kits load again.** From v1.12 the firmware read a kit's own name as its Kit presets entry, so songs whose clips find their kit by name came up **CORRUPTED**, including songs made on official firmware. Nothing on the card was damaged: those songs load again now. Kits saved since v1.12 keep their Kit presets entry.
-
-**New in v1.22: DIRT, a dirtier 303 filter.** The 303 always ran on Open303's own filter, and that filter is clean: Open303 leaves its saturation out. DIRT adds it back, where the note meets the resonance, so high resonance squashes and growls instead of ringing clean. Drive now pushes the note into the filter, getting dirtier and louder as it goes up. A new 303 starts on DIRT, and on a 303 the LPF MODE pad picks between **303**, **LP18** and **DIRT** instead of the Deluge's filters (which the 303 never used). 303s saved before keep their sound. See [303 synth](#9-303-synth).
-
-**New in v1.22: Gate out.** Turn on **Gate out** for a kit and its bottom four rows fire gate outputs 1 to 4 as they play: held notes hold the gate, one-shot hits send a short trigger. See [Gate out](#15-gate-out).
-
-**Changed in v1.22.1: 303 Drive and Decay.** Drive in v1.22 pushed the note into DIRT's clipper, which squashed the resonance and got a lot louder. It's now an overdrive after the filter, like a pedal after a 303, on all three filters: it keeps the squelch, keeps the bass full, takes the fizz off as it goes up and gets about 3 dB louder at the top. Decay barely changed a 16th-note pattern from the middle of its knob up; it now changes the sound evenly from about 30 ms to 2.8 s, acts as you turn it, and accented notes follow it too. Every 303 now loads on DIRT, and the LPF MORPH, ENV1 DECAY and ENV2 DECAY pads reach Drive, Amp decay and Decay. See [303 synth](#9-303-synth).
-
-**Changed in v1.22.2: Gate out on one press, and kicks on the sidechain.** **GATE** is now the first item in a kit row's menu: hold the row's audition pad, press SELECT, press SELECT on GATE and turn to **OFF** or gate **1** to **4**. CV clips and GATE rows can't use a gate the kit is on any more, and a new CV clip skips CV channels whose gate is taken. Cyc Kik, ULTRAKIK, the LXR kick and the GIN kick sounds send full to the sidechain, whether a whole kit loads or one is picked on a row or a synth. See [Gate out](#15-gate-out) and [Drum synth](#6-drum-synth).
-
-**New in v1.23: built on community firmware 1.3.0.** Bribeluge moves from the 1.3 beta to the final 1.3.0 release, with all of its fixes: memory safety fixes across loading and saving, the encoder missed-tick fix, kit preview level, a lighter analog delay, DX7 on kit rows, and more. Every Bribes feature carries over unchanged.
-
-**Fixed in v1.23: mono sequencer clips load whole.** From v1.2 to v1.22.2, loading a song with a mono sequencer clip lost the rest of that clip, notes included, and every clip after it in the song. The firmware then threw away any kit or synth left with no clip, which showed as **E044** on test builds. Nothing on the card was damaged: those songs load whole again now. If you loaded a song like that and saved over it, the parts that went missing are gone from that save.
-
-**New in v1.23: MIDI kits, CV2 lock and Elektron P-locks.** SHIFT + MIDI makes an **MKIT**, a kit of sixteen MIDI rows that kit patterns and Autofill play. A CV track on both outputs can lock CV 2 per step in semitones. And Community Features has an **Elektron P-locks** setting that keeps each parameter lock on its own step. See [MIDI kits](#16-midi-kits), [CV2 lock](#17-cv2-lock) and [Elektron P-locks](#18-elektron-p-locks).
-
-**New in v1.23: track types in song view.** The section pads down the right-hand side of song view keep their section colours and move by what kind of track each row is: kits flash on the beat, synths breathe, MIDI pings and fades, CV and audio stay solid. See [Track types in song view](#19-track-types-in-song-view).
-
-**Changed in v1.23: kit rows send MIDI from the top of the menu.** A kit row's **MIDI** settings (channel and note, so the row plays MIDI as it sounds) now sit second in the row's menu, after **GATE**, so a row can send a gate and a MIDI note at once. Rows that play one-shot samples hold their MIDI note for 12 ms instead of letting go straight away, which some gear ignored. See [Gate out](#15-gate-out).
-
-**New in v1.24: MIDI loop tracks.** A MIDI track normally sends everything it receives straight back out, so a synth with local control on plays every note twice while you record it. **ECHO** (second in a MIDI track's menu) turns that off, or off only while recording. **LOOP** (SHIFT + MIDI) makes a MIDI track with ECHO off that takes its channel from the first note you play into it. With Endless Record on, hit RECORD, play the synth, hit RECORD again and the loop closes at the next bar and plays back to it. Knob moves record too, as long as the synth sends them as CC. See [MIDI loop tracks](#20-midi-loop-tracks).
-
-**New in v1.25: BRIBERING MODE.** A new synth engine in SYNTH MODE (**BMOD**, **BSYM**, **BSTR**, **BFM**, **BCHD**), built on the DSP of Mutable Instruments Rings. Each note strikes a resonator that rings on in its own time: modal bells, bars and plates, sympathetic and inharmonic strings, FM tones, and chords of strings. Its knobs are on the gold knobs and the MOD1 pads, it plays polyphonic through the Deluge's own voices, envelopes, filters and FX, and **Bow** excites it continuously for pads and drones. See [BRIBERING MODE](#21-bribering-mode).
-
-[Back to top](#readme-top)
-
-## About
-
-My approach to Bribeluge isn't to stack features on top of the Deluge's existing architecture. It's to make the Deluge a more deliberate and direct instrument for my needs: almost a brand new ultra version of what the Deluge has been for me since about 2018.
-
-- **It isn't built for everyone.** I haven't optimised it for widespread use.
-- **Backwards compatibility isn't the priority.** I haven't worried too much about songs made on earlier firmware. That said, I've tested a lot of older songs I've cut in the past and haven't found errors in any of them, so most of it seems to be backwards compatible.
-- **Eight deep tracks, not sixteen.** I'm not working towards an instrument with 16 or more tracks playing at once, or a multitrack mini DAW. I'm working towards a really refined 8-track machine, with an exceptional amount of capability within those 8 tracks.
-- **Performance first.** I'd rather it be super optimised and performance friendly, with the features I've been missing since the Deluge was first released, like sample start offset.
-
-[Back to top](#readme-top)
+Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.25.bin`](firmware/deluge-bribes-v1.25.bin)
+[`firmware/deluge-bribes-v1.26.bin`](firmware/deluge-bribes-v1.26.bin)
 
-SHA-256: `7bd9194e20fe8decebbac1b69bbdd6a9f0691635aed5c5b8f189e0c043692440`
+SHA-256: `d0a4c23fe4abaeca58b73a6321a3f71f0683209022f6c548bdddbf4b09c972f7`
 
-Presets (optional): copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` on the SD card. The GIN kits are built into the firmware.
+Presets (optional), copied to the same place on the SD card:
+
+- [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR`. The GIN kits are built into the firmware.
+- [`presets/SYNTHS/WAVE`](presets/SYNTHS/WAVE) to `SYNTHS/WAVE`. These play the free **BVKER Custom Wavetables** pack, which isn't included here: download it from [bvker.com/free-serum-wavetables](https://bvker.com/free-serum-wavetables/) and unzip it into `SAMPLES/WAVETABLES`, so the card has `SAMPLES/WAVETABLES/BVKER - Custom Wavetables/Analog` and the other folders.
+- [`presets/SYNTHS/BRIB`](presets/SYNTHS/BRIB) to `SYNTHS/BRIB`.
+- Your own synth presets: [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies them into the synth browser's folders (see [Synth browser](#13-synth-browser)).
 
 [Back to top](#readme-top)
 
 ## Install
 
-1. Copy `deluge-bribes-v1.25.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.26.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
 To go back, install an official firmware file the same way.
 
-[Back to top](#readme-top)
+**Status: experimental.** Made on a 7-segment Deluge; the OLED screens haven't been checked on hardware. Back up your SD card before installing.
 
-## Quick reference
-
-| Control | What it does |
-|---|---|
-| **SHIFT + turn TEMPO** | Swing amount (Classic) or level 0 to 6 (Stumble). The display stays up while SHIFT is held. |
-| **SHIFT + push and turn TEMPO** | Step through the Stumble swing styles: HOPP, DEEP, SQEZ, FOLD (Stumble on) |
-| **SHIFT + click TEMPO** | Clear tempo automation, as before (now on release) |
-| **SYNC SCALING** | Kit pattern mode on/off (with Sync Scaling Action set to Kit pattern mode) |
-| **Hold a row's audition pad + turn SELECT** | Step that row through its saved patterns (kit pattern mode) |
-| **Turn SELECT, then press SELECT** | Pick a pattern bank, then load it into all six rows (kit pattern mode) |
-| **Hold a row's audition pad + SAVE** | Save that row's pattern over its slot (kit pattern mode) |
-| **TAP** | Play a fill (with Tap Tempo Action set to Autofill). Hold for a longer fill. |
-| **Hold TAP + turn TEMPO** | Pick the fill: Ghost, Drive, Build, Climb, Stutter (Autofill) |
-| **SHIFT + TAP** | Metronome on/off, as before |
-| **Hold a note + turn the up/down knob** | Shift the note's octave, up to 4 either way (Mono sequencer) |
-| **Hold a note + press and turn the up/down knob** | Ratchet the note (note repeat), as normal (Mono sequencer) |
-| **Hold a note + click the up/down knob** | Slide on or off for that step (Mono sequencer) |
-| **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
-| **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
-| **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
-| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
-| **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
-| **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Default instruments, new in v1.19) |
-| **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
-| **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
-| **SHIFT + a MOD1 / MOD2 pad on a drum synth row** | That engine's setting: MOD1 from the bottom is Decay, Drive, Pitch, Pitch env amount, Pitch env speed, Character A, Character B, Extra 1; MOD2 holds Extras 2 to 9 (Drum synth, new in v1.16) |
-| **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
-| **Mod rate / Mod depth gold knobs** | Pitch envelope speed / amount: Contour / Sweep on the Cyc engines, the filter envelope's Decay / Env mod on the 303 |
-| **CUSTOM 2 / CUSTOM 3 gold knobs** | Character A / B: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
-| **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one (Pad Guides) |
-| **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
-| **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
-| **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
-| **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
-| **SHIFT + SYNTH on a synth track** | Pick the instrument: **Deluge**, **DLFM** or **DX7**. SHIFT + SYNTH again moves on, SELECT loads its first preset (Synth instruments) |
-| **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
-| **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
-| **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
-| **SHIFT + SATURATION pad, then hold LEARN and turn a gold knob** | Put saturation drive on that gold knob, in the context its button has selected (Saturation, new in v1.16.1) |
-| **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
-| **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
-| **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
-| **SYNTH MODE pad, choose BMOD, BSYM, BSTR, BFM or BCHD** | Turn a synth or kit row into BRIBERING MODE on that model (BRIBERING MODE, new in v1.25) |
-| **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
-| **SHIFT + LPF MODE pad on a 303** | The 303's filter: **303**, **LP18** or **DIRT** (303 synth, new in v1.22) |
-| **SHIFT + LPF MORPH / ENV1 DECAY / ENV2 DECAY pad on a 303** | Drive / Amp decay / Decay (303 synth, new in v1.22.1) |
-| **Audition pad + SELECT > GATE** | That kit row's gate output: off or 1 to 4 (Gate out, first in the row's menu from v1.22.2) |
-| **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
-| **Audition pad + SELECT > MIDI** | That kit row's MIDI out: channel and note, sent as the row plays, gate or not (second in the row's menu from v1.23) |
-| **SHIFT + MIDI** | **MIDI** track, **MKIT** or **LOOP**, then for MKIT the layout: **1CH**, **16CH** or **BLNK**. SHIFT + MIDI again moves on, SELECT or MIDI picks (MIDI kits, new in v1.23; LOOP, new in v1.24) |
-| **MIDI track menu > ECHO** | **ON**, **OFF** or **REC**: whether what you play into the track goes back out (MIDI loop tracks, new in v1.24) |
-| **Hold a MIDI row's audition pad + SELECT** | That row's **CHAN** and **NOTE**, first in the note row editor (MIDI kits, new in v1.23) |
-| **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
-| **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
-| **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
-| **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
-| **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
-| **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
-| **SHIFT + delay RATE pad, press again** | Delay tone. The pad blinks yellow; press again to go back to Rate (Delay feedback and tone) |
-| **SHIFT + AFFECT ENTIRE on an LXR, Cycles or GIN kit** | Snapshot the kit and move every drum at once. AFFECT ENTIRE flashes (Affect all) |
-| **AFFECT ENTIRE during the snapshot** | Swap between All voices (ALL) and the kit's FX (FX), keeping the snapshot (Affect all) |
-| **SHIFT + AFFECT ENTIRE again** | Put the snapshot back on the next bar. AFFECT ENTIRE flashes twice as fast until then (Affect all) |
-
-7-segment display names are in brackets below.
+With the new settings left at their defaults, the Deluge behaves like the community firmware, except that new songs start on Stumble swing (straight until you turn the swing up), the delay's feedback has its own setting (the tone starts flat), and song view's section pads move by track type. Songs saved before keep their own swing and sound the same through the delay.
 
 [Back to top](#readme-top)
 
@@ -391,8 +280,8 @@ The engines:
 - **DXIA** (**DX-L**, **DX-B**, **DX-C**), called Drom1 before v1.11: three sine operators and a carrier, phase modulating each other in three routings.
 - **DIIA** (**DI-G**, **DI-I**, **DI-H**), called Drom2 before v1.11: inharmonic, metallic partials with a noise strike, in three variants.
 - **Cyc engines (new in v1.8):** **Cyc Kik** (**KIK**), **Cyc Snr** (**SNR**), **Cyc Metal** (**CMTL**), **Cyc Perc** (**PERC**), **Cyc Tone** (**TONE**), **Cyc Chord** (**CHRD**), **Vtg Snr** (**VSNR**) and **clap eng** (**CLAP**). Modelled on the Model:Cycles' six machines and the Syntakt's SD VINTAGE and CP VINTAGE, with the same knobs and starting values.
-- **GIN** (**GIN**, new in v1.13): the drum voice from SquareWave Studio's GIN for the OP-1, built on Eric Lewis's libpo32, a PO-32 style drum synth. A tone with a pitch sweep, LFO or noise modulator, and a filtered noise layer with its own envelope, mixed, driven and EQ'd. See [GIN](#gin-new-in-v113).
-- **ULTRAKIK** (**ULTRAKIK**, new in v1.21): a kick engine. One swept oscillator into a wavefolder, four kinds of drive, grit, a click and a clean sub, with sixteen presets. See [ULTRAKIK](#ultrakik-new-in-v121).
+- **GIN** (**GIN**, new in v1.13): the drum voice from SquareWave Studio's GIN for the OP-1, built on Eric Lewis's libpo32, a PO-32 style drum synth. A tone with a pitch sweep, LFO or noise modulator, and a filtered noise layer with its own envelope, mixed, driven and EQ'd. See [GIN](#gin).
+- **ULTRAKIK** (**ULTRAKIK**, new in v1.21): a kick engine. One swept oscillator into a wavefolder, four kinds of drive, grit, a click and a clean sub, with sixteen presets. See [ULTRAKIK](#ultrakik).
 
 ### Making a drum synth kit
 
@@ -410,7 +299,7 @@ The rows an LXR, Cycles or GIN kit makes are its **preset rows** (new in v1.12).
 - **Adding rows:** tap an empty audition pad above or below the preset rows and a new row appears there with **SYNTH MODE** open, to make it any engine, **Sample** or FM. Holding the empty pad and pressing **LOAD**, **SYNTH**, **MIDI** or **CV** works as on any kit. Added rows aren't coloured.
 - **Swapping kit type:** once rows have been added, a preset kit can't be swapped for another kit (the added rows would lose their sounds): the screen shows **CANT**. Without added rows, the swap keeps the pattern on the rows the new kit fills.
 
-### Kit presets (new in v1.12)
+### Kit presets
 
 On an LXR, Cycles or GIN kit, **SHIFT + KIT** opens **Kit presets** (**PRST**): the kit files in `KITS/LXR`, `KITS/CYCLES` or `KITS/GIN` on the card.
 
@@ -507,7 +396,7 @@ Every drum synth row and the 303 share one layout, after the Cycles' knobs. It's
 
 Every continuous drum synth setting is a Deluge parameter, so it can be parameter locked (hold a step and turn) and automated.
 
-### Modulation and automation (new in v1.14)
+### Modulation and automation
 
 - **Mod matrix:** every continuous setting on every engine can be modulated. Open the setting (its pad or the Drum synth menu) and press a mod source pad, as for any Deluge parameter: LFOs, envelopes, velocity, note, random, aftertouch and MPE all work. Each voice gets its own modulation, so velocity on Decay or random on Color changes every hit.
 - **Depth:** the same on every setting. A cable at 50 with its source at full moves the setting 64 steps, from the middle to either end.
@@ -532,7 +421,7 @@ Every continuous drum synth setting is a Deluge parameter, so it can be paramete
 - **Punch** (the top MOD1 pad from v1.16) squares up and lifts the attack.
 - They sound close to the originals, not identical: the same knobs and starting values, with the sound behind each knob measured from the originals and rebuilt. Cyc Kik's Contour, which barely did anything on the Cycles, sets the length of the pitch drop and the knock here. From v1.15 Contour stretches the pitch drop on Cyc Kik and Cyc Perc, and each engine's starting Contour sounds as before.
 
-### GIN (new in v1.13)
+### GIN
 
 GIN is the drum voice from [SquareWave Studio's GIN](https://github.com/squarewave-studio/op1-mods) for the original OP-1, which builds on Eric Lewis's [libpo32](https://github.com/ericlewis/libpo32), a PO-32 style drum synth. Each sound is two layers:
 
@@ -565,7 +454,7 @@ Sixteen kits are built in, eight sounds each on the rows KICK, SNR, HAT1, HAT2, 
 - **Decay** moves the tone and noise decays together: 64 leaves the sound as it is, 0 is about 60 times shorter, 127 about 60 times longer. **Tone decay** and **Noise decay** are on their own pads.
 - The pitch is the note and the row's transpose, not a setting: each kit row is tuned to its sound. Velocity works through the Deluge's usual velocity setting. There's no A / B morph (parameter locks do that job), and turning a knob changes a hit that's already playing.
 
-### ULTRAKIK (new in v1.21)
+### ULTRAKIK
 
 ULTRAKIK is a kick engine, synthesised rather than sampled (put a sample on OSC2 if you want one on top). It starts as a thick, low thump with drive, fold, grit and a dark click already on and a short tail, and bends into long gliding 808s, hard 909s and fully broken kicks. Pick it in SYNTH MODE: on a kit row it plays at C2, on a synth at the note.
 
@@ -807,24 +696,43 @@ Drum synth rows' gold knobs follow the shared pad layout (see [Gold knobs](#gold
 
 [Back to top](#readme-top)
 
-## 13. Synth instruments
+## 13. Synth browser
 
-**SHIFT + SYNTH** on a synth track picks the instrument it plays, the way SHIFT + KIT picks a kit type. Each instrument has its own preset folder.
+**SHIFT + SYNTH** opens the synth browser, the way SHIFT + KIT picks a kit type: choose a type, then a category, then play through its presets with your pattern running.
 
-| Instrument | Screen | Preset folder | An empty folder gives |
+| Type | Screen | Folder | What it holds |
 |---|---|---|---|
-| **Deluge** | **DELU** | `SYNTHS` (its own files, not the folders inside) | A blank subtractive synth |
-| **DLFM** | **DLFM** | `SYNTHS/DLFM` | A blank FM synth |
-| **DX7** | **DX7** | `SYNTHS/DX7` | A blank DX7 synth (listed only with the DX7 engine on in Community Features) |
+| **Subtractive** | **SUBT** | `SYNTHS/SUBT` | Subtractive synths |
+| **FM** | **FM** | `SYNTHS/FM` | FM synths |
+| **Wavetable** | **WAVE** | `SYNTHS/WAVE` | Wavetable synths: 99 presets on the free BVKER wavetables |
+| **Ring mod** | **RING** | `SYNTHS/RING` | Ring mod synths |
+| **Bribering** | **BRIB** | `SYNTHS/BRIB` | [BRIBERING MODE](#21-bribering-mode) sounds: 37 presets |
+| **DX7** | **DX7** | `SYNTHS/DX7` | DX7 patches, listed only with the DX7 engine on in Community Features |
+| **Init** | **INIT** | | The stock blank synth |
 
-1. Press **SHIFT + SYNTH**. The **Instrument** (**INST**) list opens on the instrument the track plays.
-2. **SHIFT + SYNTH** again, or turn **SELECT**, to move to the next one.
-3. **SELECT** or **SYNTH** loads its first preset. Turning SELECT in the clip then steps through that folder, as usual. **BACK** changes nothing.
+Every type's folder holds four categories: **BASS**, **LEAD**, **PAD** and **MISC** (DX7's folder is flat).
 
-- A missing folder is made the first time you pick its instrument, ready to save into. A blank synth made this way saves into its folder.
-- Presets already playing on another track are skipped. If they all are, the screen shows **No free presets** (**NONE**).
-- On kit, MIDI and CV tracks, and with a menu open, SHIFT + SYNTH still makes a new blank synth. MOD7 + SYNTH still makes a new DX7 synth.
-- Ringmod, the 303 and the drum engines aren't listed: they're in **SYNTH MODE**.
+### Using it
+
+1. Press **SHIFT + SYNTH**. The **Instrument** (**INST**) list opens on the type the track plays.
+2. **SHIFT + SYNTH** again, or turn **SELECT**, to move on. **SELECT** or **SYNTH** opens it.
+3. The **Category** (**CATE**) list shows the categories that hold presets. **SELECT** or **SYNTH** opens one and plays its first preset.
+4. Turn **SELECT** to play through the presets, and press **SELECT** to keep one. **BACK** puts your old synth back and returns to the categories; **BACK** again returns to the types.
+
+- It works on synth, MIDI and CV tracks, and on a kit track with no notes or sounds yet.
+- A type's folders are made the first time you pick it, ready to save into. A type with no presets yet gives a blank synth of that type that saves into its folder.
+- Presets kept loose in a type's folder, outside the categories, open as one flat list.
+
+### The presets
+
+- **WAVE:** 99 presets, one or more for each wavetable in the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which you download yourself (see [Download](#download)). Leads, pads and bells play with the filter wide open, so you hear the wavetable itself; basses and plucks start lower and open on each note with envelope 2. On every WAVE preset **CUSTOM 2** moves the wavetable position and **CUSTOM 3** is [Feedback](#22-feedback).
+- **BRIB:** 37 BRIBERING MODE presets across all five models: basses, plucked and struck leads, bowed and chordal pads, bells and drones.
+- **Your own presets:** [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies every synth preset in `SYNTHS` (and its other folders, like `DLFM`) into the right type and category, by name first (bass, pad, lead, pluck, bell), then by how it sounds (low transpose, slow attack, long release, mono, arpeggiator). The originals stay where they are, and a preset that lands in the wrong category can be moved by hand.
+
+```bash
+python3 tools/sort_synth_presets.py /Volumes/DELUGE --dry-run
+python3 tools/sort_synth_presets.py /Volumes/DELUGE
+```
 
 [Back to top](#readme-top)
 
@@ -835,19 +743,19 @@ Pick the instrument every new kit track and every new synth track starts as. Pre
 | Setting | Screen | Options |
 |---|---|---|
 | **Kit Instrument** | **KIT** | **OFF** (stock), **LXR**, **Cycles**, **GIN** |
-| **Synth Instrument** | **SYNT** | **OFF** (stock), **Deluge**, **DLFM**, **DX7** (DX7 only with the DX7 engine on in Community Features) |
+| **Synth Instrument** | **SYNT** | **OFF** (stock), **SUBT**, **FM**, **WAVE**, **RING**, **BRIB**, **DX7** (DX7 only with the DX7 engine on in Community Features) |
 
-With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth instrument's folder (see [Synth instruments](#13-synth-instruments)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
+With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth type's folder, BASS first (see [Synth browser](#13-synth-browser)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
 
 - **Counts as a new track:** a new clip in song view, a new arranger track, the **KIT** or **SYNTH** button on a clip that has never been that type (one that has goes back to what it had), and the synth a new song starts with.
-- **Then:** turning SELECT on a synth steps through its instrument's folder as usual, and on an LXR, Cycles or GIN kit through that kit's presets (see [Kit presets](#kit-presets-new-in-v112)). SHIFT + KIT and SHIFT + SYNTH still open the full pickers.
+- **Then:** turning SELECT on a synth steps through its folder as usual, and on an LXR, Cycles or GIN kit through that kit's presets (see [Kit presets](#kit-presets)). SHIFT + KIT and SHIFT + SYNTH still open the full pickers.
 - Both settings start on **OFF**, so new tracks are stock until you change them.
 
 [Back to top](#readme-top)
 
 ## 15. Gate out
 
-New in v1.22. **Gate out** (**GATE OUT**) sends a kit's bottom four rows out of the Deluge's four gate outputs as they play: row 1 to gate 1, row 2 to gate 2, row 3 to gate 3, row 4 to gate 4. On the LXR and Cycles preset kits that's kick, snare, hat 1 and hat 2, so a modular or another drum machine can follow the kit.
+**Gate out** (**GATE OUT**) sends a kit's bottom four rows out of the Deluge's four gate outputs as they play: row 1 to gate 1, row 2 to gate 2, row 3 to gate 3, row 4 to gate 4. On the LXR and Cycles preset kits that's kick, snare, hat 1 and hat 2, so a modular or another drum machine can follow the kit.
 
 | Setting | Where | What it does |
 |---|---|---|
@@ -864,7 +772,7 @@ New in v1.22. **Gate out** (**GATE OUT**) sends a kit's bottom four rows out of 
 
 ## 16. MIDI kits
 
-New in v1.23. An **MKIT** is a kit whose sixteen rows are MIDI rows. Kit pattern mode, Autofill, Affect Entire and everything else a kit does then play your other gear: a drum machine, a sampler, a rack of synths.
+An **MKIT** is a kit whose sixteen rows are MIDI rows. Kit pattern mode, Autofill, Affect Entire and everything else a kit does then play your other gear: a drum machine, a sampler, a rack of synths.
 
 ### Making one
 
@@ -896,7 +804,7 @@ An MKIT can only be made on an empty clip (the display shows **CANT** otherwise)
 
 ## 17. CV2 lock
 
-New in v1.23. A CV track on both outputs (**CV channel BOTH**) sends pitch on CV 1 and, by default, aftertouch on CV 2. **CV 2 Source** (**CV2**) has a new choice, **LOCK**, where CV 2 follows the gold knobs in semitones:
+A CV track on both outputs (**CV channel BOTH**) sends pitch on CV 1 and, by default, aftertouch on CV 2. **CV 2 Source** (**CV2**) has a new choice, **LOCK**, where CV 2 follows the gold knobs in semitones:
 
 - Each step of the knob is one semitone, so **12** is one octave (1 V) and **24** two. With the knob at zero CV 2 sits at 0 V.
 - **Hold a step and turn a gold knob** to lock CV 2 for that step: an octave jump, a fifth, anything. Steps without a lock play the knob's own value.
@@ -909,7 +817,7 @@ To set it up: open the CV clip's menu, set the channel to **BOTH**, then set **C
 
 ## 18. Elektron P-locks
 
-New in v1.23. On the Deluge, holding a step and turning a knob records the new value from that step up to the next note. Notes you add later in that stretch pick it up, a lone note on a row changes the whole row, and deleting the note leaves its value behind. Turn on **Elektron P-locks** and a lock belongs to its step, as on an Elektron:
+On the Deluge, holding a step and turning a knob records the new value from that step up to the next note. Notes you add later in that stretch pick it up, a lone note on a row changes the whole row, and deleting the note leaves its value behind. Turn on **Elektron P-locks** and a lock belongs to its step, as on an Elektron:
 
 - A lock runs from its note up to the next note (on the row in a kit, across the clip otherwise), even when it's the only note on the row.
 - A new note placed inside a lock plays the unlocked value, and the lock before it stops at the new note.
@@ -928,7 +836,7 @@ To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Feat
 
 ## 19. Track types in song view
 
-New in v1.23. In song view (rows layout), the section pads in the right-hand column keep their section colours and move by what kind of track each row's clip is on:
+In song view (rows layout), the section pads in the right-hand column keep their section colours and move by what kind of track each row's clip is on:
 
 | Track | Section pad |
 |---|---|
@@ -943,7 +851,7 @@ It follows the playhead while playing, and the song's tempo when stopped. It pau
 
 ## 20. MIDI loop tracks
 
-New in v1.24. Use the Deluge as a MIDI looper: play a synth or drum machine on its own keys or pads, the Deluge records it, and the loop plays back to it. The synth's local control stays on, so its panel keeps working as normal.
+Use the Deluge as a MIDI looper: play a synth or drum machine on its own keys or pads, the Deluge records it, and the loop plays back to it. The synth's local control stays on, so its panel keeps working as normal.
 
 On the stock Deluge a MIDI track sends everything it receives straight back out on its channel. With local control on, the synth hears your playing twice while you record: once from its own keys, once from the Deluge. LOOP tracks don't send your playing back.
 
@@ -985,7 +893,7 @@ Whatever the track plays back from its clip always goes out.
 
 ## 21. BRIBERING MODE
 
-New in v1.25. A resonator synth engine. Each note strikes a resonator, and the resonator rings on in its own time, the way a bell, a bar or a string does: hit it again and it's struck again, ringing from wherever it was. Its DSP is built on Mutable Instruments Rings, one resonator per Deluge voice, so it plays polyphonically through the Deluge's own envelopes, filters, mod FX, delay, reverb and sidechain.
+A resonator synth engine. Each note strikes a resonator, and the resonator rings on in its own time, the way a bell, a bar or a string does: hit it again and it's struck again, ringing from wherever it was. Its DSP is built on Mutable Instruments Rings, one resonator per Deluge voice, so it plays polyphonically through the Deluge's own envelopes, filters, mod FX, delay, reverb and sidechain.
 
 ### Turning it on
 
@@ -1047,6 +955,148 @@ Poly sets the sound's Max voices to match (4 or 2), so a note past the limit let
 
 [Back to top](#readme-top)
 
+## 22. Feedback
+
+**Feedback** (**FDBK**) feeds a synth voice's filter output back into the filter's input, like patching a mono synth's output back into its own mixer. A little thickens and warms the sound; more drives the filter, fattening and saturating the low end. Every voice has its own loop, so each note of a chord feeds back on itself only.
+
+### Where it is
+
+- **SHIFT + the shortcut pad directly below FOLD.**
+- In the sound menu under **Distortion**, after **Wavefold**.
+- In automation view, as a patch cable destination (an envelope, LFO or velocity on Feedback), and on a gold knob with LEARN.
+- On the WAVE presets it's on **CUSTOM 3**.
+
+### How it plays
+
+- **0 is off**, and costs no CPU. The knob is gentle through its lower half and strongest at the top, where it adds about 4.5 dB of saturated low end.
+- **Around the filter:** the loop goes around the low pass filter. With the LPF off it goes around the high pass filter, and with both off, around the voice itself. Resonance and Feedback together growl.
+- **It can't run away from the knob alone:** the fed-back signal is soft clipped, and its DC and deepest sub (below about 55 Hz) are taken out. Patch cables can push it past the knob's range, into self-oscillation: a tone that rings for as long as the note is held.
+- **Each note starts clean:** a voice's loop starts silent and stops with the note.
+- It works on subtractive, wavetable, FM, ring mod and BRIBERING MODE synths, and on kit rows.
+- Songs and presets save it (`voiceFeedback`). Anything saved before loads with Feedback off.
+
+[Back to top](#readme-top)
+
+## Quick reference
+
+| Control | What it does |
+|---|---|
+| **SHIFT + turn TEMPO** | Swing amount (Classic) or level 0 to 6 (Stumble). The display stays up while SHIFT is held. |
+| **SHIFT + push and turn TEMPO** | Step through the Stumble swing styles: HOPP, DEEP, SQEZ, FOLD (Stumble on) |
+| **SHIFT + click TEMPO** | Clear tempo automation, as before (now on release) |
+| **SYNC SCALING** | Kit pattern mode on/off (with Sync Scaling Action set to Kit pattern mode) |
+| **Hold a row's audition pad + turn SELECT** | Step that row through its saved patterns (kit pattern mode) |
+| **Turn SELECT, then press SELECT** | Pick a pattern bank, then load it into all six rows (kit pattern mode) |
+| **Hold a row's audition pad + SAVE** | Save that row's pattern over its slot (kit pattern mode) |
+| **TAP** | Play a fill (with Tap Tempo Action set to Autofill). Hold for a longer fill. |
+| **Hold TAP + turn TEMPO** | Pick the fill: Ghost, Drive, Build, Climb, Stutter (Autofill) |
+| **SHIFT + TAP** | Metronome on/off, as before |
+| **Hold a note + turn the up/down knob** | Shift the note's octave, up to 4 either way (Mono sequencer) |
+| **Hold a note + press and turn the up/down knob** | Ratchet the note (note repeat), as normal (Mono sequencer) |
+| **Hold a note + click the up/down knob** | Slide on or off for that step (Mono sequencer) |
+| **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
+| **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
+| **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
+| **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
+| **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Default instruments, new in v1.19) |
+| **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
+| **Hold a row's audition pad + SYNTH MODE pad** | Put the row on any drum synth engine or variant, or back to **Sample**. On a drum synth row the OSC1 TYPE pad opens the same list |
+| **SHIFT + a MOD1 / MOD2 pad on a drum synth row** | That engine's setting: MOD1 from the bottom is Decay, Drive, Pitch, Pitch env amount, Pitch env speed, Character A, Character B, Extra 1; MOD2 holds Extras 2 to 9 (Drum synth, new in v1.16) |
+| **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
+| **Mod rate / Mod depth gold knobs** | Pitch envelope speed / amount: Contour / Sweep on the Cyc engines, the filter envelope's Decay / Env mod on the 303 |
+| **CUSTOM 2 / CUSTOM 3 gold knobs** | Character A / B: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
+| **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one (Pad Guides) |
+| **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
+| **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
+| **SHIFT + OSC1 WAVE INDEX pad on an ULTRAKIK row, turn SELECT** | Play through ULTRAKIK's sixteen presets, each loading as you turn (**KPRE**) (ULTRAKIK, new in v1.21) |
+| **SHIFT + OSC1 PULSE WIDTH / RETRIGGER / FEEDBACK pad on an ULTRAKIK row** | Body wave / Snap / Drive type (ULTRAKIK, new in v1.21) |
+| **SHIFT + SYNTH** | Synth browser: pick a type (**SUBT**, **FM**, **WAVE**, **RING**, **BRIB**, **INIT**), then **BASS**, **LEAD**, **PAD** or **MISC**, then turn SELECT to play through its presets. SHIFT + SYNTH again moves on, BACK goes up a level (Synth browser) |
+| **SETTINGS > DEFAULTS > UI > CLIP TYPE > KIT / SYNT** | The kit and synth new tracks start as (Default instruments, new in v1.19) |
+| **Drum synth setting open + a mod source pad** | Patch that source (LFO, envelope, velocity, random...) to the setting (Drum synth, new in v1.14) |
+| **SHIFT + the pad below FOLD** | **Feedback** (**FDBK**): the voice's filter output fed back into its input (Feedback) |
+| **CUSTOM 2 / CUSTOM 3 gold knobs on a WAVE preset** | Wavetable position / Feedback (Synth browser) |
+| **SHIFT + SATURATION pad** | Saturation drive, 0 to 50. Press BACK, then turn SELECT to reach **Type** |
+| **SHIFT + SATURATION pad, then hold LEARN and turn a gold knob** | Put saturation drive on that gold knob, in the context its button has selected (Saturation, new in v1.16.1) |
+| **SHIFT + OSC1 / OSC2 PULSE WIDTH pad** | Sample start offset, when that oscillator plays a sample |
+| **Automation view: OSC1 / OSC2 PULSE WIDTH pad** | Draw the start offset step by step, when that oscillator plays a sample |
+| **SYNTH MODE pad, choose 303** | Turn a synth into the 303 (303 synth) |
+| **SYNTH MODE pad, choose BMOD, BSYM, BSTR, BFM or BCHD** | Turn a synth or kit row into BRIBERING MODE on that model (BRIBERING MODE, new in v1.25) |
+| **Cutoff/Res and Attack/Release gold knobs** | Cutoff / Resonance and Drive / Amp decay (303 synth) |
+| **SHIFT + LPF MODE pad on a 303** | The 303's filter: **303**, **LP18** or **DIRT** (303 synth, new in v1.22) |
+| **SHIFT + LPF MORPH / ENV1 DECAY / ENV2 DECAY pad on a 303** | Drive / Amp decay / Decay (303 synth, new in v1.22.1) |
+| **Audition pad + SELECT > GATE** | That kit row's gate output: off or 1 to 4 (Gate out, first in the row's menu from v1.22.2) |
+| **Kit menu (AFFECT ENTIRE on) > Gate out** | Rows 1 to 4 play out of gate outputs 1 to 4, one kit at a time (Gate out, new in v1.22) |
+| **Audition pad + SELECT > MIDI** | That kit row's MIDI out: channel and note, sent as the row plays, gate or not (second in the row's menu from v1.23) |
+| **SHIFT + MIDI** | **MIDI** track, **MKIT** or **LOOP**, then for MKIT the layout: **1CH**, **16CH** or **BLNK**. SHIFT + MIDI again moves on, SELECT or MIDI picks (MIDI kits, new in v1.23; LOOP, new in v1.24) |
+| **MIDI track menu > ECHO** | **ON**, **OFF** or **REC**: whether what you play into the track goes back out (MIDI loop tracks, new in v1.24) |
+| **Hold a MIDI row's audition pad + SELECT** | That row's **CHAN** and **NOTE**, first in the note row editor (MIDI kits, new in v1.23) |
+| **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
+| **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
+| **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
+| **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
+| **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
+| **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
+| **SHIFT + delay RATE pad, press again** | Delay tone. The pad blinks yellow; press again to go back to Rate (Delay feedback and tone) |
+| **SHIFT + AFFECT ENTIRE on an LXR, Cycles or GIN kit** | Snapshot the kit and move every drum at once. AFFECT ENTIRE flashes (Affect all) |
+| **AFFECT ENTIRE during the snapshot** | Swap between All voices (ALL) and the kit's FX (FX), keeping the snapshot (Affect all) |
+| **SHIFT + AFFECT ENTIRE again** | Put the snapshot back on the next bar. AFFECT ENTIRE flashes twice as fast until then (Affect all) |
+
+
+[Back to top](#readme-top)
+
+## About
+
+My approach to Bribeluge isn't to stack features on top of the Deluge's existing architecture. It's to make the Deluge a more deliberate and direct instrument for my needs: almost a brand new ultra version of what the Deluge has been for me since about 2018.
+
+- **It isn't built for everyone.** I haven't optimised it for widespread use.
+- **Backwards compatibility isn't the priority.** I haven't worried too much about songs made on earlier firmware. That said, I've tested a lot of older songs I've cut in the past and haven't found errors in any of them, so most of it seems to be backwards compatible.
+- **Eight deep tracks, not sixteen.** I'm not working towards an instrument with 16 or more tracks playing at once, or a multitrack mini DAW. I'm working towards a really refined 8-track machine, with an exceptional amount of capability within those 8 tracks.
+- **Performance first.** I'd rather it be super optimised and performance friendly, with the features I've been missing since the Deluge was first released, like sample start offset.
+
+[Back to top](#readme-top)
+
+## Changelog
+
+Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.26: Synth browser and Feedback.** SHIFT + SYNTH became a full browser: type, then BASS, LEAD, PAD or MISC, then presets playing as you turn, with 99 wavetable presets on the free BVKER tables and 37 BRIBERING MODE presets, plus a tool to sort your own. New **Feedback** control on every synth. *Why:* the v1.16 picker (Deluge, DLFM, DX7) only loaded one folder's first preset, so finding a sound meant scrolling hundreds of files by name. *Learned:* the first WAVE presets had the filter half closed, which hid what makes each wavetable different, so they're wide open now except where the sweep is the sound (basses, plucks). Their CUSTOM 2 and 3 both moved the wavetable position and felt like one knob, so CUSTOM 3 became Feedback. If your default synth was DX7, pick it again: the setting's list changed.
+- **v1.25: BRIBERING MODE.** A resonator synth engine on the DSP of Mutable Instruments Rings: five models, Bow and Poly. *Why:* Rings-style strikes and strings, polyphonic, inside the Deluge's own voices and FX. *Learned:* sympathetic and chord voices with four strings each cut out when four notes played at once, purely from CPU, so Poly trades voices for strings the way the module does: 4 voices of 2 strings by default, or 2 of 4.
+- **v1.24: MIDI loop tracks.** LOOP tracks and ECHO. *Why:* a MIDI track sends what it receives straight back out, so looping a synth with local control on played every note twice.
+- **v1.23: community firmware 1.3.0.** Rebuilt on the final 1.3.0 release, with its fixes; added MKIT, CV2 lock, Elektron P-locks and track types in song view; a kit row's MIDI out moved up the menu. *Fixed:* mono sequencer clips load whole again: from v1.2 to v1.22.2 loading one lost the rest of the clip and every clip after it (E044). *Learned:* some gear ignores a MIDI note that ends the moment it starts, so one-shot rows hold theirs for 12 ms.
+- **v1.22.2: Gate out on one press.** GATE first in a row's menu, CV clips keep off the kit's gates, kick engines send full to the sidechain. *Why:* the gate took a menu dive, and a CV clip could fight a kit row for the same gate.
+- **v1.22.1: 303 Drive and Decay.** Drive became an overdrive after the filter, and Decay changes the sound across its whole knob. *Learned:* driving DIRT's own clipper squashed the resonance and jumped in level, and Decay barely changed a 16th-note pattern above half way.
+- **v1.22: DIRT and Gate out.** A saturating 303 filter, and kit rows on the gate outputs. *Why:* Open303 leaves the 303's filter saturation out, so high resonance rang clean instead of growling.
+- **v1.21: ULTRAKIK.** A kick engine with sixteen presets. *Fixed:* songs with named kits came up CORRUPTED from v1.12, because the kit's name was read as its preset entry. Nothing on the card was damaged.
+- **v1.20: Pad names.** A held shortcut pad scrolls its full name on the 7-segment display. *Why:* four-letter codes are hard to learn.
+- **v1.19: Default instruments.** New tracks start as a chosen kit or synth; SELECT steps an LXR, Cycles or GIN kit through its presets.
+- **v1.18: Cycles engines for less.** Sines from a lookup table, about a third to a quarter of the cost. *Learned:* working out every sine every sample was most of what the Cyc engines cost.
+- **v1.17: Lighter on the CPU.** *Learned:* every voice carried the drum synths' memory whether it used it or not, about seven times a stock voice, so the Deluge cut notes on ordinary songs. Now only drum rows carry it, drum tails end at -72 dB, and quiet tails are cut first.
+- **v1.16.3: No more freezes** when a busy song with a 303 ran out of CPU. *Learned:* the voice culling read from an empty voice list.
+- **v1.16.2:** Pad Guides glow stays on with SHIFT held in a menu, and new synths no longer come up as an unsaved 303.
+- **v1.16.1:** Saturation drive can go on a gold knob, be automated and MIDI learned; mono clips always play in scale mode.
+- **v1.16: One drum pad layout.** Every engine's settings on MOD1 and MOD2 in one standard layout, Pad Guides, and the first synth instrument picker. *Why:* each engine had its own pad map to remember.
+- **v1.15.1:** The mono sequencer grid no longer jumps an octave.
+- **v1.15: Affect all.** Plus Custom 1 tune on preset kits, Cyc Kik and Perc Contour.
+- **v1.14:** Drum synth settings in the mod matrix and automation view.
+- **v1.13: GIN.** A PO-32 style drum voice with sixteen kits built in.
+- **v1.12: Kit presets.** Cycles and LXR preset banks, rows added from empty pads, one drum envelope.
+- **v1.11:** Cycles-style controls for the 303 and every drum engine; LXR and Cycles kits on SHIFT + KIT.
+- **v1.10:** Delay tone, and feedback and tone on the delay pads.
+- **v1.9:** Delay feedback on its own control. *Why:* the stock Amount set both how loud the echoes are and how many come back.
+- **v1.8:** Cyc drum engines, one drum pad layout, Stumble on for new songs.
+- **v1.7.1:** The mono sequencer grid follows octave transposes.
+- **v1.7:** 303 synth and mono sequencer slide.
+- **v1.6:** Sample start offset, ported from Owlet.
+- **v1.5:** Saturation. *Why:* the stock saturation squashed hard at its lowest and got quieter as you turned it up.
+- **v1.4:** Drum synth.
+- **v1.3:** Endless Record.
+- **v1.2:** Mono sequencer for synth, MIDI and CV tracks.
+- **v1.1:** Kit pattern mode, Autofill and the swing shortcuts.
+- **v1:** The community beta with Stumble swing.
+
+[Back to top](#readme-top)
+
 ## Design and credit
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
@@ -1063,7 +1113,9 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **MIDI kits, CV2 lock, Elektron P-locks and the song view track types** are original designs for this build. MKIT rows are the Deluge's own MIDI rows; Elektron P-locks keep locks to their steps using the Deluge's own automation. Elektron is named for the behaviour only; no Elektron code or data is used.
 - **The sample start offset** is ported from the open source [Owlet Deluge firmware](https://github.com/owlet-labs/DelugeFirmware) (GPL-3.0). This build adds saving the offset with songs and presets, the 7-segment menus, automation view support and the pulse width pad shortcut, and leaves out Owlet's other sampler features.
 - **Affect all** is an original design: a temporary snapshot of a kit that every drum moves through together, put back on the bar line.
-- **Pad Guides, the standard drum pad layout and the synth instrument picker** are original designs for this build. The picker reuses the Deluge's own preset browsing.
+- **Pad Guides, the standard drum pad layout and the synth browser** are original designs for this build. The browser reuses the Deluge's own preset browsing.
+- **Feedback** is an original design for this build, inside the Deluge's own filters.
+- **The WAVE presets** were made for this build and play the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which isn't included here: all credit for the wavetables goes to BVKER. The BRIB presets were made for this build.
 - **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
 - **The Cycles presets** are my own Model:Cycles kits, made on my own machine and converted for the Cyc engines.
 - **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), converted for the drum synth. All credit for those sounds goes to Hrtl.
@@ -1075,9 +1127,9 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering**, **Sonic Charge** or **Mutable Instruments**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, the OP-1 and PO-32 are products of Teenage Engineering, and Rings is a product of Mutable Instruments. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering**, **Sonic Charge**, **Mutable Instruments** or **BVKER**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 is a product of Roland, the OP-1 and PO-32 are products of Teenage Engineering, and Rings is a product of Mutable Instruments. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
-Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio, Teenage Engineering or Mutable Instruments for help with this build.
+Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio, Teenage Engineering, Mutable Instruments or BVKER for help with this build.
 
 [Back to top](#readme-top)
 

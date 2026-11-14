@@ -11047,6 +11047,534 @@ index a6d15453b..288d1e2e0 100644
  #include <stddef.h>
  
  template <typename T, size_t size, size_t alignment = 16>
+diff --git a/src/deluge/dsp/filter/filter.h b/src/deluge/dsp/filter/filter.h
+index 1011b6bed..9115eee05 100644
+--- a/src/deluge/dsp/filter/filter.h
++++ b/src/deluge/dsp/filter/filter.h
+@@ -17,6 +17,7 @@
+ 
+ #pragma once
+ 
++#include "dsp/filter/voice_feedback.h"
+ #include "model/mod_controllable/filters/filter_config.h"
+ #include "util/fixedpoint.h"
+ #include "util/functions.h"
+@@ -103,6 +104,21 @@ public:
+ 			} while (currentSample < endSample);
+ 		}
+ 	}
++	/// filterMono with the voice FEEDBACK loop around this filter (see FeedbackChannel). Any fade-in from a mode
++	/// change is skipped.
++	[[gnu::hot]] void filterMonoFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++	                                     FeedbackChannel& fb, q31_t gain) {
++		dryFade = 0;
++		wetLevel = ONE_Q31;
++		static_cast<T*>(this)->doFilterFeedback(startSample, endSample, sampleIncrement, fb, gain);
++	}
++	/// filterStereo with the voice FEEDBACK loop around this filter, one per channel
++	[[gnu::hot]] void filterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL,
++	                                       FeedbackChannel& fbR, q31_t gain) {
++		dryFade = 0;
++		wetLevel = ONE_Q31;
++		static_cast<T*>(this)->doFilterStereoFeedback(startSample, endSample, fbL, fbR, gain);
++	}
+ 	/**
+ 	 * reset the internal filter state to avoid clicks and pops
+ 	 * All zeroes must be a valid reset state as the filter data will be zeroed by the filterset
+diff --git a/src/deluge/dsp/filter/filter_set.cpp b/src/deluge/dsp/filter/filter_set.cpp
+index 5c972a78c..c60bfb035 100644
+--- a/src/deluge/dsp/filter/filter_set.cpp
++++ b/src/deluge/dsp/filter/filter_set.cpp
+@@ -23,63 +23,121 @@ namespace deluge::dsp::filter {
+ 
+ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate stereo samples
+ 
+-[[gnu::hot]] void FilterSet::renderHPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement) {
++[[gnu::hot]] void FilterSet::renderHPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                           q31_t feedback) {
+ 	if (HPFOn) {
+ 		if (hpfMode_ == FilterMode::HPLADDER) {
+-			hpfilter.ladder.filterMono(startSample, endSample, sampleIncrement);
++			if (feedback) {
++				hpfilter.ladder.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
++			}
++			else {
++				hpfilter.ladder.filterMono(startSample, endSample, sampleIncrement);
++			}
+ 		}
+ 		else if ((hpfMode_ == FilterMode::SVF_BAND) || (hpfMode_ == FilterMode::SVF_NOTCH)) {
+-			hpfilter.svf.filterMono(startSample, endSample, sampleIncrement);
++			if (feedback) {
++				hpfilter.svf.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
++			}
++			else {
++				hpfilter.svf.filterMono(startSample, endSample, sampleIncrement);
++			}
+ 		}
+ 	}
+ }
+-[[gnu::hot]] void FilterSet::renderHPFLongStereo(q31_t* startSample, q31_t* endSample) {
++[[gnu::hot]] void FilterSet::renderHPFLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback) {
+ 	if (HPFOn) {
+ 		if (hpfMode_ == FilterMode::HPLADDER) {
+-			hpfilter.ladder.filterStereo(startSample, endSample);
++			if (feedback) {
++				hpfilter.ladder.filterStereoFeedback(startSample, endSample, feedbackL_, feedbackR_, feedback);
++			}
++			else {
++				hpfilter.ladder.filterStereo(startSample, endSample);
++			}
+ 		}
+ 		else if ((hpfMode_ == FilterMode::SVF_BAND) || (hpfMode_ == FilterMode::SVF_NOTCH)) {
+-			hpfilter.svf.filterStereo(startSample, endSample);
++			if (feedback) {
++				hpfilter.svf.filterStereoFeedback(startSample, endSample, feedbackL_, feedbackR_, feedback);
++			}
++			else {
++				hpfilter.svf.filterStereo(startSample, endSample);
++			}
+ 		}
+ 	}
+ }
+ 
+-[[gnu::hot]] void FilterSet::renderLPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement) {
++[[gnu::hot]] void FilterSet::renderLPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                           q31_t feedback) {
+ 	if (LPFOn) {
+ 		if ((lpfMode_ == FilterMode::SVF_BAND) || (lpfMode_ == FilterMode::SVF_NOTCH)) {
+-			lpfilter.svf.filterMono(startSample, endSample, sampleIncrement);
++			if (feedback) {
++				lpfilter.svf.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
++			}
++			else {
++				lpfilter.svf.filterMono(startSample, endSample, sampleIncrement);
++			}
+ 		}
+ 		else {
+-			lpfilter.ladder.filterMono(startSample, endSample, sampleIncrement);
++			if (feedback) {
++				lpfilter.ladder.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
++			}
++			else {
++				lpfilter.ladder.filterMono(startSample, endSample, sampleIncrement);
++			}
+ 		}
+ 	}
+ }
+ 
+-[[gnu::hot]] void FilterSet::renderLPFLongStereo(q31_t* startSample, q31_t* endSample) {
++[[gnu::hot]] void FilterSet::renderLPFLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback) {
+ 	if (LPFOn) {
+ 		if ((lpfMode_ == FilterMode::SVF_BAND) || (lpfMode_ == FilterMode::SVF_NOTCH)) {
+-
+-			lpfilter.svf.filterStereo(startSample, endSample);
++			if (feedback) {
++				lpfilter.svf.filterStereoFeedback(startSample, endSample, feedbackL_, feedbackR_, feedback);
++			}
++			else {
++				lpfilter.svf.filterStereo(startSample, endSample);
++			}
+ 		}
+ 		else {
+-
+-			lpfilter.ladder.filterStereo(startSample, endSample);
++			if (feedback) {
++				lpfilter.ladder.filterStereoFeedback(startSample, endSample, feedbackL_, feedbackR_, feedback);
++			}
++			else {
++				lpfilter.ladder.filterStereo(startSample, endSample);
++			}
+ 		}
+ 	}
+ }
+ [[gnu::hot]] void FilterSet::renderLong(q31_t* startSample, q31_t* endSample, int32_t numSamples,
+-                                        int32_t sampleIncrememt) {
++                                        int32_t sampleIncrememt, q31_t feedback) {
++	// FEEDBACK: round the LPF, else the HPF, else round nothing
++	q31_t lpfFeedback = 0;
++	q31_t hpfFeedback = 0;
++	if (feedback <= 0) {
++		feedbackL_ = {};
++		feedback = 0;
++	}
++	else if (LPFOn) {
++		lpfFeedback = feedback;
++	}
++	else if (HPFOn) {
++		hpfFeedback = feedback;
++	}
++	else {
++		feedbackLoopMono(startSample, endSample, sampleIncrememt, feedbackL_, feedback, [](q31_t x) { return x; });
++		return;
++	}
++
+ 	switch (routing_) {
+ 	case FilterRoute::HIGH_TO_LOW:
+ 
+-		renderHPFLong(startSample, endSample, sampleIncrememt);
+-		renderLPFLong(startSample, endSample, sampleIncrememt);
++		renderHPFLong(startSample, endSample, sampleIncrememt, hpfFeedback);
++		renderLPFLong(startSample, endSample, sampleIncrememt, lpfFeedback);
+ 
+ 		break;
+ 	case FilterRoute::LOW_TO_HIGH:
+ 
+-		renderLPFLong(startSample, endSample, sampleIncrememt);
+-		renderHPFLong(startSample, endSample, sampleIncrememt);
++		renderLPFLong(startSample, endSample, sampleIncrememt, lpfFeedback);
++		renderHPFLong(startSample, endSample, sampleIncrememt, hpfFeedback);
+ 
+ 		break;
+ 
+@@ -89,8 +147,8 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+ 		int32_t length = endSample - startSample;
+ 		memcpy(tempRenderBuffer, startSample, length * sizeof(q31_t));
+ 
+-		renderHPFLong(tempRenderBuffer, tempRenderBuffer + length, sampleIncrememt);
+-		renderLPFLong(startSample, endSample, sampleIncrememt);
++		renderHPFLong(tempRenderBuffer, tempRenderBuffer + length, sampleIncrememt, hpfFeedback);
++		renderLPFLong(startSample, endSample, sampleIncrememt, lpfFeedback);
+ 
+ 		for (int i = 0; i < length; i++) {
+ 			startSample[i] += tempRenderBuffer[i];
+@@ -99,21 +157,41 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+ 	}
+ }
+ // expects to receive an interleaved stereo stream
+-[[gnu::hot]] void FilterSet::renderLongStereo(q31_t* startSample, q31_t* endSample) {
+-	// Do HPF, if it's on
++[[gnu::hot]] void FilterSet::renderLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback) {
++	// FEEDBACK: round the LPF, else the HPF, else round nothing
++	q31_t lpfFeedback = 0;
++	q31_t hpfFeedback = 0;
++	if (feedback <= 0) {
++		feedbackL_ = {};
++		feedbackR_ = {};
++		feedback = 0;
++	}
++	else if (LPFOn) {
++		lpfFeedback = feedback;
++	}
++	else if (HPFOn) {
++		hpfFeedback = feedback;
++	}
++	else {
++		feedbackLoopStereo(
++		    startSample, endSample, feedbackL_, feedbackR_, feedback, [](q31_t x) { return x; },
++		    [](q31_t x) { return x; });
++		return;
++	}
++
+ 	switch (routing_) {
+ 	case FilterRoute::HIGH_TO_LOW:
+ 
+-		renderHPFLongStereo(startSample, endSample);
++		renderHPFLongStereo(startSample, endSample, hpfFeedback);
+ 
+-		renderLPFLongStereo(startSample, endSample);
++		renderLPFLongStereo(startSample, endSample, lpfFeedback);
+ 
+ 		break;
+ 	case FilterRoute::LOW_TO_HIGH:
+ 
+-		renderLPFLongStereo(startSample, endSample);
++		renderLPFLongStereo(startSample, endSample, lpfFeedback);
+ 
+-		renderHPFLongStereo(startSample, endSample);
++		renderHPFLongStereo(startSample, endSample, hpfFeedback);
+ 
+ 		break;
+ 	case FilterRoute::PARALLEL:
+@@ -121,9 +199,9 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+ 
+ 		memcpy(tempRenderBuffer, startSample, length * sizeof(q31_t));
+ 
+-		renderHPFLongStereo(tempRenderBuffer, tempRenderBuffer + length);
++		renderHPFLongStereo(tempRenderBuffer, tempRenderBuffer + length, hpfFeedback);
+ 
+-		renderLPFLongStereo(startSample, endSample);
++		renderLPFLongStereo(startSample, endSample, lpfFeedback);
+ 
+ 		for (int i = 0; i < length; i++) {
+ 			startSample[i] += tempRenderBuffer[i];
+diff --git a/src/deluge/dsp/filter/filter_set.h b/src/deluge/dsp/filter/filter_set.h
+index 34c70810a..f6eddda4f 100644
+--- a/src/deluge/dsp/filter/filter_set.h
++++ b/src/deluge/dsp/filter/filter_set.h
+@@ -50,10 +50,13 @@ public:
+ 	                  q31_t hpfResonance, FilterMode hpfmode, q31_t hpfMorph, q31_t filterGain, FilterRoute routing,
+ 	                  bool adjustVolumeForHPFResonance, q31_t* overallOscAmplitude);
+ 
+-	void renderLong(q31_t* startSample, q31_t* endSample, int32_t numSamples, int32_t sampleIncrememt = 1);
++	/// feedback: the voice FEEDBACK loop's gain (1 = 2^29), 0 for none. The loop goes round the LPF, or the HPF if
++	/// only that's on, or round nothing if neither is.
++	void renderLong(q31_t* startSample, q31_t* endSample, int32_t numSamples, int32_t sampleIncrememt = 1,
++	                q31_t feedback = 0);
+ 
+ 	// expects to receive an interleaved stereo stream
+-	void renderLongStereo(q31_t* startSample, q31_t* endSample);
++	void renderLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback = 0);
+ 
+ 	// used to check whether the filter is used at all
+ 	inline bool isLPFOn() { return LPFOn; }
+@@ -67,10 +70,11 @@ private:
+ 	FilterMode lastHPFMode_;
+ 	FilterRoute routing_;
+ 
+-	void renderLPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement = 1);
+-	void renderLPFLongStereo(q31_t* startSample, q31_t* endSample);
+-	void renderHPFLongStereo(q31_t* startSample, q31_t* endSample);
+-	void renderHPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement = 1);
++	// feedback: as renderLong's, 0 when the loop isn't round this filter
++	void renderLPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, q31_t feedback);
++	void renderLPFLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback);
++	void renderHPFLongStereo(q31_t* startSample, q31_t* endSample, q31_t feedback);
++	void renderHPFLong(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, q31_t feedback);
+ 
+ 	// all filters share a state. This is fine since they just hold plain data and initialization is handled by
+ 	// reset/configure calls.  This is faster than using a variant at the cost of not throwing on incorrect access.
+@@ -81,5 +85,9 @@ private:
+ 
+ 	bool LPFOn;
+ 	bool HPFOn;
++
++	// The voice FEEDBACK loop, per channel
++	FeedbackChannel feedbackL_;
++	FeedbackChannel feedbackR_;
+ };
+ } // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/hpladder.cpp b/src/deluge/dsp/filter/hpladder.cpp
+index ee0976bfe..b23b33de3 100644
+--- a/src/deluge/dsp/filter/hpladder.cpp
++++ b/src/deluge/dsp/filter/hpladder.cpp
+@@ -114,4 +114,17 @@ q31_t HpLadderFilter::setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMo
+ 
+ 	return a;
+ }
++
++// The same filter inside the voice FEEDBACK loop (see FeedbackChannel)
++[[gnu::hot]] void HpLadderFilter::doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                                   FeedbackChannel& fb, q31_t gain) {
++	feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain, [this](q31_t x) { return doHPF(x, l); });
++}
++
++[[gnu::hot]] void HpLadderFilter::doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL,
++                                                         FeedbackChannel& fbR, q31_t gain) {
++	feedbackLoopStereo(
++	    startSample, endSample, fbL, fbR, gain, [this](q31_t x) { return doHPF(x, l); },
++	    [this](q31_t x) { return doHPF(x, r); });
++}
+ } // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/hpladder.h b/src/deluge/dsp/filter/hpladder.h
+index a8a99a672..86025068c 100644
+--- a/src/deluge/dsp/filter/hpladder.h
++++ b/src/deluge/dsp/filter/hpladder.h
+@@ -30,6 +30,10 @@ public:
+ 	q31_t setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMode lpfMode, q31_t lpfMorph, q31_t filterGain);
+ 	void doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrememt);
+ 	void doFilterStereo(q31_t* startSample, q31_t* endSample);
++	void doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, FeedbackChannel& fb,
++	                      q31_t gain);
++	void doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL, FeedbackChannel& fbR,
++	                            q31_t gain);
+ 	void resetFilter() {
+ 		l.reset();
+ 		r.reset();
+diff --git a/src/deluge/dsp/filter/lpladder.cpp b/src/deluge/dsp/filter/lpladder.cpp
+index 51bf08027..faac37041 100644
+--- a/src/deluge/dsp/filter/lpladder.cpp
++++ b/src/deluge/dsp/filter/lpladder.cpp
+@@ -409,4 +409,63 @@ q31_t LpLadderFilter::setConfig(q31_t lpfFrequency, q31_t lpfResonance, FilterMo
+ 
+ 	return d;
+ }
++
++// The same filters inside the voice FEEDBACK loop (see FeedbackChannel)
++[[gnu::hot]] void LpLadderFilter::doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                                   FeedbackChannel& fb, q31_t gain) {
++	if (lpfMode == FilterMode::TRANSISTOR_12DB) {
++		feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain,
++		                 [this](q31_t x) { return do12dBLPFOnSample(x, l); });
++	}
++	else if (lpfMode == FilterMode::TRANSISTOR_24DB) {
++		feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain,
++		                 [this](q31_t x) { return do24dBLPFOnSample(x, l); });
++	}
++	else if (lpfMode == FilterMode::TRANSISTOR_24DB_DRIVE) {
++		if (doOversampling) {
++			feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain, [this](q31_t x) {
++				doDriveLPFOnSample(x, l);
++				return getTanHUnknown(doDriveLPFOnSample(x, l), 4);
++			});
++		}
++		else {
++			feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain,
++			                 [this](q31_t x) { return getTanHUnknown(doDriveLPFOnSample(x, l), 4); });
++		}
++	}
++}
++
++[[gnu::hot]] void LpLadderFilter::doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL,
++                                                         FeedbackChannel& fbR, q31_t gain) {
++	if (lpfMode == FilterMode::TRANSISTOR_12DB) {
++		feedbackLoopStereo(
++		    startSample, endSample, fbL, fbR, gain, [this](q31_t x) { return do12dBLPFOnSample(x, l); },
++		    [this](q31_t x) { return do12dBLPFOnSample(x, r); });
++	}
++	else if (lpfMode == FilterMode::TRANSISTOR_24DB) {
++		feedbackLoopStereo(
++		    startSample, endSample, fbL, fbR, gain, [this](q31_t x) { return do24dBLPFOnSample(x, l); },
++		    [this](q31_t x) { return do24dBLPFOnSample(x, r); });
++	}
++	else if (lpfMode == FilterMode::TRANSISTOR_24DB_DRIVE) {
++		if (doOversampling) {
++			feedbackLoopStereo(
++			    startSample, endSample, fbL, fbR, gain,
++			    [this](q31_t x) {
++				    doDriveLPFOnSample(x, l);
++				    return getTanHUnknown(doDriveLPFOnSample(x, l), 4);
++			    },
++			    [this](q31_t x) {
++				    doDriveLPFOnSample(x, r);
++				    return getTanHUnknown(doDriveLPFOnSample(x, r), 4);
++			    });
++		}
++		else {
++			feedbackLoopStereo(
++			    startSample, endSample, fbL, fbR, gain,
++			    [this](q31_t x) { return getTanHUnknown(doDriveLPFOnSample(x, l), 4); },
++			    [this](q31_t x) { return getTanHUnknown(doDriveLPFOnSample(x, r), 4); });
++		}
++	}
++}
+ } // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/lpladder.h b/src/deluge/dsp/filter/lpladder.h
+index 9013cd7c7..8a30978f4 100644
+--- a/src/deluge/dsp/filter/lpladder.h
++++ b/src/deluge/dsp/filter/lpladder.h
+@@ -30,6 +30,10 @@ public:
+ 	q31_t setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMode lpfMode, q31_t lpfMorph, q31_t filterGain);
+ 	void doFilter(q31_t* outputSample, q31_t* endSample, int32_t sampleIncrememt);
+ 	void doFilterStereo(q31_t* startSample, q31_t* endSample);
++	void doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, FeedbackChannel& fb,
++	                      q31_t gain);
++	void doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL, FeedbackChannel& fbR,
++	                            q31_t gain);
+ 	void resetFilter() {
+ 		l.reset();
+ 		r.reset();
+diff --git a/src/deluge/dsp/filter/svf.cpp b/src/deluge/dsp/filter/svf.cpp
+index 66aa2cd12..45ddb26e9 100644
+--- a/src/deluge/dsp/filter/svf.cpp
++++ b/src/deluge/dsp/filter/svf.cpp
+@@ -130,4 +130,17 @@ q31_t SVFilter::setConfig(q31_t freq, q31_t res, FilterMode lpfMode, q31_t lpfMo
+ 
+ 	return result;
+ }
++
++// The same filter inside the voice FEEDBACK loop (see FeedbackChannel)
++[[gnu::hot]] void SVFilter::doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                             FeedbackChannel& fb, q31_t gain) {
++	feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain, [this](q31_t x) { return doSVF(x, l); });
++}
++
++[[gnu::hot]] void SVFilter::doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL,
++                                                   FeedbackChannel& fbR, q31_t gain) {
++	feedbackLoopStereo(
++	    startSample, endSample, fbL, fbR, gain, [this](q31_t x) { return doSVF(x, l); },
++	    [this](q31_t x) { return doSVF(x, r); });
++}
+ } // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/svf.h b/src/deluge/dsp/filter/svf.h
+index 9f5a5ff78..4c5b5a892 100644
+--- a/src/deluge/dsp/filter/svf.h
++++ b/src/deluge/dsp/filter/svf.h
+@@ -29,6 +29,10 @@ public:
+ 	q31_t setConfig(q31_t hpfFrequency, q31_t hpfResonance, FilterMode lpfMode, q31_t lpfMorph, q31_t filterGain);
+ 	void doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrememt);
+ 	void doFilterStereo(q31_t* startSample, q31_t* endSample);
++	void doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, FeedbackChannel& fb,
++	                      q31_t gain);
++	void doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL, FeedbackChannel& fbR,
++	                            q31_t gain);
+ 	void resetFilter() {
+ 		l = (SVFState){0, 0};
+ 		r = (SVFState){0, 0};
+diff --git a/src/deluge/dsp/filter/voice_feedback.h b/src/deluge/dsp/filter/voice_feedback.h
+new file mode 100644
+index 000000000..7e2abfb84
+--- /dev/null
++++ b/src/deluge/dsp/filter/voice_feedback.h
+@@ -0,0 +1,69 @@
++/*
++ * Copyright © 2026 the Deluge community.
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "util/fixedpoint.h"
++#include "util/functions.h"
++
++namespace deluge::dsp::filter {
++
++/// One channel of a voice's FEEDBACK loop (params::LOCAL_VOICE_FEEDBACK): the filter's output from the sample before,
++/// with its DC taken out and soft clipped, added back to the filter's input, like patching a mono synth's output back
++/// into its own mixer. It fattens and drives the low end; past the knob's range (patch cables) it can self-oscillate.
++/// All zeroes is the reset state.
++struct FeedbackChannel {
++	q31_t last; ///< The filter's last output, DC removed
++	q31_t dc;   ///< Running DC of the filter's output
++
++	/// The filter's input x with the feedback added. gain: 1 = 2^29
++	[[gnu::always_inline]] inline q31_t in(q31_t x, q31_t gain) {
++		q31_t fed = lshiftAndSaturate<3>(multiply_32x32_rshift32(last, gain));
++		// The fed back signal is soft clipped at about 2^27, a bit under a loud oscillator, so it can't run away
++		return add_saturate(x, getTanHUnknown(fed, 2));
++	}
++
++	/// Note the filter's output y for the next sample, and return it
++	[[gnu::always_inline]] inline q31_t out(q31_t y) {
++		dc += (y >> 7) - (dc >> 7); // About 55 Hz
++		last = y - dc;
++		return y;
++	}
++};
++
++/// Run filter (q31_t -> q31_t, one sample) over a mono buffer inside the feedback loop
++template <typename F>
++[[gnu::always_inline]] inline void feedbackLoopMono(q31_t* sample, q31_t* end, int32_t increment, FeedbackChannel& fb,
++                                                    q31_t gain, F&& filter) {
++	do {
++		*sample = fb.out(filter(fb.in(*sample, gain)));
++		sample += increment;
++	} while (sample < end);
++}
++
++/// Run filterL and filterR over an interleaved stereo buffer, each inside its own channel's feedback loop
++template <typename FL, typename FR>
++[[gnu::always_inline]] inline void feedbackLoopStereo(q31_t* sample, q31_t* end, FeedbackChannel& fbL,
++                                                      FeedbackChannel& fbR, q31_t gain, FL&& filterL, FR&& filterR) {
++	do {
++		sample[0] = fbL.out(filterL(fbL.in(sample[0], gain)));
++		sample[1] = fbR.out(filterR(fbR.in(sample[1], gain)));
++		sample += 2;
++	} while (sample < end);
++}
++
++} // namespace deluge::dsp::filter
 diff --git a/src/deluge/dsp/saturator.h b/src/deluge/dsp/saturator.h
 new file mode 100644
 index 000000000..ce8acd265
@@ -13168,10 +13696,10 @@ index 000000000..9872e7267
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.cpp b/src/deluge/gui/context_menu/synth_instrument.cpp
 new file mode 100644
-index 000000000..111820f5d
+index 000000000..1de44595b
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.cpp
-@@ -0,0 +1,156 @@
+@@ -0,0 +1,314 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -13191,34 +13719,38 @@ index 000000000..111820f5d
 +
 +#include "gui/context_menu/synth_instrument.h"
 +#include "definitions_cxx.hpp"
++#include "dsp/drum_synth/drum_synth.h"
 +#include "fatfs/ff.h"
 +#include "gui/l10n/l10n.h"
++#include "gui/ui/load/load_instrument_preset_ui.h"
 +#include "gui/views/instrument_clip_view.h"
 +#include "gui/views/view.h"
 +#include "hid/buttons.h"
 +#include "hid/display/display.h"
-+#include "model/instrument/synth_instruments.h"
-+#include "model/model_stack.h"
++#include "model/clip/instrument_clip.h"
++#include "model/instrument/instrument.h"
 +#include "model/settings/runtime_feature_settings.h"
 +#include "model/song/song.h"
 +#include "processing/sound/sound_instrument.h"
++#include <cstdio>
 +#include <cstring>
 +#include <strings.h>
 +
 +namespace deluge::gui::context_menu {
 +
++using synth_instruments::kSynthCategories;
 +using synth_instruments::kSynthInstruments;
++using synth_instruments::SynthInstrument;
 +
 +SynthInstrumentMenu synthInstrumentMenu{};
++SynthCategoryMenu synthCategoryMenu{};
 +
 +namespace {
-+/// Whether a preset folder has any presets in it. A missing folder is made, ready to save presets into, as the Deluge
-+/// can't make folders when saving.
++
++/// Whether a preset folder has any presets (XML files) directly in it
 +bool folderHasPresets(char const* folder) {
 +	DIR dir;
 +	if (f_opendir(&dir, folder) != FR_OK) {
-+		f_mkdir("SYNTHS");
-+		f_mkdir(folder);
 +		return false;
 +	}
 +	bool found = false;
@@ -13231,7 +13763,74 @@ index 000000000..111820f5d
 +	f_closedir(&dir);
 +	return found;
 +}
++
++/// The folder of a type's category, like SYNTHS/SUBT/BASS
++void categoryFolder(size_t type, size_t category, char* out, size_t outSize) {
++	snprintf(out, outSize, "%s/%s", kSynthInstruments[type].folder, kSynthCategories[category].folder);
++}
++
++/// Whether path is folder or inside it
++bool inFolder(char const* path, char const* folder) {
++	const size_t length = strlen(folder);
++	return !strncasecmp(path, folder, length) && (path[length] == '\0' || path[length] == '/');
++}
++
++bool typeAvailable(size_t type) {
++	return !kSynthInstruments[type].dx || runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine);
++}
++
++/// The type a synth plays: the one whose folder it came from, else the first that sounds like it
++size_t typeOf(SoundInstrument* synth) {
++	for (size_t i = 0; i < kSynthInstruments.size(); i++) {
++		if (!kSynthInstruments[i].init && inFolder(synth->dirPath.get(), kSynthInstruments[i].folder)) {
++			return i;
++		}
++	}
++	const bool dx = synth->sources[0].oscType == OscType::DX7;
++	const bool rings = synth->sources[0].oscType == OscType::DRUM_SYNTH
++	                   && dsp::drum_synth::isRings(synth->sources[0].drumPatch.engine());
++	const bool wavetable =
++	    synth->getSynthMode() == SynthMode::SUBTRACTIVE
++	    && (synth->sources[0].oscType == OscType::WAVETABLE || synth->sources[1].oscType == OscType::WAVETABLE);
++	for (size_t i = 0; i < kSynthInstruments.size(); i++) {
++		const SynthInstrument& type = kSynthInstruments[i];
++		if (type.init) {
++			continue;
++		}
++		if (rings ? type.rings
++		    : dx  ? type.dx
++		          : (!type.dx && !type.rings && type.mode == synth->getSynthMode() && type.wavetable == wavetable)) {
++			return i;
++		}
++	}
++	return 0;
++}
++
++/// A blank synth of the type, saving into its folder (the type has no presets yet)
++void makeBlankSynth(const SynthInstrument& type) {
++	if (instrumentClipView.createNewInstrument(OutputType::SYNTH, type.dx)
++	    && getCurrentOutputType() == OutputType::SYNTH) {
++		auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
++		synth->dirPath.set(type.folder);
++		if (type.mode != synth->getSynthMode()) {
++			synth->setSynthMode(type.mode, currentSong);
++		}
++	}
++}
++
 +} // namespace
++
++bool openSynthPresetFolder(char const* folder, int32_t backTo) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	if (clip == nullptr) {
++		return false;
++	}
++	loadInstrumentPresetUI.setupLoadInstrument(OutputType::SYNTH, static_cast<Instrument*>(clip->output), clip);
++	loadInstrumentPresetUI.setPickerFolder(folder, backTo);
++	return openUI(&loadInstrumentPresetUI);
++}
++
++// ---- Types ----
 +
 +char const* SynthInstrumentMenu::getTitle() {
 +	return l10n::get(l10n::String::STRING_FOR_SYNTH_INSTRUMENT);
@@ -13246,48 +13845,54 @@ index 000000000..111820f5d
 +}
 +
 +bool SynthInstrumentMenu::isCurrentOptionAvailable() {
-+	return !kSynthInstruments[currentOption].dx
-+	       || runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine);
++	return typeAvailable(currentOption);
 +}
 +
 +bool SynthInstrumentMenu::setupAndCheckAvailability() {
-+	if (getCurrentOutputType() != OutputType::SYNTH) {
++	switch (getCurrentOutputType()) {
++	case OutputType::SYNTH:
++		setupFor(typeOf(static_cast<SoundInstrument*>(getCurrentOutput())));
++		return true;
++	case OutputType::KIT: {
++		// As stock: a kit clip only turns into a synth clip while it has no notes or sounds
++		InstrumentClip* clip = getCurrentInstrumentClip();
++		if (clip == nullptr || !clip->isEmpty() || !clip->output->isEmpty()) {
++			return false;
++		}
++		setupFor(0);
++		return true;
++	}
++	case OutputType::MIDI_OUT:
++	case OutputType::CV:
++		setupFor(0);
++		return true;
++	default:
 +		return false;
 +	}
-+	auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
-+	const bool dx = synth->sources[0].oscType == OscType::DX7;
-+	// The instrument whose folder the synth came from, else the first that plays like it
-+	int32_t current = -1;
-+	for (size_t i = 0; i < kSynthInstruments.size() && current < 0; i++) {
-+		if (!strcasecmp(synth->dirPath.get(), kSynthInstruments[i].folder)) {
-+			current = static_cast<int32_t>(i);
-+		}
-+	}
-+	for (size_t i = 0; i < kSynthInstruments.size() && current < 0; i++) {
-+		if (kSynthInstruments[i].dx == dx && (dx || kSynthInstruments[i].mode == synth->getSynthMode())) {
-+			current = static_cast<int32_t>(i);
-+		}
-+	}
-+	currentOption = (current < 0) ? 0 : current;
-+	if (!isCurrentOptionAvailable()) {
-+		currentOption = 0;
-+	}
++}
++
++void SynthInstrumentMenu::setupFor(size_t type) {
++	currentOption = (type < kSynthInstruments.size() && typeAvailable(type)) ? static_cast<int32_t>(type) : 0;
 +	scrollPos = currentOption;
-+	return true;
 +}
 +
 +ActionResult SynthInstrumentMenu::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
-+	// SHIFT + SYNTH again: the next instrument, round to the first after the last
++	// SHIFT + SYNTH again: the next type, round to the first after the last
 +	if (b == deluge::hid::button::SYNTH && Buttons::isShiftButtonPressed()) {
 +		if (on) {
 +			const int32_t numOptions = static_cast<int32_t>(kSynthInstruments.size());
 +			int32_t next = currentOption;
 +			do {
 +				next = (next + 1) % numOptions;
-+			} while (next != currentOption
-+			         && (kSynthInstruments[next].dx
-+			             && !runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::EnableDX7Engine)));
-+			selectEncoderAction(display->haveOLED() ? next - currentOption : 1);
++			} while (next != currentOption && !typeAvailable(next));
++			currentOption = next;
++			scrollPos = currentOption;
++			if (display->haveOLED()) {
++				renderUIsForOled();
++			}
++			else {
++				drawCurrentOption();
++			}
 +		}
 +		return ActionResult::DEALT_WITH;
 +	}
@@ -13295,45 +13900,126 @@ index 000000000..111820f5d
 +}
 +
 +bool SynthInstrumentMenu::acceptCurrentOption() {
-+	const synth_instruments::SynthInstrument& instrument = kSynthInstruments[currentOption];
++	const size_t typeIndex = currentOption;
++	const SynthInstrument& type = kSynthInstruments[typeIndex];
 +	display->setNextTransitionDirection(-1);
 +	close();
-+	if (getCurrentOutputType() != OutputType::SYNTH) {
++
++	// INIT: the stock blank synth
++	if (type.init) {
++		instrumentClipView.createNewInstrument(OutputType::SYNTH);
 +		return true;
 +	}
 +
-+	// Its first preset, as SELECT would step to it, so SELECT carries on through that folder
-+	if (folderHasPresets(instrument.folder)) {
-+		char modelStackMemory[MODEL_STACK_MAX_SIZE];
-+		ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(modelStackMemory);
-+		Output* before = getCurrentOutput();
-+		view.navigateThroughPresetsForInstrumentClip(1, modelStack, true, instrument.folder);
-+		// Every preset there already plays on another track, or this one is the only one
-+		if (getCurrentOutput() == before) {
-+			display->displayPopup(l10n::get(l10n::String::STRING_FOR_NO_FREE_PRESETS));
++	// Make the folders if they're missing, ready to save presets into, as the Deluge can't make folders when saving
++	f_mkdir("SYNTHS");
++	f_mkdir(type.folder);
++	if (!type.dx) {
++		char folder[48];
++		for (size_t c = 0; c < kSynthCategories.size(); c++) {
++			categoryFolder(typeIndex, c, folder, sizeof(folder));
++			f_mkdir(folder);
 +		}
-+		return true;
 +	}
 +
-+	// Nothing saved there yet: a blank synth of that kind, which saves into the folder
-+	if (instrumentClipView.createNewInstrument(OutputType::SYNTH, instrument.dx)
-+	    && getCurrentOutputType() == OutputType::SYNTH) {
-+		auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
-+		synth->dirPath.set(instrument.folder);
-+		if (instrument.mode != synth->getSynthMode()) {
-+			synth->setSynthMode(instrument.mode, currentSong);
++	if (synthCategoryMenu.setupFor(typeIndex)) {
++		openUI(&synthCategoryMenu);
++	}
++	// No categories in use (DX7, or presets kept loose in the type's folder): its folder
++	else if (folderHasPresets(type.folder)) {
++		openSynthPresetFolder(type.folder, -1);
++	}
++	// Nothing saved there yet: a blank synth of that type, which saves into the folder
++	else {
++		makeBlankSynth(type);
++	}
++	return true;
++}
++
++// ---- Categories ----
++
++char const* SynthCategoryMenu::getTitle() {
++	return l10n::get(l10n::String::STRING_FOR_SYNTH_CATEGORY);
++}
++
++std::span<char const*> SynthCategoryMenu::getOptions() {
++	static std::array<char const*, kSynthCategories.size()> options;
++	for (size_t i = 0; i < kSynthCategories.size(); i++) {
++		options[i] = l10n::get(kSynthCategories[i].name);
++	}
++	return {options.data(), options.size()};
++}
++
++bool SynthCategoryMenu::setupFor(size_t type) {
++	type_ = type;
++	if (kSynthInstruments[type].dx || kSynthInstruments[type].init) {
++		return false;
++	}
++	char folder[48];
++	bool any = false;
++	for (size_t c = 0; c < kSynthCategories.size(); c++) {
++		categoryFolder(type, c, folder, sizeof(folder));
++		hasPresets_[c] = folderHasPresets(folder);
++		any = any || hasPresets_[c];
++	}
++	if (!any) {
++		return false;
++	}
++
++	// On the category the current synth came from, else the first with presets
++	int32_t current = -1;
++	if (getCurrentOutputType() == OutputType::SYNTH) {
++		char const* dirPath = static_cast<Instrument*>(getCurrentOutput())->dirPath.get();
++		for (size_t c = 0; c < kSynthCategories.size() && current < 0; c++) {
++			categoryFolder(type, c, folder, sizeof(folder));
++			if (hasPresets_[c] && inFolder(dirPath, folder)) {
++				current = static_cast<int32_t>(c);
++			}
 +		}
 +	}
++	for (size_t c = 0; c < kSynthCategories.size() && current < 0; c++) {
++		if (hasPresets_[c]) {
++			current = static_cast<int32_t>(c);
++		}
++	}
++	currentOption = current;
++	scrollPos = currentOption;
++	return true;
++}
++
++ActionResult SynthCategoryMenu::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
++	// BACK: up to the types, on this one
++	if (b == deluge::hid::button::BACK) {
++		if (on) {
++			if (inCardRoutine) {
++				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++			}
++			display->setNextTransitionDirection(-1);
++			close();
++			synthInstrumentMenu.setupFor(type_);
++			openUI(&synthInstrumentMenu);
++		}
++		return ActionResult::DEALT_WITH;
++	}
++	return ContextMenu::buttonAction(b, on, inCardRoutine);
++}
++
++bool SynthCategoryMenu::acceptCurrentOption() {
++	char folder[48];
++	categoryFolder(type_, currentOption, folder, sizeof(folder));
++	display->setNextTransitionDirection(1);
++	close();
++	openSynthPresetFolder(folder, static_cast<int32_t>(type_));
 +	return true;
 +}
 +
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.h b/src/deluge/gui/context_menu/synth_instrument.h
 new file mode 100644
-index 000000000..cd1babb23
+index 000000000..c8a03a0a0
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.h
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,79 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -13354,18 +14040,23 @@ index 000000000..cd1babb23
 +#pragma once
 +
 +#include "gui/context_menu/context_menu.h"
++#include "model/instrument/synth_instruments.h"
++#include <array>
 +
 +namespace deluge::gui::context_menu {
 +
-+/// Shown by SHIFT + SYNTH on a synth track: the synth instruments (see model/instrument/synth_instruments.h), opening
-+/// on the one the track plays. SHIFT + SYNTH again or turning SELECT moves on. SELECT or SYNTH loads the instrument's
-+/// first preset (a blank one if its folder is empty), BACK cancels. DX7 is only offered with the DX7 engine on.
++/// Shown by SHIFT + SYNTH on any instrument track, as SHIFT + KIT shows the kit types: the synth types (see
++/// model/instrument/synth_instruments.h), opening on the one the track plays. SHIFT + SYNTH again or turning SELECT
++/// moves on. SELECT or SYNTH opens the type's categories (BASS, LEAD, PAD, MISC); INIT makes the stock blank synth.
++/// BACK cancels. DX7 is only offered with the DX7 engine on.
 +class SynthInstrumentMenu final : public ContextMenu {
 +public:
 +	SynthInstrumentMenu() = default;
 +
-+	/// Put the cursor on the instrument the current synth plays
++	/// Put the cursor on the type the current synth plays. False on a kit track with notes or sounds (as stock).
 +	bool setupAndCheckAvailability() override;
++	/// Open on type (from the category menu's BACK)
++	void setupFor(size_t type);
 +
 +	char const* getTitle() override;
 +	std::span<char const*> getOptions() override;
@@ -13376,10 +14067,40 @@ index 000000000..cd1babb23
 +	deluge::hid::Button getAcceptButton() override { return deluge::hid::button::SYNTH; }
 +};
 +
++/// The categories inside a synth type's folder (BASS, LEAD, PAD, MISC), each one offered only if it holds presets.
++/// SELECT or SYNTH opens the preset browser in that folder playing its first preset: turning SELECT previews the
++/// others, SELECT keeps one, BACK there puts the old synth back and returns here. BACK here returns to the types.
++class SynthCategoryMenu final : public ContextMenu {
++public:
++	SynthCategoryMenu() = default;
++
++	/// For type: false if none of its categories has a preset
++	bool setupFor(size_t type);
++
++	char const* getTitle() override;
++	std::span<char const*> getOptions() override;
++	bool isCurrentOptionAvailable() override { return hasPresets_[currentOption]; }
++	bool canSeeViewUnderneath() override { return true; }
++	bool acceptCurrentOption() override;
++	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
++	deluge::hid::Button getAcceptButton() override { return deluge::hid::button::SYNTH; }
++
++	size_t type() const { return type_; }
++
++private:
++	size_t type_ = 0;
++	std::array<bool, synth_instruments::kSynthCategories.size()> hasPresets_{};
++};
++
++/// Open the preset browser on folder for the current clip, playing its first preset. backTo is the category menu's
++/// type to return to on BACK from that folder (-1: BACK leaves as usual). False if it couldn't open.
++bool openSynthPresetFolder(char const* folder, int32_t backTo);
++
 +extern SynthInstrumentMenu synthInstrumentMenu;
++extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..31bac3c7a 100644
+index 683a26648..9dc3a4e90 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -13412,7 +14133,7 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -545,6 +554,157 @@
+@@ -545,6 +554,166 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -13538,8 +14259,17 @@ index 683a26648..31bac3c7a 100644
 +    "STRING_FOR_CYC_AMP_DECAY": "Amp decay",
 +    "STRING_FOR_NEW_KIT_TYPE": "New kit",
 +    "STRING_FOR_SYNTH_INSTRUMENT": "Instrument",
-+    "STRING_FOR_SYNTH_INSTRUMENT_DELUGE": "Deluge",
-+    "STRING_FOR_SYNTH_INSTRUMENT_DLFM": "DLFM",
++    "STRING_FOR_SYNTH_TYPE_SUBT": "Subtractive",
++    "STRING_FOR_SYNTH_TYPE_FM": "FM",
++    "STRING_FOR_SYNTH_TYPE_WAVE": "Wavetable",
++    "STRING_FOR_SYNTH_TYPE_RING": "Ring mod",
++    "STRING_FOR_SYNTH_TYPE_BRIB": "Bribering",
++    "STRING_FOR_SYNTH_TYPE_INIT": "Init",
++    "STRING_FOR_SYNTH_CATEGORY": "Category",
++    "STRING_FOR_SYNTH_CATEGORY_BASS": "Bass",
++    "STRING_FOR_SYNTH_CATEGORY_LEAD": "Lead",
++    "STRING_FOR_SYNTH_CATEGORY_PAD": "Pad",
++    "STRING_FOR_SYNTH_CATEGORY_MISC": "Misc",
 +    "STRING_FOR_SYNTH_INSTRUMENT_DX7": "DX7",
 +    "STRING_FOR_NO_FREE_PRESETS": "No free presets",
 +    "STRING_FOR_SAMPLE_KIT": "Kit",
@@ -13570,7 +14300,7 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -570,6 +730,8 @@
+@@ -570,6 +739,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -13579,7 +14309,7 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -626,6 +788,13 @@
+@@ -626,6 +797,13 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -13593,7 +14323,7 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -707,6 +876,12 @@
+@@ -707,6 +885,12 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -13606,7 +14336,7 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -849,6 +1024,35 @@
+@@ -849,6 +1033,35 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -13642,7 +14372,15 @@ index 683a26648..31bac3c7a 100644
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
-@@ -997,9 +1201,44 @@
+@@ -878,6 +1091,7 @@
+     "STRING_FOR_LOOP_TOO_LONG": "Loop too long",
+     "STRING_FOR_LOOP_DOUBLED": "Loop doubled",
+     "STRING_FOR_WAVEFOLD": "Wavefold",
++    "STRING_FOR_VOICE_FEEDBACK": "Feedback",
+     "STRING_FOR_MOD_MATRIX": "Mod matrix",
+     "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
+     "STRING_FOR_WRONG_SIZE": "Wrong size?",
+@@ -997,9 +1211,44 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -13689,7 +14427,7 @@ index 683a26648..31bac3c7a 100644
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..091554a8c 100644
+index 0032e81ac..409874f7f 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -13722,7 +14460,7 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -558,6 +567,157 @@ PLACE_SDRAM_DATA Language english{
+@@ -558,6 +567,166 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -13848,8 +14586,17 @@ index 0032e81ac..091554a8c 100644
 +        {STRING_FOR_CYC_AMP_DECAY, "Amp decay"},
 +        {STRING_FOR_NEW_KIT_TYPE, "New kit"},
 +        {STRING_FOR_SYNTH_INSTRUMENT, "Instrument"},
-+        {STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "Deluge"},
-+        {STRING_FOR_SYNTH_INSTRUMENT_DLFM, "DLFM"},
++        {STRING_FOR_SYNTH_TYPE_SUBT, "Subtractive"},
++        {STRING_FOR_SYNTH_TYPE_FM, "FM"},
++        {STRING_FOR_SYNTH_TYPE_WAVE, "Wavetable"},
++        {STRING_FOR_SYNTH_TYPE_RING, "Ring mod"},
++        {STRING_FOR_SYNTH_TYPE_BRIB, "Bribering"},
++        {STRING_FOR_SYNTH_TYPE_INIT, "Init"},
++        {STRING_FOR_SYNTH_CATEGORY, "Category"},
++        {STRING_FOR_SYNTH_CATEGORY_BASS, "Bass"},
++        {STRING_FOR_SYNTH_CATEGORY_LEAD, "Lead"},
++        {STRING_FOR_SYNTH_CATEGORY_PAD, "Pad"},
++        {STRING_FOR_SYNTH_CATEGORY_MISC, "Misc"},
 +        {STRING_FOR_SYNTH_INSTRUMENT_DX7, "DX7"},
 +        {STRING_FOR_NO_FREE_PRESETS, "No free presets"},
 +        {STRING_FOR_SAMPLE_KIT, "Kit"},
@@ -13880,7 +14627,7 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -583,6 +743,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -583,6 +752,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -13889,7 +14636,7 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -639,6 +801,13 @@ PLACE_SDRAM_DATA Language english{
+@@ -639,6 +810,13 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -13903,7 +14650,7 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -720,6 +889,12 @@ PLACE_SDRAM_DATA Language english{
+@@ -720,6 +898,12 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -13916,7 +14663,7 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -862,6 +1037,35 @@ PLACE_SDRAM_DATA Language english{
+@@ -862,6 +1046,35 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -13952,7 +14699,15 @@ index 0032e81ac..091554a8c 100644
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
-@@ -1010,10 +1214,45 @@ PLACE_SDRAM_DATA Language english{
+@@ -891,6 +1104,7 @@ PLACE_SDRAM_DATA Language english{
+         {STRING_FOR_LOOP_TOO_LONG, "Loop too long"},
+         {STRING_FOR_LOOP_DOUBLED, "Loop doubled"},
+         {STRING_FOR_WAVEFOLD, "Wavefold"},
++        {STRING_FOR_VOICE_FEEDBACK, "Feedback"},
+         {STRING_FOR_MOD_MATRIX, "Mod matrix"},
+         {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
+         {STRING_FOR_WRONG_SIZE, "Wrong size?"},
+@@ -1010,10 +1224,45 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -13999,7 +14754,7 @@ index 0032e81ac..091554a8c 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..4657f2972 100644
+index 2024bd2f7..3c955ed6e 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -14056,7 +14811,7 @@ index 2024bd2f7..4657f2972 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -452,6 +492,155 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -452,6 +492,165 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -14182,7 +14937,17 @@ index 2024bd2f7..4657f2972 100644
 +        {STRING_FOR_CYC_AMP_DECAY, "DEC"},
 +        {STRING_FOR_NEW_KIT_TYPE, "NEW"},
 +        {STRING_FOR_SYNTH_INSTRUMENT, "INST"},
-+        {STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "DELU"},
++        {STRING_FOR_SYNTH_TYPE_SUBT, "SUBT"},
++        {STRING_FOR_SYNTH_TYPE_FM, "FM"},
++        {STRING_FOR_SYNTH_TYPE_WAVE, "WAVE"},
++        {STRING_FOR_SYNTH_TYPE_RING, "RING"},
++        {STRING_FOR_SYNTH_TYPE_BRIB, "BRIB"},
++        {STRING_FOR_SYNTH_TYPE_INIT, "INIT"},
++        {STRING_FOR_SYNTH_CATEGORY, "CATE"},
++        {STRING_FOR_SYNTH_CATEGORY_BASS, "BASS"},
++        {STRING_FOR_SYNTH_CATEGORY_LEAD, "LEAD"},
++        {STRING_FOR_SYNTH_CATEGORY_PAD, "PAD"},
++        {STRING_FOR_SYNTH_CATEGORY_MISC, "MISC"},
 +        {STRING_FOR_NO_FREE_PRESETS, "NONE"},
 +        {STRING_FOR_SAMPLE_KIT, "KIT"},
 +        {STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED, "LXR"},
@@ -14212,10 +14977,11 @@ index 2024bd2f7..4657f2972 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -461,6 +650,13 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -461,6 +660,14 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
++        {STRING_FOR_VOICE_FEEDBACK, "FDBK"},
 +        {STRING_FOR_SAT_TYPE, "STYP"},
 +        {STRING_FOR_SAT_CLASSIC, "CLAS"},
 +        {STRING_FOR_SAT_TAPE, "TAPE"},
@@ -14226,7 +14992,7 @@ index 2024bd2f7..4657f2972 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +759,43 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +770,43 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -14271,7 +15037,7 @@ index 2024bd2f7..4657f2972 100644
      &built_in::english,
  };
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..6054c3481 100644
+index bc5dd6c8c..ca879b00c 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,43 @@
@@ -14328,7 +15094,7 @@ index bc5dd6c8c..6054c3481 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -468,6 +508,155 @@
+@@ -468,6 +508,165 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -14454,7 +15220,17 @@ index bc5dd6c8c..6054c3481 100644
 +        "STRING_FOR_CYC_AMP_DECAY": "DEC",
 +        "STRING_FOR_NEW_KIT_TYPE": "NEW",
 +        "STRING_FOR_SYNTH_INSTRUMENT": "INST",
-+        "STRING_FOR_SYNTH_INSTRUMENT_DELUGE": "DELU",
++        "STRING_FOR_SYNTH_TYPE_SUBT": "SUBT",
++        "STRING_FOR_SYNTH_TYPE_FM": "FM",
++        "STRING_FOR_SYNTH_TYPE_WAVE": "WAVE",
++        "STRING_FOR_SYNTH_TYPE_RING": "RING",
++        "STRING_FOR_SYNTH_TYPE_BRIB": "BRIB",
++        "STRING_FOR_SYNTH_TYPE_INIT": "INIT",
++        "STRING_FOR_SYNTH_CATEGORY": "CATE",
++        "STRING_FOR_SYNTH_CATEGORY_BASS": "BASS",
++        "STRING_FOR_SYNTH_CATEGORY_LEAD": "LEAD",
++        "STRING_FOR_SYNTH_CATEGORY_PAD": "PAD",
++        "STRING_FOR_SYNTH_CATEGORY_MISC": "MISC",
 +        "STRING_FOR_NO_FREE_PRESETS": "NONE",
 +        "STRING_FOR_SAMPLE_KIT": "KIT",
 +        "STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED": "LXR",
@@ -14484,10 +15260,12 @@ index bc5dd6c8c..6054c3481 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -481,6 +670,20 @@
+@@ -480,6 +679,21 @@
+         "STRING_FOR_TARGET_FULL": "FULL",
  
          "STRING_FOR_WAVEFOLD": "FOLD",
- 
++        "STRING_FOR_VOICE_FEEDBACK": "FDBK",
++
 +        "STRING_FOR_SAT_TYPE": "STYP",
 +
 +        "STRING_FOR_SAT_CLASSIC": "CLAS",
@@ -14501,11 +15279,10 @@ index bc5dd6c8c..6054c3481 100644
 +        "STRING_FOR_SAT_HARD": "HARD",
 +
 +        "STRING_FOR_SAT_FOLD": "FOLD",
-+
+ 
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-         "STRING_FOR_LOOP_TOO_LONG": "CANT",
-@@ -605,9 +808,44 @@
+@@ -605,9 +819,44 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -14552,7 +15329,7 @@ index bc5dd6c8c..6054c3481 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..479fc4b20 100644
+index 2039f041f..e77d99131 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -14574,7 +15351,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -588,6 +593,157 @@ enum class String : size_t {
+@@ -588,6 +593,166 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -14700,8 +15477,17 @@ index 2039f041f..479fc4b20 100644
 +	STRING_FOR_CYC_AMP_DECAY,
 +	STRING_FOR_NEW_KIT_TYPE,
 +	STRING_FOR_SYNTH_INSTRUMENT,
-+	STRING_FOR_SYNTH_INSTRUMENT_DELUGE,
-+	STRING_FOR_SYNTH_INSTRUMENT_DLFM,
++	STRING_FOR_SYNTH_TYPE_SUBT,
++	STRING_FOR_SYNTH_TYPE_FM,
++	STRING_FOR_SYNTH_TYPE_WAVE,
++	STRING_FOR_SYNTH_TYPE_RING,
++	STRING_FOR_SYNTH_TYPE_BRIB,
++	STRING_FOR_SYNTH_TYPE_INIT,
++	STRING_FOR_SYNTH_CATEGORY,
++	STRING_FOR_SYNTH_CATEGORY_BASS,
++	STRING_FOR_SYNTH_CATEGORY_LEAD,
++	STRING_FOR_SYNTH_CATEGORY_PAD,
++	STRING_FOR_SYNTH_CATEGORY_MISC,
 +	STRING_FOR_SYNTH_INSTRUMENT_DX7,
 +	STRING_FOR_NO_FREE_PRESETS,
 +	STRING_FOR_SAMPLE_KIT,
@@ -14732,7 +15518,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -617,6 +773,8 @@ enum class String : size_t {
+@@ -617,6 +782,8 @@ enum class String : size_t {
  	STRING_FOR_START_POINT,
  	STRING_FOR_START_POINT_SHORT,
  	STRING_FOR_END_POINT,
@@ -14741,7 +15527,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -685,6 +843,13 @@ enum class String : size_t {
+@@ -685,6 +852,13 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -14755,7 +15541,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -717,6 +882,10 @@ enum class String : size_t {
+@@ -717,6 +891,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -14766,7 +15552,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -774,6 +943,12 @@ enum class String : size_t {
+@@ -774,6 +952,12 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -14779,7 +15565,7 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -925,6 +1100,35 @@ enum class String : size_t {
+@@ -925,6 +1109,35 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -14815,7 +15601,15 @@ index 2039f041f..479fc4b20 100644
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
-@@ -1135,6 +1339,8 @@ enum class String : size_t {
+@@ -961,6 +1174,7 @@ enum class String : size_t {
+ 	STRING_FOR_LOOP_DOUBLED,
+ 
+ 	STRING_FOR_WAVEFOLD,
++	STRING_FOR_VOICE_FEEDBACK,
+ 	STRING_FOR_MOD_MATRIX,
+ 
+ 	STRING_FOR_CHECKSUM_FAIL,
+@@ -1135,6 +1349,8 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_CLIP_TYPE,
  	STRING_FOR_DEFAULT_NEW_CLIP_TYPE,
  	STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE,
@@ -14824,7 +15618,7 @@ index 2039f041f..479fc4b20 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1351,39 @@ enum class String : size_t {
+@@ -1145,6 +1361,39 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -15138,7 +15932,7 @@ index 000000000..464e22253
 +} // namespace deluge::gui::menu_item::cv
 diff --git a/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h b/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h
 new file mode 100644
-index 000000000..1e3d8348a
+index 000000000..e6be86642
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/defaults/ui/clip_type/default_instrument.h
 @@ -0,0 +1,56 @@
@@ -15190,8 +15984,8 @@ index 000000000..1e3d8348a
 +	deluge::vector<std::string_view> getOptions(OptType optType) override {
 +		(void)optType;
 +		deluge::vector<std::string_view> options{l10n::getView(l10n::String::STRING_FOR_OFF)};
-+		for (const auto& instrument : synth_instruments::kSynthInstruments) {
-+			options.push_back(l10n::getView(instrument.name));
++		for (size_t i = 0; i < synth_instruments::kNumDefaultSynthInstruments; i++) {
++			options.push_back(l10n::getView(synth_instruments::kSynthInstruments[i].name));
 +		}
 +		return options;
 +	}
@@ -17801,10 +18595,18 @@ index 3b9089ec8..0679f9646 100644
  					exitScaleMode();
  				}
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
-index a2997fff5..1e4bf8759 100644
+index a2997fff5..528a44770 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
-@@ -39,6 +39,7 @@
+@@ -19,6 +19,7 @@
+ #include "definitions_cxx.hpp"
+ #include "extern.h"
+ #include "gui/context_menu/load_instrument_preset.h"
++#include "gui/context_menu/synth_instrument.h"
+ #include "gui/ui/keyboard/keyboard_screen.h"
+ #include "gui/ui/root_ui.h"
+ #include "gui/views/arranger_view.h"
+@@ -39,11 +40,13 @@
  #include "model/song/clip_iterators.h"
  #include "model/song/song.h"
  #include "processing/engines/audio_engine.h"
@@ -17812,7 +18614,90 @@ index a2997fff5..1e4bf8759 100644
  #include "storage/audio/audio_file_manager.h"
  #include "storage/file_item.h"
  #include "storage/storage_manager.h"
-@@ -1237,6 +1238,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
+ #include "util/functions.h"
+ #include "util/try.h"
++#include <strings.h>
+ 
+ using namespace deluge;
+ namespace encoders = deluge::hid::encoders;
+@@ -109,6 +112,12 @@ bool LoadInstrumentPresetUI::opened() {
+ 	changedInstrumentForClip = false;
+ 	replacedWholeInstrument = false;
+ 
++	pickerStartDir.clear();
++	if (pickerFolder != nullptr && !loadingSynthToKitRow && outputTypeToLoad == OutputType::SYNTH) {
++		pickerStartDir.set(pickerFolder);
++	}
++	pickerFolder = nullptr;
++
+ 	if (instrumentClipToLoadFor) {
+ 		instrumentClipToLoadFor
+ 		    ->backupPresetSlot(); // Store this now cos we won't be storing it between each navigation we do
+@@ -131,6 +140,11 @@ gotError:
+ 	}
+ 
+ 	focusRegained();
++
++	// From the SHIFT + SYNTH picker: play the folder's first preset straight away
++	if (!pickerStartDir.isEmpty() && fileIndexSelected >= 0) {
++		currentFileChanged(0);
++	}
+ 	return true;
+ }
+ 
+@@ -200,8 +214,13 @@ Error LoadInstrumentPresetUI::setupForOutputType() {
+ 	// I don't have this calling arrivedInNewFolder(), because as you can see below, we want to either just display the
+ 	// existing preset, or call confirmPresetOrNextUnlaunchedOne() to skip any which aren't "available".
+ 
++	// From the SHIFT + SYNTH picker: its folder, from the top
++	if (!pickerStartDir.isEmpty()) {
++		currentDir.set(&pickerStartDir);
++	}
++
+ 	// If same Instrument type as we already had...
+-	if (instrumentToReplace && instrumentToReplace->type == outputTypeToLoad) {
++	else if (instrumentToReplace && instrumentToReplace->type == outputTypeToLoad) {
+ 
+ 		// Then we can start by just looking at the existing Instrument, cos they're the same type...
+ 		currentDir.set(&instrumentToReplace->dirPath);
+@@ -506,6 +525,7 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
+ 
+ 	// Or, for normal synths, kits and midi
+ 	else {
++		pickerStartDir.clear();
+ 		OutputType oldOutputType = outputTypeToLoad;
+ 		outputTypeToLoad = newOutputType;
+ 
+@@ -1153,10 +1173,28 @@ Error LoadInstrumentPresetUI::performLoadSynthToKit() {
+ }
+ // Previously called "exitAndResetInstrumentToInitial()". Does just that.
+ void LoadInstrumentPresetUI::exitAction() {
++	pickerStartDir.clear();
+ 	revertToInitialPreset();
+ 	LoadUI::exitAction();
+ }
+ 
++// From the SHIFT + SYNTH picker, BACK in the folder it opened on puts the old synth back and returns to the categories
++ActionResult LoadInstrumentPresetUI::backButtonAction() {
++	if (!pickerStartDir.isEmpty() && !strcasecmp(currentDir.get(), pickerStartDir.get())) {
++		if (sdRoutineLock) {
++			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++		}
++		const int32_t backTo = pickerBackToType;
++		exitAction();
++		if (backTo >= 0 && getCurrentUI() == getRootUI()
++		    && deluge::gui::context_menu::synthCategoryMenu.setupFor(static_cast<size_t>(backTo))) {
++			openUI(&deluge::gui::context_menu::synthCategoryMenu);
++		}
++		return ActionResult::DEALT_WITH;
++	}
++	return LoadUI::backButtonAction();
++}
++
+ ActionResult LoadInstrumentPresetUI::padAction(int32_t x, int32_t y, int32_t on) {
+ 
+ 	// Audition pad
+@@ -1237,6 +1275,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
  	}
  }
  
@@ -17828,7 +18713,7 @@ index a2997fff5..1e4bf8759 100644
  // Caller must set currentDir before calling this.
  // Caller must call emptyFileItems() at some point after calling this function.
  // song may be supplied as NULL, in which case it won't be searched for Instruments; sometimes this will get called when
-@@ -1298,7 +1308,7 @@ startDoingFolders:
+@@ -1298,7 +1345,7 @@ startDoingFolders:
  		// Look through our list of FileItems, for a preset.
  		for (int32_t i = 0; i < fileItems.getNumElements(); i++) {
  			auto* fileItem = (FileItem*)fileItems.getElementAddress(i);
@@ -17837,7 +18722,7 @@ index a2997fff5..1e4bf8759 100644
  				return fileItem; // We found a preset / file.
  			}
  		}
-@@ -1462,11 +1472,17 @@ needToGrabLeftmostButHaveToReadFirst:
+@@ -1462,11 +1509,17 @@ needToGrabLeftmostButHaveToReadFirst:
  /// Caller must call emptyFileItems() at some point after calling this function - unless an error is returned
  /// Caller must remove OLED working animation after calling this too.
  PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset, Instrument* oldInstrument,
@@ -17857,7 +18742,7 @@ index a2997fff5..1e4bf8759 100644
  	OutputType outputType = oldInstrument->type;
  
  	PresetNavigationResult toReturn;
-@@ -1474,10 +1490,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
+@@ -1474,10 +1527,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
  	String oldNameString; // We only might use this later for temporary storage
  	String newName;
  
@@ -17875,7 +18760,7 @@ index a2997fff5..1e4bf8759 100644
  	}
  
  readAgain:
-@@ -1603,6 +1622,17 @@ doneMoving:
+@@ -1603,6 +1659,17 @@ doneMoving:
  	if (availabilityRequirement == Availability::INSTRUMENT_UNUSED && isAlreadyInSong && wrapped < 2) {
  		goto moveAgain;
  	}
@@ -17894,7 +18779,7 @@ index a2997fff5..1e4bf8759 100644
  	toReturn.loadedFromFile = false;
  	bool isHibernating = toReturn.fileItem->instrument && !toReturn.fileItem->instrumentAlreadyInSong;
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.h b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
-index f4e341a9b..47b7c1a86 100644
+index f4e341a9b..422d12415 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 @@ -53,8 +53,10 @@ public:
@@ -17909,8 +18794,42 @@ index f4e341a9b..47b7c1a86 100644
  	void setupLoadInstrument(OutputType newOutputType, Instrument* instrumentToReplace_,
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
+@@ -65,6 +67,13 @@ public:
+ 		noteRowIndex = 255; // (not set value for note rows)
+ 		noteRow = nullptr;
+ 	}
++	/// Call after setupLoadInstrument, before openUI (the SHIFT + SYNTH picker): start in folder and play its first
++	/// preset. BACK in that folder puts the old instrument back and returns to the picker's categories for backToType
++	/// (-1: BACK leaves as usual).
++	void setPickerFolder(char const* folder, int32_t backToType) {
++		pickerFolder = folder;
++		pickerBackToType = backToType;
++	}
+ 	void setupLoadSynthToKit(Instrument* kit, InstrumentClip* clip, SoundDrum* drum, NoteRow* row, int32_t rowIndex) {
+ 		Browser::outputTypeToLoad = OutputType::SYNTH;
+ 		instrumentToReplace = kit;
+@@ -90,6 +99,7 @@ private:
+ 	void changeOutputType(OutputType newOutputType);
+ 	void revertToInitialPreset();
+ 	void exitAction() override;
++	ActionResult backButtonAction() override;
+ 	bool isInstrumentInList(Instrument* searchInstrument, Output* list);
+ 	bool findUnusedSlotVariation(String* oldName, String* newName);
+ 
+@@ -112,6 +122,11 @@ private:
+ 
+ 	String initialName;
+ 	String initialDirPath;
++
++	// The SHIFT + SYNTH picker's folder: set before opening, then held in pickerStartDir while open
++	char const* pickerFolder = nullptr;
++	int32_t pickerBackToType = -1;
++	String pickerStartDir;
+ };
+ 
+ extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..a8fb76d7e 100644
+index 7bbd559f6..f1e4c0247 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -18015,7 +18934,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,7 +650,8 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,20 +650,25 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -18025,7 +18944,12 @@ index 7bbd559f6..a8fb76d7e 100644
  PLACE_SDRAM_BSS UnpatchedParam srrMenu{STRING_FOR_DECIMATION, params::UNPATCHED_SAMPLE_RATE_REDUCTION,
                                         RenderingStyle::BAR};
  PLACE_SDRAM_BSS UnpatchedParam bitcrushMenu{STRING_FOR_BITCRUSH, params::UNPATCHED_BITCRUSHING, RenderingStyle::BAR};
-@@ -641,6 +662,7 @@ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
+ PLACE_SDRAM_BSS patched_param::Integer foldMenu{STRING_FOR_WAVEFOLD, STRING_FOR_WAVEFOLD, params::LOCAL_FOLD,
+                                                 RenderingStyle::BAR};
++PLACE_SDRAM_BSS patched_param::Integer voiceFeedbackMenu{STRING_FOR_VOICE_FEEDBACK, STRING_FOR_VOICE_FEEDBACK,
++                                                         params::LOCAL_VOICE_FEEDBACK, RenderingStyle::BAR};
+ 
+ PLACE_SDRAM_BSS HorizontalMenu soundDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -18033,7 +18957,11 @@ index 7bbd559f6..a8fb76d7e 100644
          &bitcrushMenu,
          &srrMenu,
          &foldMenu,
-@@ -674,6 +696,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
++        &voiceFeedbackMenu,
+     },
+ };
+ 
+@@ -674,6 +699,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
  PLACE_SDRAM_BSS midi::Sub midiSubMenu{STRING_FOR_SUB_BANK_SHORT, STRING_FOR_MIDI_SUB_BANK};
  PLACE_SDRAM_BSS midi::PGM midiPGMMenu{STRING_FOR_PGM, STRING_FOR_MIDI_PGM_NUMB_MENU_TITLE};
  PLACE_SDRAM_BSS midi::MPEYToModWheel mpeyToModWheelMenu{STRING_FOR_Y_AXIS_CONVERSION, STRING_FOR_Y_AXIS_CONVERSION};
@@ -18041,7 +18969,7 @@ index 7bbd559f6..a8fb76d7e 100644
  PLACE_SDRAM_BSS cv::DualCVSelection cv2SourceMenu{STRING_FOR_CV2_SOURCE};
  PLACE_SDRAM_BSS midi::AftertouchToMono midiAftertouchCollapseMenu{STRING_FOR_PATCH_SOURCE_AFTERTOUCH,
                                                                    STRING_FOR_PATCH_SOURCE_AFTERTOUCH};
-@@ -772,6 +795,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +798,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -18050,7 +18978,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -855,6 +880,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +883,29 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -18080,7 +19008,7 @@ index 7bbd559f6..a8fb76d7e 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,6 +958,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,6 +961,7 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -18088,7 +19016,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &bitcrushMenu,
          &srrMenu,
      },
-@@ -985,6 +1034,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1037,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -18100,7 +19028,7 @@ index 7bbd559f6..a8fb76d7e 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1103,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1106,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -18108,7 +19036,7 @@ index 7bbd559f6..a8fb76d7e 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1349,10 +1404,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+@@ -1349,10 +1407,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
  PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
      STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
  
@@ -18126,7 +19054,7 @@ index 7bbd559f6..a8fb76d7e 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1531,610 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1534,610 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -18737,7 +19665,7 @@ index 7bbd559f6..a8fb76d7e 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2176,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2179,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -18749,7 +19677,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2205,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2208,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -18758,7 +19686,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2214,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2217,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -18769,7 +19697,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2244,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2247,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -18777,7 +19705,7 @@ index 7bbd559f6..a8fb76d7e 100644
      },
  };
  
-@@ -1668,8 +2334,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2337,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -18791,7 +19719,7 @@ index 7bbd559f6..a8fb76d7e 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2368,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2371,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -18808,7 +19736,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2388,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2391,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -18817,7 +19745,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2510,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2513,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -18826,7 +19754,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2561,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2564,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -18841,7 +19769,7 @@ index 7bbd559f6..a8fb76d7e 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2589,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2592,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -18849,7 +19777,16 @@ index 7bbd559f6..a8fb76d7e 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1951,10 +2632,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1925,7 +2609,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+     {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
+     {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
+     {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
+-    {&portaMenu,				&polyphonyMenu,				&priorityMenu,                  &unisonDetuneMenu,              &numUnisonMenu,			&threshold,					nullptr,						&foldMenu                          },
++    {&portaMenu,				&polyphonyMenu,				&priorityMenu,                  &unisonDetuneMenu,              &numUnisonMenu,			&threshold,					&voiceFeedbackMenu,				&foldMenu                          },
+     {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
+     {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
+     {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
+@@ -1951,10 +2635,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -18883,7 +19820,7 @@ index 7bbd559f6..a8fb76d7e 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2703,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2706,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -18892,7 +19829,7 @@ index 7bbd559f6..a8fb76d7e 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2727,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2730,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -19542,7 +20479,7 @@ index 89c2e7690..8d1ae62d6 100644
  
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index a9c9d56c3..446ad4baf 100644
+index a9c9d56c3..1e7ee0f22 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
 @@ -110,6 +110,34 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
@@ -19586,12 +20523,12 @@ index a9c9d56c3..446ad4baf 100644
  
 -constexpr int32_t kNumNonGlobalParamsForAutomation = 83;
 -constexpr int32_t kNumGlobalParamsForAutomation = 39;
-+constexpr int32_t kNumNonGlobalParamsForAutomation = 88;
++constexpr int32_t kNumNonGlobalParamsForAutomation = 89;
 +constexpr int32_t kNumGlobalParamsForAutomation = 42;
  
  // synth and kit rows FX - sorted in the order that Parameters are scrolled through on the display
  const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutomation> nonGlobalParamsForAutomation{{
-@@ -148,14 +176,17 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -148,15 +176,19 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::PATCHED, params::GLOBAL_REVERB_AMOUNT},
@@ -19609,9 +20546,11 @@ index a9c9d56c3..446ad4baf 100644
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_BITCRUSHING},
 +    {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_SATURATION},
      {params::Kind::PATCHED, params::LOCAL_FOLD},
++    {params::Kind::PATCHED, params::LOCAL_VOICE_FEEDBACK},
      // OSC 1 Volume, Pitch, Pulse Width, Carrier Feedback, Wave Index
      {params::Kind::PATCHED, params::LOCAL_OSC_A_VOLUME},
-@@ -242,6 +273,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+     {params::Kind::PATCHED, params::LOCAL_OSC_A_PITCH_ADJUST},
+@@ -242,6 +274,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::EXPRESSION, Expression::Y_SLIDE_TIMBRE},
      // Mono Expression: Z - Channel Pressure
      {params::Kind::EXPRESSION, Expression::Z_PRESSURE},
@@ -19621,7 +20560,7 @@ index a9c9d56c3..446ad4baf 100644
  }};
  
  // global FX - sorted in the order that Parameters are scrolled through on the display
-@@ -267,15 +301,18 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
+@@ -267,15 +302,18 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_REVERB_SEND_AMOUNT},
@@ -19642,7 +20581,7 @@ index a9c9d56c3..446ad4baf 100644
      // Mod FX Offset, Feedback, Depth, Rate
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_MOD_FX_OFFSET},
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_MOD_FX_FEEDBACK},
-@@ -783,10 +820,10 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -783,10 +821,10 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
  			ModelStackWithAutoParam* modelStackWithParam = nullptr;
  
  			if (!onArrangerView && (outputType == OutputType::SYNTH || singleSoundDrum)) {
@@ -19657,7 +20596,7 @@ index a9c9d56c3..446ad4baf 100644
  				}
  
  				else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
-@@ -827,6 +864,7 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -827,6 +865,7 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
  						if ((paramID == params::UNPATCHED_PITCH_ADJUST)
  						    || (paramID == params::UNPATCHED_SIDECHAIN_SHAPE)
  						    || (paramID == params::UNPATCHED_SIDECHAIN_VOLUME)
@@ -19665,7 +20604,7 @@ index a9c9d56c3..446ad4baf 100644
  						    || (paramID >= params::UNPATCHED_FIRST_ARP_PARAM
  						        && paramID <= params::UNPATCHED_LAST_ARP_PARAM)
  						    || (paramID == params::UNPATCHED_ARP_RATE)) {
-@@ -1903,7 +1941,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1903,7 +1942,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  	    && (outputType == OutputType::SYNTH
  	        || (outputType == OutputType::KIT && !getAffectEntire() && ((Kit*)output)->selectedDrum
  	            && ((Kit*)output)->selectedDrum->type == DrumType::SOUND))
@@ -19674,7 +20613,7 @@ index a9c9d56c3..446ad4baf 100644
  	        || (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID)
  	        || params::isPatchCableShortcut(xDisplay, yDisplay))) {
  		// don't allow automation of portamento in kit's
-@@ -1914,9 +1952,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1914,9 +1953,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  
  		// if you are in a synth or a kit instrumentClip and the shortcut is valid, set current selected
  		// ParamID
@@ -19686,7 +20625,7 @@ index a9c9d56c3..446ad4baf 100644
  		}
  		else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::UNPATCHED_SOUND;
-@@ -1946,7 +1984,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1946,7 +1985,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  		// don't allow automation of pitch adjust, or sidechain in arranger
  		if (onArrangerView
  		    && ((paramID == params::UNPATCHED_PITCH_ADJUST) || (paramID == params::UNPATCHED_SIDECHAIN_SHAPE)
@@ -19695,7 +20634,7 @@ index a9c9d56c3..446ad4baf 100644
  		        || (paramID >= params::UNPATCHED_FIRST_ARP_PARAM && paramID <= params::UNPATCHED_LAST_ARP_PARAM)
  		        || (paramID == params::UNPATCHED_ARP_RATE))) {
  			return; // no parameter selected, don't re-render grid;
-@@ -2699,6 +2737,7 @@ void AutomationView::selectGlobalParam(int32_t offset, Clip* clip) {
+@@ -2699,6 +2738,7 @@ void AutomationView::selectGlobalParam(int32_t offset, Clip* clip) {
  		{
  			while ((id == params::UNPATCHED_PITCH_ADJUST || id == params::UNPATCHED_SIDECHAIN_SHAPE
  			        || id == params::UNPATCHED_SIDECHAIN_VOLUME || id == params::UNPATCHED_COMPRESSOR_THRESHOLD
@@ -19703,7 +20642,7 @@ index a9c9d56c3..446ad4baf 100644
  			        || (id >= params::UNPATCHED_FIRST_ARP_PARAM && id <= params::UNPATCHED_LAST_ARP_PARAM)
  			        || id == params::UNPATCHED_ARP_RATE)) {
  
-@@ -2941,7 +2980,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
+@@ -2941,7 +2981,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
  			}
  			else {
  				if ((clip->lastSelectedParamKind == params::Kind::PATCHED
@@ -19713,7 +20652,7 @@ index a9c9d56c3..446ad4baf 100644
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..5b8141d55 100644
+index 75e1a7340..66c9cd8db 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -20,12 +20,18 @@
@@ -19905,9 +20844,9 @@ index 75e1a7340..5b8141d55 100644
 +		return false;
 +	}
 +
-+	// SHIFT + SYNTH on a synth track: pick an instrument (Deluge, DLFM, DX7...). The menu does the loading.
-+	if (outputType == OutputType::SYNTH && !is_fm && Buttons::isShiftButtonPressed()
-+	    && getCurrentOutputType() == OutputType::SYNTH && getCurrentUI() == getRootUI()) {
++	// SHIFT + SYNTH, as SHIFT + KIT: pick a type (SUBT, FM, WAVE, RING... INIT), then a category, then a preset. The
++	// menus do the loading. A kit clip with notes or sounds can't become a synth clip, as stock.
++	if (outputType == OutputType::SYNTH && !is_fm && Buttons::isShiftButtonPressed() && getCurrentUI() == getRootUI()) {
 +		if (context_menu::synthInstrumentMenu.setupAndCheckAvailability()) {
 +			openUI(&context_menu::synthInstrumentMenu);
 +		}
@@ -23543,7 +24482,7 @@ index a58e4ff9f..f93144aaf 100644
  };
 diff --git a/src/deluge/model/instrument/default_instruments.cpp b/src/deluge/model/instrument/default_instruments.cpp
 new file mode 100644
-index 000000000..7bc83ad54
+index 000000000..28c39f7be
 --- /dev/null
 +++ b/src/deluge/model/instrument/default_instruments.cpp
 @@ -0,0 +1,182 @@
@@ -23592,7 +24531,7 @@ index 000000000..7bc83ad54
 +
 +const SynthInstrument* synth() {
 +	const uint8_t setting = FlashStorage::defaultSynthInstrument;
-+	if (setting == 0 || setting > kSynthInstruments.size()) {
++	if (setting == 0 || setting > synth_instruments::kNumDefaultSynthInstruments) {
 +		return nullptr;
 +	}
 +	const SynthInstrument& instrument = kSynthInstruments[setting - 1];
@@ -24637,10 +25576,10 @@ index 000000000..b48b60583
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/synth_instruments.h b/src/deluge/model/instrument/synth_instruments.h
 new file mode 100644
-index 000000000..a66102878
+index 000000000..a66e35d67
 --- /dev/null
 +++ b/src/deluge/model/instrument/synth_instruments.h
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,70 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -24664,9 +25603,9 @@ index 000000000..a66102878
 +#include "gui/l10n/strings.h"
 +#include <array>
 +
-+/// The synth instruments SHIFT + SYNTH picks between on a synth track. Each has its own preset folder: picking one
-+/// loads the first preset there, and SELECT then steps through that folder's presets as usual. A new instrument is one
-+/// entry here (and its name string) plus its preset folder on the card.
++/// The synth types SHIFT + SYNTH picks between, on any track. Each has its own preset folder, sorted into the
++/// category folders below: picking a type then a category opens the preset browser in that folder, playing its first
++/// preset. INIT, last, is the stock blank synth. A new type is one entry here (and its name string) plus its folder.
 +namespace deluge::synth_instruments {
 +
 +struct SynthInstrument {
@@ -24675,12 +25614,39 @@ index 000000000..a66102878
 +	/// What an empty folder gives: a blank synth in this mode (DX7 on osc 1 if dx)
 +	SynthMode mode;
 +	bool dx;
++	/// Wavetable oscillators (a subtractive synth with one tells WAVE from SUBT)
++	bool wavetable;
++	/// BRIBERING MODE (the Rings engine in SYNTH MODE). Its presets are the way in: an empty folder gives a plain
++	/// synth.
++	bool rings;
++	/// The stock blank synth, as SHIFT + SYNTH made before: no folder of its own, not a default instrument
++	bool init;
 +};
 +
-+inline constexpr std::array<SynthInstrument, 3> kSynthInstruments{{
-+    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DELUGE, "SYNTHS", SynthMode::SUBTRACTIVE, false},
-+    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DLFM, "SYNTHS/DLFM", SynthMode::FM, false},
-+    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DX7, "SYNTHS/DX7", SynthMode::SUBTRACTIVE, true},
++inline constexpr std::array<SynthInstrument, 7> kSynthInstruments{{
++    {l10n::String::STRING_FOR_SYNTH_TYPE_SUBT, "SYNTHS/SUBT", SynthMode::SUBTRACTIVE, false, false, false, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_FM, "SYNTHS/FM", SynthMode::FM, false, false, false, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_WAVE, "SYNTHS/WAVE", SynthMode::SUBTRACTIVE, false, true, false, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_RING, "SYNTHS/RING", SynthMode::RINGMOD, false, false, false, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_BRIB, "SYNTHS/BRIB", SynthMode::SUBTRACTIVE, false, false, true, false},
++    {l10n::String::STRING_FOR_SYNTH_INSTRUMENT_DX7, "SYNTHS/DX7", SynthMode::SUBTRACTIVE, true, false, false, false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_INIT, "SYNTHS", SynthMode::SUBTRACTIVE, false, false, false, true},
++}};
++
++/// The ones a new track can start as (Settings > Defaults): all but INIT, which is last
++inline constexpr size_t kNumDefaultSynthInstruments = kSynthInstruments.size() - 1;
++
++/// The category folders inside each type's folder, in the order SHIFT + SYNTH offers them
++struct SynthCategory {
++	l10n::String name;
++	char const* folder;
++};
++
++inline constexpr std::array<SynthCategory, 4> kSynthCategories{{
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_BASS, "BASS"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_LEAD, "LEAD"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_PAD, "PAD"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_MISC, "MISC"},
 +}};
 +
 +} // namespace deluge::synth_instruments
@@ -25808,7 +26774,7 @@ index 000000000..6c4f55856
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index a22b64aa9..6e663a7ee 100644
+index a22b64aa9..4ddb7fa99 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -26061,8 +27027,25 @@ index a22b64aa9..6e663a7ee 100644
  					Source* source = &sound.sources[s];
  					int32_t bytesPerSample = sample->byteDepth * sample->numChannels;
  
-@@ -1522,7 +1695,7 @@ skipUnisonPart: {}
- 		filterSet.renderLongStereo(oscBuffer, oscBufferEnd);
+@@ -1512,6 +1685,12 @@ carriersDone: {}
+ skipUnisonPart: {}
+ 	}
+ 
++	// FEEDBACK: the knob squared, so the low half is gentle. Knob 50 = 2^29 = unity loop gain, patch cables go past it
++	const q31_t voiceFeedbackParam = paramFinalValues[params::LOCAL_VOICE_FEEDBACK];
++	const q31_t voiceFeedback =
++	    voiceFeedbackParam > 0 ? lshiftAndSaturate<3>(multiply_32x32_rshift32(voiceFeedbackParam, voiceFeedbackParam))
++	                           : 0;
++
+ 	if (didStereoTempBuffer) {
+ 		int32_t* const oscBufferEnd = oscBuffer + (numSamples << 1);
+ 		// fold
+@@ -1519,10 +1698,10 @@ skipUnisonPart: {}
+ 			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, paramFinalValues[params::LOCAL_FOLD]);
+ 		}
+ 		// Filters
+-		filterSet.renderLongStereo(oscBuffer, oscBufferEnd);
++		filterSet.renderLongStereo(oscBuffer, oscBufferEnd, voiceFeedback);
  
  		// No clipping
 -		if (!sound.clippingAmount) {
@@ -26070,7 +27053,7 @@ index a22b64aa9..6e663a7ee 100644
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
-@@ -1550,7 +1723,38 @@ skipUnisonPart: {}
+@@ -1550,7 +1729,38 @@ skipUnisonPart: {}
  			} while (oscBufferPos != oscBufferEnd);
  		}
  
@@ -26110,8 +27093,12 @@ index a22b64aa9..6e663a7ee 100644
  		else {
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
-@@ -1606,7 +1810,7 @@ skipUnisonPart: {}
- 		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples);
+@@ -1603,10 +1813,10 @@ skipUnisonPart: {}
+ 			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, foldAmount);
+ 		}
+ 
+-		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples);
++		filterSet.renderLong(oscBuffer, oscBufferEnd, numSamples, 1, voiceFeedback);
  
  		// No clipping
 -		if (!sound.clippingAmount) {
@@ -26119,7 +27106,7 @@ index a22b64aa9..6e663a7ee 100644
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
  			int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
-@@ -1635,7 +1839,39 @@ skipUnisonPart: {}
+@@ -1635,7 +1845,39 @@ skipUnisonPart: {}
  			} while (++oscBufferPos != oscBufferEnd);
  		}
  
@@ -26160,7 +27147,7 @@ index a22b64aa9..6e663a7ee 100644
  		else {
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
-@@ -1956,6 +2192,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
+@@ -1956,6 +2198,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
  // require an additional copying(summing) step, 		and we might as well just apply amplitude while that's
  // happening, which is exactly how it is currently.
  
@@ -26203,7 +27190,7 @@ index a22b64aa9..6e663a7ee 100644
  void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManager, int32_t s,
                                int32_t* __restrict__ oscBuffer, int32_t numSamples, bool stereoBuffer,
                                int32_t sourceAmplitude, bool* __restrict__ unisonPartBecameInactive,
-@@ -1966,6 +2238,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
+@@ -1966,6 +2244,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
  
  	GeneralMemoryAllocator::get().checkStack("Voice::renderBasicSource");
  
@@ -26305,7 +27292,7 @@ index a22b64aa9..6e663a7ee 100644
  	// For each unison part
  	for (int32_t u = 0; u < sound.numUnison; u++) {
  
-@@ -2116,6 +2483,11 @@ pitchTooHigh:
+@@ -2116,6 +2489,11 @@ pitchTooHigh:
  
  			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
  
@@ -26317,7 +27304,7 @@ index a22b64aa9..6e663a7ee 100644
  			int32_t interpolationBufferSize;
  
  			// If pitch adjustment...
-@@ -2133,6 +2505,12 @@ pitchTooHigh:
+@@ -2133,6 +2511,12 @@ pitchTooHigh:
  				if (!voiceSample->doneFirstRenderYet && !tryToStartMidNote
  				    && portaEnvelopePos == 0xFFFFFFFF) { // No porta
  
@@ -26330,7 +27317,7 @@ index a22b64aa9..6e663a7ee 100644
  					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
  					// accurate
  					if (loopingType != LoopType::NONE) {
-@@ -2447,6 +2825,40 @@ dontUseCache: {}
+@@ -2447,6 +2831,40 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -26371,7 +27358,7 @@ index a22b64aa9..6e663a7ee 100644
  
  			// Or regular wave
  		}
-@@ -2562,6 +2974,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
+@@ -2562,6 +2980,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
  static_assert(kNumVoicePriorities < 4, "Too many priority options");
  
  // Higher numbers are lower priority. 1 is top priority. Will never return 0, because nextVoiceState starts at 1
@@ -26404,7 +27391,7 @@ index a22b64aa9..6e663a7ee 100644
  uint32_t Voice::getPriorityRating() const {
  	return
  	    // Bits 30-31 - manual priority setting
-@@ -2574,7 +3012,7 @@ uint32_t Voice::getPriorityRating() const {
+@@ -2574,7 +3018,7 @@ uint32_t Voice::getPriorityRating() const {
  	    + ((uint32_t)std::min<size_t>(sound.numActiveVoices(), 7) << 27)
  
  	    // Bits 24-26 - envelope state
@@ -27271,7 +28258,7 @@ index 26764d8bc..fd06b307c 100644
  	static int32_t autoparamValueToCC(int32_t newValue);
  
 diff --git a/src/deluge/modulation/params/param.cpp b/src/deluge/modulation/params/param.cpp
-index 6d45cbe3c..7e1dfd337 100644
+index 6d45cbe3c..747bf3f04 100644
 --- a/src/deluge/modulation/params/param.cpp
 +++ b/src/deluge/modulation/params/param.cpp
 @@ -28,8 +28,15 @@
@@ -27291,7 +28278,13 @@ index 6d45cbe3c..7e1dfd337 100644
  }
  
  bool isParamPan(Kind kind, int32_t paramID) {
-@@ -137,6 +144,8 @@ char const* getPatchedParamShortName(ParamType type) {
+@@ -132,11 +139,14 @@ char const* getPatchedParamShortName(ParamType type) {
+ 	    [LOCAL_ENV_3_SUSTAIN]            = "Env4 sus",
+ 	    [LOCAL_LPF_MORPH]                = "LPF Morph",
+ 	    [LOCAL_HPF_MORPH]                = "HPF Morph",
++	    [LOCAL_VOICE_FEEDBACK]           = "Feedback",
+ 	    [LOCAL_OSC_A_PHASE_WIDTH]        = "Osc1 PW",
+ 	    [LOCAL_OSC_B_PHASE_WIDTH]        = "Osc2 PW",
  	    [LOCAL_OSC_A_WAVE_INDEX]         = "Osc1 wave",
  	    [LOCAL_OSC_B_WAVE_INDEX]         = "Osc2 wave",
  	    [LOCAL_PAN]                      = "Pan",
@@ -27300,7 +28293,13 @@ index 6d45cbe3c..7e1dfd337 100644
  	    [LOCAL_LPF_FREQ]                 = "LPf freq",
  	    [LOCAL_PITCH_ADJUST]             = "Pitch",
  	    [LOCAL_OSC_A_PITCH_ADJUST]       = "Osc1 pitch",
-@@ -226,6 +235,8 @@ char const* getPatchedParamDisplayName(int32_t p) {
+@@ -221,11 +231,14 @@ char const* getPatchedParamDisplayName(int32_t p) {
+ 	    [LOCAL_ENV_3_SUSTAIN] = STRING_FOR_PARAM_LOCAL_ENV_3_SUSTAIN,
+ 	    [LOCAL_LPF_MORPH] = STRING_FOR_PARAM_LOCAL_LPF_MORPH,
+ 	    [LOCAL_HPF_MORPH] = STRING_FOR_PARAM_LOCAL_HPF_MORPH,
++	    [LOCAL_VOICE_FEEDBACK] = STRING_FOR_VOICE_FEEDBACK,
+ 	    [LOCAL_OSC_A_PHASE_WIDTH] = STRING_FOR_PARAM_LOCAL_OSC_A_PHASE_WIDTH,
+ 	    [LOCAL_OSC_B_PHASE_WIDTH] = STRING_FOR_PARAM_LOCAL_OSC_B_PHASE_WIDTH,
  	    [LOCAL_OSC_A_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_A_WAVE_INDEX,
  	    [LOCAL_OSC_B_WAVE_INDEX] = STRING_FOR_PARAM_LOCAL_OSC_B_WAVE_INDEX,
  	    [LOCAL_PAN] = STRING_FOR_PARAM_LOCAL_PAN,
@@ -27309,7 +28308,7 @@ index 6d45cbe3c..7e1dfd337 100644
  	    [LOCAL_LPF_FREQ] = STRING_FOR_PARAM_LOCAL_LPF_FREQ,
  	    [LOCAL_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_PITCH_ADJUST,
  	    [LOCAL_OSC_A_PITCH_ADJUST] = STRING_FOR_PARAM_LOCAL_OSC_A_PITCH_ADJUST,
-@@ -287,6 +298,9 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
+@@ -287,6 +300,9 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
  		    [UNPATCHED_MOD_FX_FEEDBACK] = STRING_FOR_MODFX_FEEDBACK,
  		    [UNPATCHED_SIDECHAIN_SHAPE] = STRING_FOR_SIDECHAIN_SHAPE,
  		    [UNPATCHED_COMPRESSOR_THRESHOLD] = STRING_FOR_THRESHOLD,
@@ -27319,7 +28318,7 @@ index 6d45cbe3c..7e1dfd337 100644
  		    [UNPATCHED_ARP_GATE] = STRING_FOR_ARP_GATE_MENU_TITLE,
  		    [UNPATCHED_ARP_RHYTHM] = STRING_FOR_ARP_RHYTHM_MENU_TITLE,
  		    [UNPATCHED_ARP_SEQUENCE_LENGTH] = STRING_FOR_ARP_SEQUENCE_LENGTH_MENU_TITLE,
-@@ -356,7 +370,39 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
+@@ -356,7 +372,39 @@ char const* getParamDisplayName(Kind kind, int32_t p) {
  char const* getParamDisplayName(Kind kind, int32_t p, ModControllableAudio* modControllable) {
  	using enum l10n::String;
  
@@ -27359,7 +28358,7 @@ index 6d45cbe3c..7e1dfd337 100644
  		bool isLPFMorph = (kind == Kind::PATCHED && p == LOCAL_LPF_MORPH)
  		                  || (kind == Kind::UNPATCHED_GLOBAL && p == UnpatchedGlobal::UNPATCHED_LPF_MORPH);
  		bool isHPFMorph = (kind == Kind::PATCHED && p == LOCAL_HPF_MORPH)
-@@ -522,6 +568,15 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+@@ -522,6 +570,15 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
  		case UNPATCHED_COMPRESSOR_THRESHOLD:
  			return "compressorThreshold";
  
@@ -27375,7 +28374,7 @@ index 6d45cbe3c..7e1dfd337 100644
  		case UNPATCHED_ARP_GATE:
  			return "arpGate";
  
-@@ -647,6 +702,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+@@ -647,6 +704,12 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
  		case LOCAL_PAN:
  			return "pan";
  
@@ -27388,11 +28387,30 @@ index 6d45cbe3c..7e1dfd337 100644
  		case LOCAL_MODULATOR_0_VOLUME:
  			return "modulator1Volume";
  
+@@ -737,6 +800,9 @@ constexpr char const* paramNameForFileConst(Kind const kind, ParamType const par
+ 		case LOCAL_FOLD:
+ 			return "waveFold";
+ 
++		case LOCAL_VOICE_FEEDBACK:
++			return "voiceFeedback";
++
+ 		case LOCAL_LAST:
+ 		    // Intentionally not handled
+ 		    ;
 diff --git a/src/deluge/modulation/params/param.h b/src/deluge/modulation/params/param.h
-index 6af0f7db0..56efad0ad 100644
+index 6af0f7db0..2522ceaef 100644
 --- a/src/deluge/modulation/params/param.h
 +++ b/src/deluge/modulation/params/param.h
-@@ -97,6 +97,8 @@ enum Local : ParamType {
+@@ -89,6 +89,8 @@ enum Local : ParamType {
+ 	LOCAL_ENV_3_SUSTAIN,
+ 	LOCAL_LPF_MORPH,
+ 	LOCAL_HPF_MORPH,
++	/// FEEDBACK: the filter's output fed back into its input, in every synth mode. See dsp/filter/voice_feedback.h
++	LOCAL_VOICE_FEEDBACK,
+ 
+ 	// Local hybrid params begin
+ 	FIRST_LOCAL__HYBRID,
+@@ -97,6 +99,8 @@ enum Local : ParamType {
  	LOCAL_OSC_A_WAVE_INDEX,
  	LOCAL_OSC_B_WAVE_INDEX,
  	LOCAL_PAN,
@@ -27401,7 +28419,7 @@ index 6af0f7db0..56efad0ad 100644
  
  	// Local exp params begin
  	FIRST_LOCAL_EXP,
-@@ -186,6 +188,13 @@ enum UnpatchedShared : ParamType {
+@@ -186,6 +190,13 @@ enum UnpatchedShared : ParamType {
  	UNPATCHED_MOD_FX_FEEDBACK,
  	UNPATCHED_SIDECHAIN_SHAPE,
  	UNPATCHED_COMPRESSOR_THRESHOLD,
@@ -27415,7 +28433,7 @@ index 6af0f7db0..56efad0ad 100644
  	// Arp
  	UNPATCHED_FIRST_ARP_PARAM,
  	UNPATCHED_ARP_GATE = UNPATCHED_FIRST_ARP_PARAM,
-@@ -263,6 +272,7 @@ static_assert(kMaxNumUnpatchedParams < STATIC_START, "Error: Too many UNPATCHED
+@@ -263,6 +274,7 @@ static_assert(kMaxNumUnpatchedParams < STATIC_START, "Error: Too many UNPATCHED
  
  bool isParamBipolar(Kind kind, int32_t paramID);
  bool isParamPan(Kind kind, int32_t paramID);
@@ -27423,7 +28441,16 @@ index 6af0f7db0..56efad0ad 100644
  bool isParamPitch(Kind kind, int32_t paramID);
  bool isParamPitchBend(Kind kind, int32_t paramID);
  bool isParamArpRhythm(Kind kind, int32_t paramID);
-@@ -355,7 +365,7 @@ const uint32_t unpatchedNonGlobalParamShortcuts[kDisplayWidth][kDisplayHeight] =
+@@ -314,7 +326,7 @@ const uint32_t patchedParamShortcuts[kDisplayWidth][kDisplayHeight] = {
+     {LOCAL_MODULATOR_0_VOLUME, LOCAL_MODULATOR_0_PITCH_ADJUST, kNoParamID                    , kNoParamID             , kNoParamID     , LOCAL_MODULATOR_0_FEEDBACK, kNoParamID            , kNoParamID},
+     {LOCAL_MODULATOR_1_VOLUME, LOCAL_MODULATOR_1_PITCH_ADJUST, kNoParamID                    , kNoParamID             , kNoParamID     , LOCAL_MODULATOR_1_FEEDBACK, kNoParamID            , kNoParamID},
+     {GLOBAL_VOLUME_POST_FX   , LOCAL_PITCH_ADJUST            , kNoParamID                    , LOCAL_PAN              , kNoParamID     , kNoParamID                , kNoParamID            , kNoParamID},
+-    {kNoParamID              , kNoParamID                    , kNoParamID                    , kNoParamID             , kNoParamID     , kNoParamID                , kNoParamID            , LOCAL_FOLD},
++    {kNoParamID              , kNoParamID                    , kNoParamID                    , kNoParamID             , kNoParamID     , kNoParamID                , LOCAL_VOICE_FEEDBACK  , LOCAL_FOLD},
+     {LOCAL_ENV_0_RELEASE     , LOCAL_ENV_0_SUSTAIN           , LOCAL_ENV_0_DECAY             , LOCAL_ENV_0_ATTACK     , LOCAL_LPF_MORPH, kNoParamID                , LOCAL_LPF_RESONANCE   , LOCAL_LPF_FREQ},
+     {LOCAL_ENV_1_RELEASE     , LOCAL_ENV_1_SUSTAIN           , LOCAL_ENV_1_DECAY             , LOCAL_ENV_1_ATTACK     , LOCAL_HPF_MORPH, kNoParamID                , LOCAL_HPF_RESONANCE   , LOCAL_HPF_FREQ},
+     {kNoParamID              , kNoParamID                    , kNoParamID					 , kNoParamID             , kNoParamID     , kNoParamID                , kNoParamID            , kNoParamID},
+@@ -355,7 +367,7 @@ const uint32_t unpatchedNonGlobalParamShortcuts[kDisplayWidth][kDisplayHeight] =
      {kNoParamID          , kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , kNoParamID                     , kNoParamID           , kNoParamID},
      {kNoParamID          , kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , kNoParamID                     , kNoParamID           , kNoParamID},
      {kNoParamID          , kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , kNoParamID                     , kNoParamID           , UNPATCHED_STUTTER_RATE},
@@ -27432,7 +28459,7 @@ index 6af0f7db0..56efad0ad 100644
      {UNPATCHED_PORTAMENTO, kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , UNPATCHED_COMPRESSOR_THRESHOLD , kNoParamID           , kNoParamID},
      {kNoParamID          , kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , kNoParamID                     , kNoParamID           , kNoParamID},
      {kNoParamID          , kNoParamID, kNoParamID        , kNoParamID, kNoParamID                , kNoParamID                     , kNoParamID           , kNoParamID},
-@@ -378,7 +388,7 @@ const uint32_t unpatchedGlobalParamShortcuts[kDisplayWidth][kDisplayHeight] = {
+@@ -378,7 +390,7 @@ const uint32_t unpatchedGlobalParamShortcuts[kDisplayWidth][kDisplayHeight] = {
      {kNoParamID          , kNoParamID            , kNoParamID                , kNoParamID                  , kNoParamID				   , kNoParamID			   		 	, kNoParamID            , kNoParamID},
      {kNoParamID          , kNoParamID            , kNoParamID                , kNoParamID                  , kNoParamID				   , kNoParamID			   		 	, kNoParamID            , kNoParamID},
      {kNoParamID          , kNoParamID            , kNoParamID                , kNoParamID                  , kNoParamID				   , kNoParamID			   		 	, kNoParamID            , UNPATCHED_STUTTER_RATE},
@@ -28850,7 +29877,7 @@ index 000000000..c1716d1d5
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..7990f114b 100644
+index 5f4a82450..3ab23b114 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -28876,7 +29903,15 @@ index 5f4a82450..7990f114b 100644
  }
  
  constexpr Patcher::Config kPatcherConfigForSound = {
-@@ -177,6 +182,8 @@ void Sound::initParams(ParamManager* paramManager) {
+@@ -145,6 +150,7 @@ void Sound::initParams(ParamManager* paramManager) {
+ 	    getParamFromUserValue(params::GLOBAL_VOLUME_POST_FX, kDefaultSoundVolumeUserValue));
+ 	patchedParams->params[params::GLOBAL_VOLUME_POST_REVERB_SEND].setCurrentValueBasicForSetup(0);
+ 	patchedParams->params[params::LOCAL_FOLD].setCurrentValueBasicForSetup(-2147483648);
++	patchedParams->params[params::LOCAL_VOICE_FEEDBACK].setCurrentValueBasicForSetup(-2147483648);
+ 	patchedParams->params[params::LOCAL_HPF_RESONANCE].setCurrentValueBasicForSetup(-2147483648);
+ 	patchedParams->params[params::LOCAL_HPF_FREQ].setCurrentValueBasicForSetup(-2147483648);
+ 	patchedParams->params[params::LOCAL_HPF_MORPH].setCurrentValueBasicForSetup(-2147483648);
+@@ -177,6 +183,8 @@ void Sound::initParams(ParamManager* paramManager) {
  	patchedParams->params[params::GLOBAL_LFO_FREQ_2].setCurrentValueBasicForSetup(
  	    getParamFromUserValue(params::GLOBAL_LFO_FREQ_2, 30));
  	patchedParams->params[params::LOCAL_PAN].setCurrentValueBasicForSetup(0);
@@ -28885,7 +29920,7 @@ index 5f4a82450..7990f114b 100644
  	patchedParams->params[params::LOCAL_NOISE_VOLUME].setCurrentValueBasicForSetup(-2147483648);
  	patchedParams->params[params::GLOBAL_MOD_FX_DEPTH].setCurrentValueBasicForSetup(0);
  	patchedParams->params[params::GLOBAL_MOD_FX_RATE].setCurrentValueBasicForSetup(0);
-@@ -221,6 +228,96 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
+@@ -221,6 +229,96 @@ void Sound::setupAsSample(ParamManagerForTimeline* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -28982,7 +30017,7 @@ index 5f4a82450..7990f114b 100644
  void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-@@ -259,7 +356,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
+@@ -259,7 +357,34 @@ void Sound::setupAsDefaultSynth(ParamManager* paramManager) {
  	doneReadingFromFile();
  }
  
@@ -29017,7 +30052,7 @@ index 5f4a82450..7990f114b 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +449,269 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +450,269 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -29287,7 +30322,7 @@ index 5f4a82450..7990f114b 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +822,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +823,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -29297,7 +30332,7 @@ index 5f4a82450..7990f114b 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1639,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1640,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -29310,7 +30345,19 @@ index 5f4a82450..7990f114b 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1347,6 +1743,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1280,6 +1677,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+ 		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
+ 		reader.exitTag("waveFold");
+ 	}
++	else if (!strcmp(tagName, "voiceFeedback")) {
++		ENSURE_PARAM_MANAGER_EXISTS
++		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_VOICE_FEEDBACK, readAutomationUpToPos);
++		reader.exitTag("voiceFeedback");
++	}
+ 	else if (!strcmp(tagName, "midiOutput")) {
+ 		reader.match('{');
+ 		while (*(tagName = reader.readNextTagOrAttributeName())) {
+@@ -1347,6 +1749,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -29324,7 +30371,7 @@ index 5f4a82450..7990f114b 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1917,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1923,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -29334,7 +30381,7 @@ index 5f4a82450..7990f114b 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2050,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2056,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -29353,7 +30400,7 @@ index 5f4a82450..7990f114b 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1692,6 +2106,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1692,6 +2112,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  
  	lastNoteCode = noteCodePostArp; // Store for porta. We store that at both note-on and note-off.
  
@@ -29362,7 +30409,7 @@ index 5f4a82450..7990f114b 100644
  	// Send midi out for sound drums
  	if (outputMidiChannel != MIDI_CHANNEL_NONE) {
  		int32_t outputNoteCode = noteCodePostArp;
-@@ -1708,9 +2124,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1708,9 +2130,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendNote(this, true, outputNoteCode, velocity, outputMidiChannel, 0);
  
  		// If the note doesn't have a tail (for ONCE samples for example and if ARP is OFF), we will never get a noteOff
@@ -29374,7 +30421,7 @@ index 5f4a82450..7990f114b 100644
  		}
  	}
  }
-@@ -1778,6 +2194,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
+@@ -1778,6 +2200,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
  
  // noteCode = ALL_NOTES_OFF (default) means stop *any* voice, regardless of noteCode
  void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t noteCode) {
@@ -29383,7 +30430,7 @@ index 5f4a82450..7990f114b 100644
  	// Send midi note offs out for specific notes,
  	// but only if the type of sound allows note tails (if not, note off was already sent right after its note on)
  	if (outputMidiChannel != MIDI_CHANNEL_NONE && allowNoteTails(modelStack, true)) {
-@@ -1865,6 +2283,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2289,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -29400,7 +30447,7 @@ index 5f4a82450..7990f114b 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2355,11 @@ justSwitchOff:
+@@ -1927,6 +2361,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -29412,7 +30459,7 @@ index 5f4a82450..7990f114b 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2609,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2615,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -29421,7 +30468,7 @@ index 5f4a82450..7990f114b 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2818,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2824,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -29434,7 +30481,7 @@ index 5f4a82450..7990f114b 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2392,6 +2831,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2837,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -29444,7 +30491,7 @@ index 5f4a82450..7990f114b 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +2938,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2944,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -29475,7 +30522,7 @@ index 5f4a82450..7990f114b 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2968,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +2974,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -29495,7 +30542,7 @@ index 5f4a82450..7990f114b 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +2996,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +3002,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -29510,7 +30557,7 @@ index 5f4a82450..7990f114b 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +3067,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +3073,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -29519,7 +30566,7 @@ index 5f4a82450..7990f114b 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3353,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3359,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -29555,7 +30602,7 @@ index 5f4a82450..7990f114b 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3459,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3465,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -29571,7 +30618,7 @@ index 5f4a82450..7990f114b 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3536,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3542,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -29592,7 +30639,7 @@ index 5f4a82450..7990f114b 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3594,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3600,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -29693,7 +30740,7 @@ index 5f4a82450..7990f114b 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3801,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3807,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -29702,7 +30749,7 @@ index 5f4a82450..7990f114b 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3411,6 +4000,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4006,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -29724,7 +30771,7 @@ index 5f4a82450..7990f114b 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4037,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4043,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -29735,7 +30782,7 @@ index 5f4a82450..7990f114b 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4251,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4257,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -29745,7 +30792,7 @@ index 5f4a82450..7990f114b 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4378,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4384,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -29757,10 +30804,14 @@ index 5f4a82450..7990f114b 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4472,14 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4478,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
++	else if (!strcmp(tagName, "voiceFeedback")) {
++		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_VOICE_FEEDBACK, readAutomationUpToPos);
++		reader.exitTag("voiceFeedback");
++	}
 +	else if (!strcmp(tagName, "oscAStartOffset")) {
 +		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_A_START_OFFSET, readAutomationUpToPos);
 +		reader.exitTag("oscAStartOffset");
@@ -29772,7 +30823,7 @@ index 5f4a82450..7990f114b 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4662,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4672,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -29793,7 +30844,7 @@ index 5f4a82450..7990f114b 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4755,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4765,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -29805,17 +30856,18 @@ index 5f4a82450..7990f114b 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4134,6 +4774,9 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4783,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+ 	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
- 
++	patchedParams->writeParamAsAttribute(writer, "voiceFeedback", params::LOCAL_VOICE_FEEDBACK, writeAutomation);
++
 +	patchedParams->writeParamAsAttribute(writer, "oscAStartOffset", params::LOCAL_OSC_A_START_OFFSET, writeAutomation);
 +	patchedParams->writeParamAsAttribute(writer, "oscBStartOffset", params::LOCAL_OSC_B_START_OFFSET, writeAutomation);
-+
+ 
  	writer.writeOpeningTagEnd();
  
- 	// Envelopes
-@@ -4182,6 +4825,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4836,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -29826,7 +30878,7 @@ index 5f4a82450..7990f114b 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4441,6 +5088,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5099,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -29849,7 +30901,7 @@ index 5f4a82450..7990f114b 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4948,6 +5611,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5622,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -30150,7 +31202,7 @@ index 20b6b2894..1974c207f 100644
  	int16_t defaultRangeI; // -1 means none yet
  
 diff --git a/src/deluge/storage/flash_storage.cpp b/src/deluge/storage/flash_storage.cpp
-index 9b5e8d53f..766065750 100644
+index 9b5e8d53f..26aed5d47 100644
 --- a/src/deluge/storage/flash_storage.cpp
 +++ b/src/deluge/storage/flash_storage.cpp
 @@ -18,6 +18,7 @@
@@ -30195,7 +31247,7 @@ index 9b5e8d53f..766065750 100644
 +	// Anything out of range (never saved here) is off: new tracks as stock
 +	defaultKitInstrument =
 +	    (buffer[198] < util::to_underlying(deluge::dsp::drum_synth::PresetKit::NUM_KITS)) ? buffer[198] : 0;
-+	defaultSynthInstrument = (buffer[199] <= deluge::synth_instruments::kSynthInstruments.size()) ? buffer[199] : 0;
++	defaultSynthInstrument = (buffer[199] <= deluge::synth_instruments::kNumDefaultSynthInstruments) ? buffer[199] : 0;
  }
  
  /// Sanity-check the pre-c1.3 MIDI-follow block (bytes 126-145) before migrating it. Same checks the deleted
@@ -30314,10 +31366,20 @@ index b2e373032..50316f348 100644
  Error openFavouriteFile(FilePointer* filePointer);
  Error loadFavouriteFile(FilePointer* filePointer, String* fileName);
 diff --git a/src/deluge/util/functions.cpp b/src/deluge/util/functions.cpp
-index c1d99a448..6f1a7a203 100644
+index c1d99a448..795be649c 100644
 --- a/src/deluge/util/functions.cpp
 +++ b/src/deluge/util/functions.cpp
-@@ -715,6 +715,9 @@ char const* oscTypeToString(OscType oscType) {
+@@ -117,6 +117,9 @@ int32_t getParamNeutralValue(int32_t p) {
+ 	case params::LOCAL_FOLD:
+ 		return 25 * 10737418; // Room to be quadrupled
+ 
++	case params::LOCAL_VOICE_FEEDBACK:
++		return 268435456; // Knob 50 = 2^29 (see Voice::render)
++
+ 	case params::LOCAL_PAN:
+ 	case params::LOCAL_OSC_A_PHASE_WIDTH:
+ 	case params::LOCAL_OSC_B_PHASE_WIDTH:
+@@ -715,6 +718,9 @@ char const* oscTypeToString(OscType oscType) {
  	case OscType::DX7:
  		return "dx7";
  
@@ -30327,7 +31389,7 @@ index c1d99a448..6f1a7a203 100644
  	default:
  		__builtin_unreachable();
  	}
-@@ -755,6 +758,9 @@ OscType stringToOscType(char const* string) {
+@@ -755,6 +761,9 @@ OscType stringToOscType(char const* string) {
  	else if (!strcmp(string, "dx7")) {
  		return OscType::DX7;
  	}
@@ -30337,7 +31399,7 @@ index c1d99a448..6f1a7a203 100644
  	else {
  		return OscType::TRIANGLE;
  	}
-@@ -815,6 +821,9 @@ char const* synthModeToString(SynthMode synthMode) {
+@@ -815,6 +824,9 @@ char const* synthModeToString(SynthMode synthMode) {
  	case SynthMode::RINGMOD:
  		return "ringmod";
  
@@ -30347,7 +31409,7 @@ index c1d99a448..6f1a7a203 100644
  	default:
  		return "subtractive";
  	}
-@@ -827,6 +836,9 @@ SynthMode stringToSynthMode(char const* string) {
+@@ -827,6 +839,9 @@ SynthMode stringToSynthMode(char const* string) {
  	else if (!strcmp(string, "ringmod")) {
  		return SynthMode::RINGMOD;
  	}
