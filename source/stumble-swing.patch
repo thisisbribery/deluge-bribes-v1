@@ -1,5 +1,5 @@
 diff --git a/src/definitions_cxx.hpp b/src/definitions_cxx.hpp
-index 0c5a8e055..5b4f3f1cc 100644
+index 0c5a8e055..dbb1b3faf 100644
 --- a/src/definitions_cxx.hpp
 +++ b/src/definitions_cxx.hpp
 @@ -365,6 +365,7 @@ enum class OscType : uint8_t {
@@ -10,7 +10,18 @@ index 0c5a8e055..5b4f3f1cc 100644
  	INPUT_L,
  	INPUT_R,
  	INPUT_STEREO,
-@@ -422,8 +423,9 @@ enum class SynthMode : uint8_t {
+@@ -414,16 +415,18 @@ enum class ModFXType : uint8_t {
+ 	CHORUS_STEREO,
+ 	WARBLE,
+ 	DIMENSION,
+-	GRAIN, // Look below if you want to add another one
++	GRAIN,        // Look below if you want to add another one
++	BRUNO_CHORUS, // The Juno's BBD chorus, after KR-106 (see dsp/drum_synth/bruno106_chorus.h)
+ };
+-constexpr int32_t kNumModFXTypes = util::to_underlying(ModFXType::GRAIN) + 1;
++constexpr int32_t kNumModFXTypes = util::to_underlying(ModFXType::BRUNO_CHORUS) + 1;
+ 
+ enum class SynthMode : uint8_t {
  	SUBTRACTIVE,
  	FM,
  	RINGMOD,
@@ -22,10 +33,10 @@ index 0c5a8e055..5b4f3f1cc 100644
  constexpr int32_t SAMPLE_MAX_TRANSPOSE = 24;
  constexpr int32_t SAMPLE_MIN_TRANSPOSE = (-96);
 diff --git a/src/deluge/dsp/CMakeLists.txt b/src/deluge/dsp/CMakeLists.txt
-index 1cbefef8a..b70f56e00 100644
+index 1cbefef8a..b093a6ead 100644
 --- a/src/deluge/dsp/CMakeLists.txt
 +++ b/src/deluge/dsp/CMakeLists.txt
-@@ -8,6 +8,17 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
+@@ -8,6 +8,21 @@ file (GLOB_RECURSE deluge_dsp_SOURCES
  
  add_library(deluge_dsp STATIC ${deluge_dsp_SOURCES})
  
@@ -37,6 +48,10 @@ index 1cbefef8a..b70f56e00 100644
 +  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/ultrakik_presets.cpp
 +  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/rings.cpp
 +  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/brophet.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/bruno106.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/bruno106_hpf.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/drum_synth/bruno106_chorus.cpp
++  ${CMAKE_CURRENT_LIST_DIR}/filter/bruno106.cpp
 +  PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON
 +)
 +
@@ -1230,6 +1245,686 @@ index 000000000..3188590da
 +float mixDc(const Settings& s);
 +
 +} // namespace deluge::dsp::drum_synth::brophet
+diff --git a/src/deluge/dsp/drum_synth/bruno106.cpp b/src/deluge/dsp/drum_synth/bruno106.cpp
+new file mode 100644
+index 000000000..7324c6cc5
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106.cpp
+@@ -0,0 +1,209 @@
++/*
++ * BRUNO106: the DCO voice of Ultramaster KR-106 as a Deluge synth engine.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * From KR106Oscillators.h (Oscillators::Process, PolyBLEP), KR106Voice.h (levels, sliders, DC blocker, variance) and
++ * KR106Noise.h (noise band limits). Not affiliated with or endorsed by Roland.
++ */
++
++#include "dsp/drum_synth/bruno106.h"
++#include <algorithm>
++#include <cmath>
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++namespace {
++
++// Juno-106 levels at the mix, a saw being 0.6 (KR106Oscillators.h). Everything is scaled so the saw lands at 1.
++constexpr float kNorm = 1.f / 0.6f;
++constexpr float kSawAmp = 0.6f * kNorm;
++constexpr float kPulseAmp = 0.5f * kNorm;
++constexpr float kSubAmp = 0.75f * kNorm;
++constexpr float kNoiseAmp = 1.2f * kNorm;
++
++// At 44.1 kHz: switch fade 1 - exp(-1 / (1.45 ms fs)), DC blocker tan(pi 1.59 / fs) as a TPT one pole (g / (1 + g)),
++// noise low pass 5.3 kHz less KR-106's bilinear correction, noise high pass 34 Hz
++constexpr float kSwitchRamp = 0.015518f;
++constexpr float kDcG = 1.13265e-4f / (1.f + 1.13265e-4f);
++constexpr float kNoiseLpA = 0.48118f;
++constexpr float kNoiseHpA = 0.99516f;
++constexpr float kGainEps = 1e-4f;
++
++/// KR-106's PolyBLEP: a 4th order correction over two samples each side of a step. t is the phase, dt the step per
++/// sample, invDt its inverse (once per buffer, so no divide here).
++[[gnu::noinline]] float polyBlep(float t, float dt, float invDt) {
++	const float dt2 = dt + dt;
++	if (t < dt) {
++		const float x = t * invDt;
++		const float x2 = x * x;
++		return 0.25f * x2 * x2 - 0.66666667f * x2 * x + 1.33333333f * x - 1.f;
++	}
++	if (t < dt2) {
++		const float u = 1.f - (t - dt) * invDt;
++		const float u2 = u * u;
++		return -0.08333333f * u2 * u2;
++	}
++	if (t > 1.f - dt) {
++		const float x = (t - 1.f) * invDt;
++		const float x2 = x * x;
++		return -0.25f * x2 * x2 - 0.66666667f * x2 * x + 1.33333333f * x + 1.f;
++	}
++	if (t > 1.f - dt2) {
++		const float u = 1.f + (t - 1.f + dt) * invDt;
++		const float u2 = u * u;
++		return 0.08333333f * u2 * u2;
++	}
++	return 0.f;
++}
++
++/// -1 to 1 from the seed
++inline float uniform(uint32_t& seed) {
++	seed = seed * 196314165u + 907633515u;
++	return static_cast<float>(static_cast<int32_t>(seed)) * (1.f / 2147483648.f);
++}
++
++/// A slider through an 11 point table, as KR-106's
++float table11(const float (&t)[11], float x) {
++	const float idx = std::clamp(x, 0.f, 1.f) * 10.f;
++	const int32_t i = std::min<int32_t>(static_cast<int32_t>(idx), 9);
++	return t[i] + (idx - static_cast<float>(i)) * (t[i + 1] - t[i]);
++}
++
++} // namespace
++
++float subLevel(float slider) {
++	// Juno-106 sub slider, measured (dcoSubLevel_j106); off below the first step, as the slider's bottom is silent
++	static constexpr float kTable[11] = {0.f,      0.01251f, 0.10875f, 0.22125f, 0.33576f, 0.45206f,
++	                                     0.55750f, 0.67178f, 0.78447f, 0.91132f, 1.f};
++	return table11(kTable, slider) * kSubAmp;
++}
++
++float noiseLevel(float slider) {
++	// Juno-106 noise slider (dcoNoiseLevel_j106): a soft knee turning on just above the bottom
++	if (slider <= 0.f) {
++		return 0.f;
++	}
++	constexpr float kA = 1.0632f;
++	constexpr float kB = 0.0146f;
++	constexpr float kC = 0.0594f;
++	const float d = slider - kC;
++	return kA * (sqrtf(d * d + kB * kB) + d) * 0.5f * kNoiseAmp;
++}
++
++void trigger(Voice& v, float slop, uint32_t seed) {
++	auto rnd = [&]() { return uniform(seed); };
++	slop = std::clamp(slop, 0.f, 1.f);
++	// KR-106's human spread at full slop: tuning sigma 12 cents, the width's ends 2% each way, level 2.4%
++	const float cents = (rnd() + rnd() + rnd()) * 12.f * slop;
++	v.pitchMul = exp2f(cents * (1.f / 1200.f));
++	v.pwLo = 0.5f + rnd() * 0.02f * slop;
++	v.pwHi = 0.95f + rnd() * 0.02f * slop;
++	v.level = 1.f + rnd() * 0.024f * slop;
++	// The DCO free runs on the hardware: start each note somewhere in its cycle
++	v.phase = static_cast<uint32_t>((rnd() + 1.f) * 2147483647.f);
++	v.subLow = (rnd() < 0.f) ? 1u : 0u;
++	v.seed = seed | 1u;
++}
++
++void render(Voice& v, const Settings& s, uint32_t baseIncrement, float* out, int32_t n) {
++	if (n <= 0) {
++		return;
++	}
++	// The phase in 32 bit integers, as the Deluge's own oscillators: the wrap, the pulse's level and whether a step is
++	// near all come from integer compares, which don't hold up the float maths (a float compare waits for its flags)
++	const float incF = std::clamp(static_cast<float>(baseIncrement) * v.pitchMul, 4295.f, 0.45f * 4294967296.f);
++	const uint32_t inc = static_cast<uint32_t>(incF);
++	const uint32_t inc2 = inc + inc; ///< PolyBLEP corrects within two samples of a step
++	const uint32_t nearTop = ~inc2;  ///< ...on either side
++	const float cps = static_cast<float>(inc) * (1.f / 4294967296.f);
++	const float invDt = 1.f / cps;
++
++	// The width as KR-106's Juno-106 path: the knob across this note's 50% to 95%, then inverted (its pulse is low for
++	// the width): low for 1 - pw of the cycle
++	const float pwTarget = std::clamp(1.f - (v.pwLo + std::clamp(s.pw, 0.f, 1.f) * (v.pwHi - v.pwLo)), 0.01f, 0.99f);
++	const uint32_t pwPhaseTarget = static_cast<uint32_t>(pwTarget * 4294967296.f);
++	const float subTarget = s.sub * v.level;
++	const float noiseTarget = s.noise * v.level;
++	if (!v.started) {
++		v.pwPhase = pwPhaseTarget;
++		v.sub = subTarget;
++		v.noise = noiseTarget;
++		v.sawGain = s.sawOn ? 1.f : 0.f;
++		v.pulseGain = s.pulseOn ? 1.f : 0.f;
++		v.started = true;
++	}
++	const float inv = 1.f / static_cast<float>(n);
++	const int32_t dPw = static_cast<int32_t>((static_cast<int64_t>(pwPhaseTarget) - v.pwPhase) / n);
++	const float dSub = (subTarget - v.sub) * inv;
++	const float dNoise = (noiseTarget - v.noise) * inv;
++	const float sawOn = s.sawOn ? 1.f : 0.f;
++	const float pulseOn = s.pulseOn ? 1.f : 0.f;
++	const bool pulse = s.pulseOn || v.pulseGain > kGainEps;
++	const bool sub = subTarget > 0.f || v.sub > 0.f;
++	const bool noise = noiseTarget > 0.f || v.noise > 0.f;
++	const float sawLevel = kSawAmp * v.level;
++	const float pulseLevel = kPulseAmp * v.level;
++	static constexpr float kSign[2] = {1.f, -1.f};
++
++	// Locals, so the loop keeps them in registers
++	uint32_t phase = v.phase, subLow = v.subLow, pwPhase = v.pwPhase;
++	float sawGain = v.sawGain, pulseGain = v.pulseGain;
++	float subLvl = v.sub, noiseLvl = v.noise, dc = v.dc, nLp = v.noiseLp, nHp = v.noiseHp;
++	uint32_t seed = v.seed;
++
++	for (int32_t i = 0; i < n; i++) {
++		phase += inc;
++		subLow ^= static_cast<uint32_t>(phase < inc); // wrapped: the sub flips every cycle
++		const float pos = static_cast<float>(phase) * (1.f / 4294967296.f);
++		sawGain += (sawOn - sawGain) * kSwitchRamp;
++
++		float blepReset = 0.f;
++		if (phase < inc2 || phase > nearTop) [[unlikely]] {
++			blepReset = polyBlep(pos, cps, invDt);
++		}
++		float x = (2.f * pos - 1.f - blepReset) * sawLevel * sawGain;
++		if (pulse) {
++			pulseGain += (pulseOn - pulseGain) * kSwitchRamp;
++			float p = kSign[phase < pwPhase] - blepReset; // low for the first part of the cycle
++			const uint32_t pw2 = phase - pwPhase;         // the phase since the rising edge, wrapped
++			if (pw2 < inc2 || pw2 > nearTop) [[unlikely]] {
++				p += polyBlep(static_cast<float>(pw2) * (1.f / 4294967296.f), cps, invDt);
++			}
++			x += p * pulseLevel * pulseGain;
++			pwPhase += dPw;
++		}
++		if (sub) {
++			subLvl += dSub;
++			x += kSign[subLow] * (1.f - std::fabs(blepReset)) * subLvl;
++		}
++		if (noise) {
++			noiseLvl += dNoise;
++			const float white = (uniform(seed) + uniform(seed)) * 0.7f;
++			nLp = kNoiseLpA * nLp + (1.f - kNoiseLpA) * white;
++			nHp = kNoiseHpA * nHp + (1.f - kNoiseHpA) * nLp;
++			x += (nLp - nHp) * noiseLvl;
++		}
++		// The coupling cap after the DCO: takes the pulse's DC off
++		const float dv = (x - dc) * kDcG;
++		const float lp = dc + dv;
++		dc = lp + dv;
++		out[i] = x - lp;
++	}
++
++	v.phase = phase;
++	v.subLow = subLow;
++	v.sawGain = sawGain;
++	v.pulseGain = pulse ? pulseGain : pulseOn;
++	v.pwPhase = pwPhaseTarget;
++	v.sub = subTarget;
++	v.noise = noiseTarget;
++	v.dc = dc;
++	v.noiseLp = nLp;
++	v.noiseHp = nHp;
++	v.seed = seed;
++}
++
++} // namespace deluge::dsp::drum_synth::bruno106
+diff --git a/src/deluge/dsp/drum_synth/bruno106.h b/src/deluge/dsp/drum_synth/bruno106.h
+new file mode 100644
+index 000000000..e1cb6cd25
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106.h
+@@ -0,0 +1,56 @@
++/*
++ * BRUNO106: the DCO voice of Ultramaster KR-106 as a Deluge synth engine.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * This is a modified version: one voice's PolyBLEP DCO (saw, pulse with its width, the flip-flop sub) and noise, with
++ * KR-106's Juno-106 levels and curves, and the Deluge's own envelopes, LFOs, glide, unison and filters around it (the
++ * IR3109 filter is dsp/filter/bruno106.h, in the Deluge's filter list). Not affiliated with or endorsed by Roland.
++ */
++
++#pragma once
++
++#include <cstdint>
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++/// Everything a render needs, worked out from the patch and controls once per buffer
++struct Settings {
++	bool sawOn;
++	bool pulseOn;
++	float pw;    ///< The width knob, 0 (square) to 1 (narrowest)
++	float sub;   ///< Sub level, the slider's curve and the sub's mix level in
++	float noise; ///< Noise level, likewise
++};
++
++/// One voice's running state. All zeros, then trigger(), is a valid start.
++struct Voice {
++	uint32_t phase;           ///< A cycle is 2^32, as the Deluge's oscillators
++	uint32_t subLow;          ///< The sub's flip-flop: 0 high, 1 low
++	float sawGain, pulseGain; ///< The switches fade in and out over 1.5 ms
++	float pitchMul;           ///< This note's tuning, from Slop
++	float pwLo, pwHi;         ///< This note's pulse width range, about 50% to 95%, from Slop
++	float level;              ///< This note's level, from Slop
++	uint32_t pwPhase;         ///< Where the pulse goes from low to high, in phase; where the last buffer ended
++	float sub, noise;         ///< Where the last buffer ended, to ramp from
++	float dc;                 ///< The DC blocker after the oscillator (1.6 Hz), as KR-106
++	float noiseLp, noiseHp;   ///< The noise's band limiting
++	uint32_t seed;
++	bool started; ///< The ramps have somewhere to start from
++};
++
++/// A new note: slop (0 to 1) spreads its tuning, pulse width range and level, as the parts of a real one differ.
++/// seed varies per note.
++void trigger(Voice& v, float slop, uint32_t seed);
++
++/// Render n samples into out (overwriting), a full saw being 1. baseIncrement is the Deluge's pitch, a cycle being
++/// 2^32.
++void render(Voice& v, const Settings& s, uint32_t baseIncrement, float* out, int32_t n);
++
++/// KR-106's Juno-106 sub and noise sliders (0 to 1) to their levels in the mix
++float subLevel(float slider);
++float noiseLevel(float slider);
++
++} // namespace deluge::dsp::drum_synth::bruno106
+diff --git a/src/deluge/dsp/drum_synth/bruno106_chorus.cpp b/src/deluge/dsp/drum_synth/bruno106_chorus.cpp
+new file mode 100644
+index 000000000..ae3bd03a5
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106_chorus.cpp
+@@ -0,0 +1,188 @@
++/*
++ * BRUNO CHORUS: the Juno's BBD chorus from Ultramaster KR-106, as a Deluge Mod FX type.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "dsp/drum_synth/bruno106_chorus.h"
++#include "util/fixedpoint.h"
++#include <algorithm>
++#include <cmath>
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++namespace {
++constexpr float kFs = 44100.f;
++constexpr int32_t kLineLen = 512;
++constexpr int32_t kMask = kLineLen - 1;
++
++// KR-106's chorus, measured on hardware (KR106Chorus.h)
++constexpr float kCenterMs = 3.30f;
++constexpr float kRateI = 0.514f, kRateII = 0.842f, kRateI_II = 7.85f;   // Hz
++constexpr float kDepthI = 2.13f, kDepthII = 1.71f, kDepthI_II = 0.236f; // ms each way
++constexpr float kClockTrim = 0.015f;                                    // the two lines' clocks 3% apart
++constexpr float kGainTrim = 0.04f;                                      // and their gains 8%
++constexpr float kDryGain = 0.863f, kWetGain = 1.257f;                   // the output summers
++constexpr float kCteLoss = 4468.f, kInvClockCenter = 1.f / 40000.f;     // charge transfer loss with clock
++constexpr float kStages = 256.f;                                        // MN3009
++constexpr float kFadeInc = 1.f / (0.005f * kFs);                        // 5 ms
++constexpr float kSatDrive = 0.12f;                                      // the BBD's headroom, KR-106's default
++
++// BBDFilter at 44.1 kHz: SVF g = tan(pi 9661 / fs), a1 = 1 / (1 + g / Q + g^2), and the pole's g / (1 + g), its
++// 20 kHz held to 0.45 fs as KR-106 does
++constexpr float kBqG = 0.82236413f;
++constexpr float kBqA1 = 1.f / (1.f + kBqG / 0.7071f + kBqG * kBqG);
++constexpr float kPoleG = 0.86327126f;
++
++// The Deluge's buffer to KR-106's units: a loud voice (2^27) is a full saw, 0.6
++constexpr float kIn = 0.6f / 134217728.f;
++constexpr float kOut = 134217728.f / 0.6f / 2147483648.f;
++
++[[gnu::always_inline]] inline float svf(float x, float& s1, float& s2) {
++	const float v3 = x - s2;
++	const float v1 = kBqA1 * (s1 + kBqG * v3);
++	const float v2 = s2 + kBqG * v1;
++	s1 = 2.f * v1 - s1;
++	s2 = 2.f * v2 - s2;
++	return v2;
++}
++
++[[gnu::always_inline]] inline float pole(float x, float& s) {
++	const float v = (x - s) * kPoleG;
++	const float lp = s + v;
++	s = lp + v;
++	return lp;
++}
++
++/// tanh(x k) / k as the filters' Padé curve: the MN3009 running out of headroom on hot signals only
++[[gnu::always_inline]] inline float sat(float x) {
++	const float u = std::clamp(x * kSatDrive, -3.f, 3.f);
++	const float u2 = u * u;
++	return u * (27.f + u2) / (27.f + 9.f * u2) * (1.f / kSatDrive);
++}
++
++[[gnu::always_inline]] inline float hermite(const float* line, float pos) {
++	const int32_t i = static_cast<int32_t>(pos);
++	const float f = pos - static_cast<float>(i);
++	const float y0 = line[(i - 1) & kMask], y1 = line[i & kMask], y2 = line[(i + 1) & kMask],
++	            y3 = line[(i + 2) & kMask];
++	const float c1 = 0.5f * (y2 - y0);
++	const float c2 = y0 - 2.5f * y1 + 2.f * y2 - 0.5f * y3;
++	const float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
++	return ((c3 * f + c2) * f + c1) * f + y1;
++}
++
++/// One line: pre filter, saturate, write, read delayMs back, post filter, the clock's gain
++[[gnu::always_inline]] inline float line(float x, float* buf, int32_t write, float delayMs, float trimGain, float& bq1,
++                                         float& bq2, float& p, float& qb1, float& qb2, float& q) {
++	buf[write] = sat(pole(svf(x, bq1, bq2), p));
++	float pos = static_cast<float>(write) - delayMs * (kFs * 0.001f);
++	if (pos < 0.f) {
++		pos += kLineLen;
++	}
++	const float wet = pole(svf(hermite(buf, pos), qb1, qb2), q);
++	// The BBD loses a little more charge at slower clocks: its clock is stages / (2 delay)
++	const float invClock = delayMs * (0.002f / kStages);
++	return wet * trimGain * (1.f - kCteLoss * (invClock - kInvClockCenter));
++}
++
++/// sin(2 pi phase) for phase 0 to 1, within 0.1%: enough for a vibrato
++inline float fastSine(float phase) {
++	const float x = phase * 2.f - 1.f; // -1 to 1 for -pi to pi
++	const float y = 4.f * x * (1.f - std::fabs(x));
++	return -(y * (0.775f + 0.225f * std::fabs(y)));
++}
++} // namespace
++
++void Chorus::reset() {
++	l0_ = {};
++	l1_ = {};
++	write_ = 0;
++	phase_ = 0.f;
++	fade_ = 0.f;
++	mode_ = pending_ = 0;
++	started = true;
++}
++
++void Chorus::configure(uint8_t mode) {
++	switch (mode) {
++	case 2:
++		inc_ = kRateII / kFs;
++		depthTarget_ = kDepthII;
++		sine_ = false;
++		break;
++	case 3:
++		inc_ = kRateI_II / kFs;
++		depthTarget_ = kDepthI_II;
++		sine_ = true;
++		break;
++	default:
++		inc_ = kRateI / kFs;
++		depthTarget_ = kDepthI;
++		sine_ = false;
++		break;
++	}
++}
++
++void Chorus::process(std::span<StereoSample> buffer, float* memory, uint8_t mode) {
++	mode = (mode >= 1 && mode <= 3) ? mode : 1;
++	if (mode_ == 0) { // Just switched on: straight to this mode, fading in
++		mode_ = pending_ = mode;
++		configure(mode);
++		depth_ = depthTarget_;
++	}
++	else if (mode != pending_) {
++		pending_ = mode; // fades out, then switches
++	}
++
++	float* buf0 = memory;
++	float* buf1 = memory + kLineLen;
++	Line a = l0_, b = l1_;
++	int32_t write = write_;
++	float phase = phase_, depth = depth_, fade = fade_;
++
++	for (StereoSample& s : buffer) {
++		// Fade in, or out to change mode
++		const float fadeTarget = (pending_ == mode_) ? 1.f : 0.f;
++		fade = std::clamp(fade + ((fadeTarget > fade) ? kFadeInc : -kFadeInc), 0.f, 1.f);
++		if (fade <= 0.f && pending_ != mode_) {
++			mode_ = pending_;
++			configure(mode_);
++			depth = depthTarget_;
++		}
++		depth += (depthTarget_ - depth) * kFadeInc;
++
++		phase += inc_;
++		if (phase >= 1.f) {
++			phase -= 1.f;
++		}
++		const float lfo = sine_ ? fastSine(phase) : 1.f - 4.f * std::fabs(phase - 0.5f);
++
++		// One LFO, the two lines in antiphase, their clocks a little apart
++		const float d0 = std::max((kCenterMs + depth * lfo) * (1.f - kClockTrim), 0.1f);
++		const float d1 = std::max((kCenterMs - depth * lfo) * (1.f + kClockTrim), 0.1f);
++
++		const float inL = static_cast<float>(s.l) * kIn;
++		const float inR = static_cast<float>(s.r) * kIn;
++		const float w0 = line(inL, buf0, write, d0, 1.f + kGainTrim, a.bq1, a.bq2, a.p, a.qb1, a.qb2, a.q);
++		const float w1 = line(inR, buf1, write, d1, 1.f - kGainTrim, b.bq1, b.bq2, b.p, b.qb1, b.qb2, b.q);
++		write = (write + 1) & kMask;
++
++		// Each output an inverting summer: dry plus its line
++		const float dry = 1.f - fade * (1.f - kDryGain);
++		const float wet = fade * kWetGain;
++		s.l = q31_from_float((dry * inL + wet * w0) * kOut);
++		s.r = q31_from_float((dry * inR + wet * w1) * kOut);
++	}
++
++	l0_ = a;
++	l1_ = b;
++	write_ = write;
++	phase_ = phase;
++	depth_ = depth;
++	fade_ = fade;
++}
++
++} // namespace deluge::dsp::drum_synth::bruno106
+diff --git a/src/deluge/dsp/drum_synth/bruno106_chorus.h b/src/deluge/dsp/drum_synth/bruno106_chorus.h
+new file mode 100644
+index 000000000..77cf659cd
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106_chorus.h
+@@ -0,0 +1,59 @@
++/*
++ * BRUNO CHORUS: the Juno's BBD chorus from Ultramaster KR-106, as a Deluge Mod FX type.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * This is a modified version of KR106Chorus.h and BBDFilter.h: the two MN3009 delay lines swept in antiphase by one
++ * LFO, their anti-aliasing and reconstruction filters, input saturation, Hermite reads and clock dependent gain, with
++ * KR-106's measured rates and depths for modes I, II and I+II. Left out: the modelled noise floor, BBD clicks, clock
++ * leakage and mains ripple. Each line takes its own channel (on the hardware both take the same mono signal), so a
++ * stereo track stays stereo. Not affiliated with or endorsed by Roland.
++ */
++
++#pragma once
++
++#include "dsp/stereo_sample.h"
++#include <cstdint>
++#include <span>
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++/// The chorus modes, as the Juno's buttons
++enum class ChorusMode : uint8_t { I = 1, II = 2, I_II = 3 };
++
++class Chorus {
++public:
++	/// Floats of delay memory it needs: two lines of 512 (the Mod FX buffer, 512 stereo samples, holds exactly that)
++	static constexpr int32_t kMemoryFloats = 1024;
++
++	/// Start clean: memory is the delay memory, cleared by the caller
++	void reset();
++	/// Chorus the buffer in place. mode 1 to 3 (anything else is I). Switching modes fades out and back in over 5 ms.
++	void process(std::span<StereoSample> buffer, float* memory, uint8_t mode);
++	/// Whether it has been reset since it was last off
++	bool started = false;
++
++private:
++	struct Line {
++		float bq1, bq2; ///< Pre filter: Butterworth low pass at 9.66 kHz (SVF)
++		float p;        ///< and a pole at 20 kHz
++		float qb1, qb2; ///< Post filter, the same
++		float q;
++	};
++	void configure(uint8_t mode);
++
++	Line l0_{}, l1_{};
++	int32_t write_ = 0;
++	float phase_ = 0.f;       ///< LFO, 0 to 1
++	float inc_ = 0.f;         ///< LFO step per sample
++	float depth_ = 0.f;       ///< Delay sweep, ms, smoothed towards depthTarget_
++	float depthTarget_ = 0.f; ///< The mode's sweep
++	float fade_ = 0.f;        ///< Wet in, 0 to 1
++	bool sine_ = false;       ///< I+II's LFO is a sine (a fast vibrato); I and II are triangles
++	uint8_t mode_ = 0;        ///< Running
++	uint8_t pending_ = 0;     ///< Asked for: the running mode fades out first
++};
++
++} // namespace deluge::dsp::drum_synth::bruno106
+diff --git a/src/deluge/dsp/drum_synth/bruno106_hpf.cpp b/src/deluge/dsp/drum_synth/bruno106_hpf.cpp
+new file mode 100644
+index 000000000..de5ee995d
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106_hpf.cpp
+@@ -0,0 +1,81 @@
++/*
++ * BRUNO106 HPF: the Juno-106's four position high pass slider, from Ultramaster KR-106.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "dsp/drum_synth/bruno106_hpf.h"
++#include "util/fixedpoint.h"
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++namespace {
++// The bass boost: KR-106's circuit model (two stages and the summer, +10.5 dB at DC, +1.4 dB up top, a shelf between
++// about 60 and 170 Hz), through the bilinear transform at 44.1 kHz
++constexpr double kB0 = 1.1853541539;
++constexpr double kB1 = -2.3302446589;
++constexpr double kB2 = 1.1451800430;
++constexpr double kA1 = -1.9813171098;
++constexpr double kA2 = 0.98140353912;
++// The cuts: one pole TPT, g / (1 + g) for g = tan(pi fc / 44100)
++constexpr float kG236 = 0.01653571f;
++constexpr float kG754 = 0.05102192f;
++constexpr int32_t kFadeSamples = 64;
++constexpr float kHpfIn = 1.f / 2147483648.f;
++} // namespace
++
++float HpfState::run(float x, Hpf position, Channel& c) {
++	switch (position) {
++	case Hpf::BOOST: {
++		const double y = kB0 * x + c.z1;
++		c.z1 = kB1 * x - kA1 * y + c.z2;
++		c.z2 = kB2 * x - kA2 * y;
++		return static_cast<float>(y);
++	}
++	case Hpf::CUT_236:
++	case Hpf::CUT_754: {
++		const float g = (position == Hpf::CUT_236) ? kG236 : kG754;
++		const float v = (x - c.hp) * g;
++		const float lp = c.hp + v;
++		c.hp = lp + v;
++		return x - lp;
++	}
++	default:
++		return x;
++	}
++}
++
++void HpfState::process(std::span<StereoSample> buffer, Hpf position) {
++	if (!active_) {
++		cur_ = Filter{position, {}, {}};
++		fade_ = 0;
++		active_ = true;
++	}
++	else if (position != cur_.position) {
++		prev_ = cur_;
++		cur_ = Filter{position, {}, {}};
++		fade_ = kFadeSamples;
++	}
++
++	Filter cur = cur_;
++	for (StereoSample& s : buffer) {
++		const float l = static_cast<float>(s.l) * kHpfIn;
++		const float r = static_cast<float>(s.r) * kHpfIn;
++		float outL = run(l, cur.position, cur.l);
++		float outR = run(r, cur.position, cur.r);
++		if (fade_ > 0) {
++			const float t = static_cast<float>(fade_) * (1.f / kFadeSamples);
++			outL += (run(l, prev_.position, prev_.l) - outL) * t;
++			outR += (run(r, prev_.position, prev_.r) - outR) * t;
++			fade_--;
++		}
++		// The boost is +10.5 dB at its lowest: q31_from_float saturates rather than wraps
++		s.l = q31_from_float(outL);
++		s.r = q31_from_float(outR);
++	}
++	cur_ = cur;
++}
++
++} // namespace deluge::dsp::drum_synth::bruno106
+diff --git a/src/deluge/dsp/drum_synth/bruno106_hpf.h b/src/deluge/dsp/drum_synth/bruno106_hpf.h
+new file mode 100644
+index 000000000..db74c8942
+--- /dev/null
++++ b/src/deluge/dsp/drum_synth/bruno106_hpf.h
+@@ -0,0 +1,51 @@
++/*
++ * BRUNO106 HPF: the Juno-106's four position high pass slider, from Ultramaster KR-106.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * This is a modified version of KR-106's HPF (KR106_DSP.h) and bass boost (KR106_HPF.h): Juno-106 positions only,
++ * coefficients worked out for 44.1 kHz, the 0.35 Hz coupling cap left out. It runs once per track on the summed voices,
++ * as on the hardware, and not at all at FLAT. Not affiliated with or endorsed by Roland.
++ */
++
++#pragma once
++
++#include "dsp/stereo_sample.h"
++#include <cstdint>
++#include <span>
++
++namespace deluge::dsp::drum_synth::bruno106 {
++
++/// The slider's positions, in the order they're saved (FLAT first, so a sound saved without the byte has none). The
++/// menu shows them in the slider's order, bottom up: BOOST, FLAT, 236 Hz, 754 Hz.
++enum class Hpf : uint8_t { FLAT, BOOST, CUT_236, CUT_754, NUM };
++
++/// The HPF's state for one track, both channels
++class HpfState {
++public:
++	/// Filter the track's buffer at a position (not FLAT: the caller skips it then). Moving between positions
++	/// crossfades over 64 samples, as KR-106, so the switch doesn't click.
++	void process(std::span<StereoSample> buffer, Hpf position);
++	/// The track went to FLAT, or isn't a BRUNO106: start clean next time
++	void idle() { active_ = false; }
++
++private:
++	struct Channel {
++		double z1, z2; ///< The bass boost (its poles sit near 60 Hz: double keeps them quiet)
++		float hp;      ///< The cut's one pole
++	};
++	struct Filter {
++		Hpf position;
++		Channel l, r;
++	};
++	static float run(float x, Hpf position, Channel& c);
++
++	Filter cur_{};
++	Filter prev_{};
++	int32_t fade_ = 0; ///< Samples of crossfade from prev_ left
++	bool active_ = false;
++};
++
++} // namespace deluge::dsp::drum_synth::bruno106
 diff --git a/src/deluge/dsp/drum_synth/cyc.cpp b/src/deluge/dsp/drum_synth/cyc.cpp
 new file mode 100644
 index 000000000..6c49666d5
@@ -2853,10 +3548,10 @@ index 000000000..245b810c1
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 000000000..2474f5ac9
+index 000000000..d584255c8
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,1867 @@
+@@ -0,0 +1,1972 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -3119,6 +3814,13 @@ index 000000000..2474f5ac9
 +	params_[BROPHET_PM_DEST] = static_cast<uint8_t>(brophet::PolyModDest::FREQ_A);
 +}
 +
++void Patch::setBruno106() {
++	params_[ENGINE] = static_cast<uint8_t>(Engine::BRUNO106);
++	params_[BRUNO_SAW] = 1;
++	params_[BRUNO_PULSE] = 0;
++	params_[BRUNO_HPF] = static_cast<uint8_t>(bruno106::Hpf::FLAT);
++}
++
 +void Patch::setCycPreset(Engine engine) {
 +	params_[ENGINE] = static_cast<uint8_t>(engine);
 +	params_[XIA_PUNCH] = 0;
@@ -3241,6 +3943,9 @@ index 000000000..2474f5ac9
 +	if (isBrophet(engine)) {
 +		return brophetControlsFor();
 +	}
++	if (isBruno106(engine)) {
++		return bruno106ControlsFor();
++	}
 +	if (isCyc(engine)) {
 +		// The Cyc engines start where the originals do, their own amp decay included
 +		const auto& d = kCycDefaults[static_cast<size_t>(cycKind(engine))];
@@ -3320,7 +4025,11 @@ index 000000000..2474f5ac9
 +	case BROPHET_SYNC:
 +	case BROPHET_LOW_B:
 +	case BROPHET_FIXED_B:
++	case BRUNO_SAW:
++	case BRUNO_PULSE:
 +		return 1;
++	case BRUNO_HPF:
++		return static_cast<uint8_t>(bruno106::Hpf::NUM) - 1;
 +	case XIA_PUNCH:
 +	case SNAPPY_DECAY:
 +	case CONTROLS_VERSION:
@@ -3394,6 +4103,10 @@ index 000000000..2474f5ac9
 +	case BROPHET_FIXED_B:
 +	case BROPHET_PM_DEST:
 +		return isBrophet(engine);
++	case BRUNO_SAW:
++	case BRUNO_PULSE:
++	case BRUNO_HPF:
++		return isBruno106(engine);
 +	default:
 +		return isXia(engine);
 +	}
@@ -3490,13 +4203,19 @@ index 000000000..2474f5ac9
 +		          DrumControls::RINGS_STRUCTURE};
 +		break;
 +	case Engine::BROPHET:
-+		// Poly mod's two depths where the pitch envelope would be (envelope 2 is its envelope), osc B's detune and osc
-+		// A's pulse width as the characters. No drive or decay: the Deluge's filter and envelopes are its own.
++		// No pitch envelope: mod rate / depth stay the Deluge's vibrato, as on any synth. Osc B's detune and osc A's
++		// pulse width as the characters. No drive or decay: the Deluge's filter and envelopes are its own.
 +		if (slot == StandardSlot::DECAY || slot == StandardSlot::DRIVE) {
 +			return -1;
 +		}
-+		shared = {DrumControls::BROPHET_PM_ENV, DrumControls::BROPHET_PM_OSC_B, DrumControls::BROPHET_FINE_B,
-+		          DrumControls::BROPHET_PW_A};
++		shared = {-1, -1, DrumControls::BROPHET_FINE_B, DrumControls::BROPHET_PW_A};
++		break;
++	case Engine::BRUNO106:
++		// As BROPHET: vibrato on mod rate / depth, sub and pulse width as the characters. No drive or decay.
++		if (slot == StandardSlot::DECAY || slot == StandardSlot::DRIVE) {
++			return -1;
++		}
++		shared = {-1, -1, DrumControls::BRUNO_SUB, DrumControls::BRUNO_PW};
 +		break;
 +	default: // The Cyc engines: Sweep, Contour, Color, Shape
 +		shared = {DrumControls::CYC_MACRO3, DrumControls::CYC_MACRO4, DrumControls::CYC_MACRO1,
@@ -3681,8 +4400,9 @@ index 000000000..2474f5ac9
 +		    static_cast<rings::Model>(std::min<uint8_t>(variant, static_cast<uint8_t>(rings::Model::NUM_MODELS) - 1)));
 +		return rowSetupForRings(c.value(DrumControls::RINGS_DAMPING));
 +	}
-+	if (isBrophet(engine)) {
-+		// A synth's envelope, not a hit's: picking BROPHET sets the rest up as a synth too (see setDrumEngine)
++	if (isBrophet(engine) || isBruno106(engine)) {
++		// A synth's envelope, not a hit's: picking BROPHET or BRUNO106 sets the rest up as a synth too (see
++		// setDrumEngine)
 +		return {0, 25, -1, false, 20, 0, 40, 15};
 +	}
 +	return xiaPresetFor(engine, variant).row;
@@ -3704,6 +4424,9 @@ index 000000000..2474f5ac9
 +	}
 +	if (isBrophet(engine)) {
 +		return brophetControlsFor();
++	}
++	if (isBruno106(engine)) {
++		return bruno106ControlsFor();
 +	}
 +	if (!isLxr(engine)) {
 +		return DrumControls::defaultsFor(engine);
@@ -4043,8 +4766,12 @@ index 000000000..2474f5ac9
 +		renderBrophet(settingsFrom_, controls, buffer, numSamples, basePhaseIncrement, amplitude, amplitudeIncrement);
 +		return;
 +	}
++	if (isBruno106(settings_.engine)) {
++		renderBruno106(settingsFrom_, controls, buffer, numSamples, basePhaseIncrement, amplitude, amplitudeIncrement);
++		return;
++	}
 +	if (isRings(settings_.engine)) {
-+		ultrakikReady_ = ginReady_ = cycReady_ = brophetReady_ = false;
++		ultrakikReady_ = ginReady_ = cycReady_ = brophetReady_ = bruno106Ready_ = false;
 +		xiaEngine_ = Engine::DRUM;
 +		renderRings(settingsFrom_, controls, buffer, numSamples, basePhaseIncrement, amplitude, amplitudeIncrement);
 +		return;
@@ -4056,6 +4783,7 @@ index 000000000..2474f5ac9
 +			ginReady_ = false;
 +			cycReady_ = false;
 +			brophetReady_ = false;
++			bruno106Ready_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
 +		if (pendingTrigger_) {
@@ -4072,6 +4800,7 @@ index 000000000..2474f5ac9
 +			ultrakikReady_ = false;
 +			cycReady_ = false;
 +			brophetReady_ = false;
++			bruno106Ready_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
 +		if (pendingTrigger_) {
@@ -4088,6 +4817,7 @@ index 000000000..2474f5ac9
 +			ginReady_ = false;
 +			ultrakikReady_ = false;
 +			brophetReady_ = false;
++			bruno106Ready_ = false;
 +			xiaEngine_ = Engine::DRUM;
 +		}
 +		if (pendingTrigger_) {
@@ -4214,7 +4944,7 @@ index 000000000..2474f5ac9
 +	if (isRings(settings_.engine)) {
 +		return rings_ != nullptr && ringsReady_ && ringsAge_ >= kRingsMinSamples && rings::level(*rings_) < kQuietLevel;
 +	}
-+	if (isBrophet(settings_.engine)) {
++	if (isBrophet(settings_.engine) || isBruno106(settings_.engine)) {
 +		return false; // Its oscillators never fade: the Deluge's envelope ends the note
 +	}
 +	if (isUltrakik(settings_.engine)) {
@@ -4277,6 +5007,7 @@ index 000000000..2474f5ac9
 +	ginReady_ = false;
 +	ultrakikReady_ = false;
 +	brophetReady_ = false;
++	bruno106Ready_ = false;
 +	if (engine == Engine::TIA) {
 +		xia::reset(xia_.tia);
 +	}
@@ -4689,7 +5420,7 @@ index 000000000..2474f5ac9
 +                          int32_t* buffer, int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude,
 +                          int32_t amplitudeIncrement) {
 +	if (!brophetReady_) {
-+		ultrakikReady_ = ginReady_ = cycReady_ = false;
++		ultrakikReady_ = ginReady_ = cycReady_ = bruno106Ready_ = false;
 +		xiaEngine_ = Engine::DRUM;
 +		xia_.brophet = brophet::Voice{};
 +		brophetReady_ = true;
@@ -4724,12 +5455,81 @@ index 000000000..2474f5ac9
 +}
 +
 +} // namespace deluge::dsp::drum_synth
++
++// BRUNO106 ------------------------------------------------------------------------------------------------------------
++
++namespace deluge::dsp::drum_synth {
++
++bruno106::Settings bruno106Settings(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls) {
++	using S = DrumControls;
++	bruno106::Settings s{};
++	s.sawOn = p[Patch::BRUNO_SAW] != 0;
++	s.pulseOn = p[Patch::BRUNO_PULSE] != 0;
++	s.pw = ringsKnob(controls, S::BRUNO_PW);
++	s.sub = bruno106::subLevel(ringsKnob(controls, S::BRUNO_SUB));
++	s.noise = bruno106::noiseLevel(ringsKnob(controls, S::BRUNO_NOISE));
++	return s;
++}
++
++DrumControls bruno106ControlsFor() {
++	using S = DrumControls;
++	DrumControls c;
++	for (int32_t i = 0; i < S::NUM_SLOTS; i++) {
++		c.values[i] = S::fromValue(64);
++	}
++	c.values[S::BRUNO_PW] = S::fromValue(0);
++	c.values[S::BRUNO_SUB] = S::fromValue(0);
++	c.values[S::BRUNO_NOISE] = S::fromValue(0);
++	c.values[S::BRUNO_SLOP] = S::fromValue(40);
++	c.values[S::CYC_DRIVE] = S::fromValue(0);
++	c.values[S::LXR_DRIVE] = S::fromValue(0);
++	return c;
++}
++
++void Voice::renderBruno106(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls,
++                           int32_t* buffer, int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude,
++                           int32_t amplitudeIncrement) {
++	if (!bruno106Ready_) {
++		ultrakikReady_ = ginReady_ = cycReady_ = brophetReady_ = false;
++		xiaEngine_ = Engine::DRUM;
++		xia_.bruno106 = bruno106::Voice{};
++		bruno106Ready_ = true;
++		pendingTrigger_ = true;
++	}
++	if (pendingTrigger_) {
++		pendingTrigger_ = false;
++		// Each note its own slop and starting phase
++		static uint32_t seed = 0x6A09E667;
++		seed += 0x9E3779B9;
++		bruno106::trigger(xia_.bruno106, ringsKnob(controls, DrumControls::BRUNO_SLOP), seed);
++	}
++	const bruno106::Settings s = bruno106Settings(p, controls);
++
++	constexpr int32_t kChunk = 64;
++	std::array<float, kChunk> chunk;
++	int32_t* out = buffer;
++	int32_t remaining = numSamples;
++	while (remaining > 0) {
++		const int32_t n = std::min(remaining, kChunk);
++		bruno106::render(xia_.bruno106, s, basePhaseIncrement, chunk.data(), n);
++		for (int32_t i = 0; i < n; i++) {
++			amplitude += amplitudeIncrement;
++			// A full saw lands as BROPHET's does. q31_from_float saturates in the one instruction.
++			out[i] =
++			    add_saturate(out[i], q31_from_float(chunk[i] * static_cast<float>(amplitude) * (1.f / 2147483648.f)));
++		}
++		out += n;
++		remaining -= n;
++	}
++}
++
++} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 000000000..3abff9e71
+index 000000000..ce7d8ca5d
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
-@@ -0,0 +1,615 @@
+@@ -0,0 +1,646 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -4745,6 +5545,8 @@ index 000000000..3abff9e71
 +#pragma once
 +
 +#include "dsp/drum_synth/brophet.h"
++#include "dsp/drum_synth/bruno106.h"
++#include "dsp/drum_synth/bruno106_hpf.h"
 +#include "dsp/drum_synth/cyc.h"
 +#include "dsp/drum_synth/gin.h"
 +#include "dsp/drum_synth/gin_kits.h"
@@ -4761,7 +5563,7 @@ index 000000000..3abff9e71
 +
 +/// The three LXR voice structures, then two engines from the XIA set for the Model:Cycles (see xia.h), then the Cyc
 +/// engines (see cyc.h), then GIN (see gin.h), then ULTRAKIK (see ultrakik.h), then RINGS (see rings.h), then BROPHET
-+/// (see brophet.h). New engines go on the end: the number is saved with the sound.
++/// (see brophet.h), then BRUNO106 (see bruno106.h). New engines go on the end: the number is saved with the sound.
 +enum class Engine : uint8_t {
 +	DRUM,  ///< Kick and toms: main osc, FM or mixed mod osc, pitch envelope
 +	SNARE, ///< Pitched osc with pitch envelope, plus filtered sample-and-hold noise
@@ -4781,6 +5583,8 @@ index 000000000..3abff9e71
 +	RINGS,    ///< Mutable Instruments Rings: modal and string resonators, one per voice. Not a drum: a pitched synth.
 +	BROPHET,  ///< Pro-54's voice (after Pro-53): two oscillators, sync, poly mod, noise. A synth, through the Deluge's
 +	          ///< filters (the BROPHET one being Pro-54's own) and envelopes.
++	BRUNO106, ///< KR-106's DCO voice (after the Juno-106): saw, pulse with its width, sub, noise. A synth, through the
++	          ///< Deluge's filters (the BRUNO106 one being KR-106's IR3109) and envelopes.
 +	NUM_ENGINES,
 +};
 +
@@ -4812,6 +5616,11 @@ index 000000000..3abff9e71
 +/// Whether an engine is BROPHET
 +constexpr bool isBrophet(Engine engine) {
 +	return engine == Engine::BROPHET;
++}
++
++/// Whether an engine is BRUNO106
++constexpr bool isBruno106(Engine engine) {
++	return engine == Engine::BRUNO106;
 +}
 +
 +/// Whether an engine is one of the three LXR voices
@@ -4891,12 +5700,17 @@ index 000000000..3abff9e71
 +		BROPHET_PW_B = 1,     ///< Osc B pulse width
 +		BROPHET_FREQ_B = 2,   ///< Osc B against osc A, 64 = unison, 0 / 127 = two octaves down / up, in semitones
 +		BROPHET_FINE_B = 3,   ///< Osc B detune, 64 = none, half a semitone each way: Custom 2
-+		BROPHET_PM_ENV = 5,   ///< Poly mod from envelope 2: mod depth
-+		BROPHET_PM_OSC_B = 6, ///< Poly mod from osc B: mod rate
++		BROPHET_PM_ENV = 5,   ///< Poly mod from envelope 2
++		BROPHET_PM_OSC_B = 6, ///< Poly mod from osc B
 +		BROPHET_MIX_A = 7,
 +		BROPHET_MIX_B = 8,
 +		BROPHET_NOISE = 10,
 +		BROPHET_ANALOG = 11, ///< Drift per note, as Pro-53's Analog knob
++		// BRUNO106: the DCO's sliders, plus Slop. No drive or decay: the Deluge's filter and envelopes do those.
++		BRUNO_PW = 0,    ///< Pulse width, 0 = square, 127 = narrowest (as the PWM slider on manual): Custom 3
++		BRUNO_SUB = 1,   ///< Sub level: Custom 2
++		BRUNO_NOISE = 2, ///< Noise level
++		BRUNO_SLOP = 3,  ///< Per note spread of tuning, pulse width and level, as real voices differ
 +		NUM_SLOTS = 12,
 +	};
 +	/// Raw Deluge param values: the whole int32 range, centre 0
@@ -5102,6 +5916,10 @@ index 000000000..3abff9e71
 +		BROPHET_LOW_B,   ///< 1 = osc B in its low range, as an LFO
 +		BROPHET_FIXED_B, ///< 1 = osc B off the keys (Pro-53's keyboard button out), at middle C and its own frequency
 +		BROPHET_PM_DEST, ///< brophet::PolyModDest
++		// BRUNO106's switches. Its continuous settings are on Deluge params: see DrumControls.
++		BRUNO_SAW,   ///< 1 = saw on
++		BRUNO_PULSE, ///< 1 = pulse on
++		BRUNO_HPF,   ///< bruno106::Hpf: the slider, run once per track on the summed voices (see Sound::render)
 +		NUM_PARAMS,
 +	};
 +
@@ -5127,6 +5945,9 @@ index 000000000..3abff9e71
 +	/// Switch to BROPHET with its switches at their defaults: osc A saw, osc B saw on the keys, no sync, poly mod to
 +	/// osc A's frequency. Its continuous settings are on Deluge params: see brophetControlsFor().
 +	void setBrophet();
++	/// Switch to BRUNO106 with its switches at their defaults: saw on, pulse off. Its continuous settings are on Deluge
++	/// params: see bruno106ControlsFor().
++	void setBruno106();
 +
 +	[[nodiscard]] uint8_t get(Param p) const { return params_[p]; }
 +	void set(Param p, uint8_t value);
@@ -5199,6 +6020,12 @@ index 000000000..3abff9e71
 +
 +/// BROPHET's starting knobs: both oscillators full, osc B a few cents up, a little drift
 +DrumControls brophetControlsFor();
++
++/// BRUNO106's settings from its controls and patch
++bruno106::Settings bruno106Settings(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls);
++
++/// BRUNO106's starting knobs: square width, no sub or noise, a little slop
++DrumControls bruno106ControlsFor();
 +
 +/// A GIN kit sound's continuous settings, as controls
 +DrumControls ginControlsFor(const gin::KitSound& sound);
@@ -5279,6 +6106,8 @@ index 000000000..3abff9e71
 +	                 int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
 +	void renderBrophet(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
 +	                   int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
++	void renderBruno106(const std::array<uint8_t, Patch::NUM_PARAMS>& p, const DrumControls& controls, int32_t* buffer,
++	                    int32_t numSamples, uint32_t basePhaseIncrement, int32_t amplitude, int32_t amplitudeIncrement);
 +
 +	void updateSettings(const Patch& patch, const DrumControls& controls);
 +	void startLxr();
@@ -5322,6 +6151,7 @@ index 000000000..3abff9e71
 +		gin::Voice gin;
 +		ultrakik::Voice ultrakik;
 +		brophet::Voice brophet;
++		bruno106::Voice bruno106;
 +	} xia_{};
 +	std::array<int32_t, xia::kBlockSize> xiaBlock_{};
 +	int32_t xiaBlockPos_ = xia::kBlockSize;
@@ -5330,6 +6160,7 @@ index 000000000..3abff9e71
 +	bool ginReady_ = false;               ///< xia_ holds GIN's state
 +	bool ultrakikReady_ = false;          ///< xia_ holds ULTRAKIK's state
 +	bool brophetReady_ = false;           ///< xia_ holds BROPHET's state
++	bool bruno106Ready_ = false;          ///< xia_ holds BRUNO106's state
 +	int32_t polyModEnvelope_ = INT32_MIN; ///< BROPHET's poly mod envelope, as the Deluge gives it
 +	rings::Voice* rings_ = nullptr;       ///< RINGS' state, given by the Deluge voice
 +	bool ringsReady_ = false;             ///< rings_ has been reset since it was given
@@ -12592,6 +13423,456 @@ index 000000000..cb8e46851
 +};
 +
 +} // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/bruno106.cpp b/src/deluge/dsp/filter/bruno106.cpp
+new file mode 100644
+index 000000000..754cf8501
+--- /dev/null
++++ b/src/deluge/dsp/filter/bruno106.cpp
+@@ -0,0 +1,163 @@
++/*
++ * BRUNO106 filter: the IR3109 four pole OTA filter of Ultramaster KR-106, in the Deluge's LPF list.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#include "dsp/filter/bruno106.h"
++#include "util/functions.h"
++#include <algorithm>
++#include <cmath>
++
++namespace deluge::dsp::filter {
++
++namespace {
++/// A loud oscillator in the voice buffer: KR-106's full saw, 0.6
++constexpr float kBrunoUnit = 134217728.f; // 2^27
++constexpr float kBrunoSaw = 0.6f;
++
++/// atan for 0 to 8 (the Deluge's tanned cutoff), within about 0.002 rad: plenty for a cutoff
++float brunoAtan(float x) {
++	const bool big = x > 1.f;
++	const float t = big ? 1.f / x : x;
++	const float t2 = t * t;
++	const float a = t * (0.9998660f + t2 * (-0.3302995f + t2 * (0.1801410f + t2 * (-0.0851330f + t2 * 0.0208351f))));
++	return big ? 1.5707963f - a : a;
++}
++
++[[gnu::always_inline]] inline q31_t brunoToQ31(float x) {
++	return q31_from_float(x);
++}
++} // namespace
++
++q31_t Bruno106Filter::setConfig(q31_t frequency, q31_t resonance, FilterMode mode, q31_t morph, q31_t filterGain) {
++	(void)mode;
++	// The thermal noise follows the state every buffer. The rest is worked out only for what moved: an envelope
++	// sweeping the cutoff skips the resonance and drive maths, and a held note skips it all.
++	fixed_.noise = bruno106::noiseFor(l); // the left channel stands for both
++	const bool resMoved = !cached_ || resonance != lastResonance_;
++	const bool morphMoved = !cached_ || morph != lastMorph_;
++	if (!resMoved && !morphMoved && frequency == lastFrequency_) {
++		g1_ = g1Target_;
++		invDen_ = invDenTarget_;
++		return filterGain;
++	}
++	cached_ = true;
++	lastFrequency_ = frequency;
++	lastResonance_ = resonance;
++	lastMorph_ = morph;
++
++	if (resMoved) {
++		// The resonance knob, 0 to 1 (the ladders' 0 to 2^29), as KR-106's slider
++		res_ = bruno106::resCache(std::clamp(static_cast<float>(resonance) * (1.f / 536870912.f), 0.f, 1.f));
++	}
++	// The Deluge's cutoff as tan(pi fc / fs), 1 = 2^28, as its ladders take it: KR-106's g. Its frq is fc over Nyquist.
++	const float g =
++	    std::max(static_cast<float>(instantTan(lshiftAndSaturate<5>(frequency))) * (1.f / 268435456.f), 0.f);
++	const float frq = brunoAtan(g) * (2.f / 3.14159265f);
++	const float noise = fixed_.noise;
++	g1Target_ = bruno106::freqCoefs(frq, g, res_, fixed_, invDenTarget_);
++	fixed_.noise = noise;
++	if (!primed_) {
++		g1_ = g1Target_;
++		invDen_ = invDenTarget_;
++		primed_ = true;
++	}
++
++	if (morphMoved) {
++		// Drive (the morph knob, 0 to 1): up to 18 dB into the filter; 12 dB of it taken back off after
++		const float drive = std::clamp(static_cast<float>(morph) * (1.f / 2147483648.f), 0.f, 1.f);
++		inGain_ = exp2f(3.f * drive) * kBrunoSaw / kBrunoUnit;
++		// At no resonance the passband is kDirectGain x kOutGain = 1.22 of the input: brought back to 1
++		outGain_ = kBrunoUnit / kBrunoSaw / (bruno106::kDirectGain * bruno106::kOutGain) * (1.f / 2147483648.f)
++		           * exp2f(-2.f * drive);
++	}
++	return filterGain;
++}
++
++Bruno106Filter::Ramp Bruno106Filter::rampFor(int32_t numSamples) const {
++	const float inv = (numSamples > 0) ? 1.f / static_cast<float>(numSamples) : 0.f;
++	return {g1_, (g1Target_ - g1_) * inv, invDen_, (invDenTarget_ - invDen_) * inv};
++}
++
++// Each loop works on local copies of the state and coefficients, kept in registers
++
++void Bruno106Filter::doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement) {
++	const int32_t n = static_cast<int32_t>((endSample - startSample + sampleIncrement - 1) / sampleIncrement);
++	Ramp rp = rampFor(n);
++	const bruno106::Fixed f = fixed_;
++	const float inGain = inGain_, outGain = outGain_;
++	bruno106::State st = l;
++	for (q31_t* s = startSample; s < endSample; s += sampleIncrement) {
++		rp.g1 += rp.dg1;
++		rp.invDen += rp.dInvDen;
++		*s = brunoToQ31(bruno106::tick(static_cast<float>(*s) * inGain, st, rp.g1, rp.invDen, f) * outGain);
++	}
++	l = st;
++	g1_ = g1Target_;
++	invDen_ = invDenTarget_;
++}
++
++void Bruno106Filter::doFilterStereo(q31_t* startSample, q31_t* endSample) {
++	const int32_t n = static_cast<int32_t>((endSample - startSample) >> 1);
++	Ramp rp = rampFor(n);
++	const bruno106::Fixed f = fixed_;
++	const float inGain = inGain_, outGain = outGain_;
++	bruno106::State sl = l;
++	bruno106::State sr = r;
++	for (q31_t* s = startSample; s < endSample; s += 2) {
++		rp.g1 += rp.dg1;
++		rp.invDen += rp.dInvDen;
++		s[0] = brunoToQ31(bruno106::tick(static_cast<float>(s[0]) * inGain, sl, rp.g1, rp.invDen, f) * outGain);
++		s[1] = brunoToQ31(bruno106::tick(static_cast<float>(s[1]) * inGain, sr, rp.g1, rp.invDen, f) * outGain);
++	}
++	l = sl;
++	r = sr;
++	g1_ = g1Target_;
++	invDen_ = invDenTarget_;
++}
++
++void Bruno106Filter::doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement,
++                                      FeedbackChannel& fb, q31_t gain) {
++	const int32_t n = static_cast<int32_t>((endSample - startSample + sampleIncrement - 1) / sampleIncrement);
++	Ramp rp = rampFor(n);
++	const bruno106::Fixed f = fixed_;
++	const float inGain = inGain_, outGain = outGain_;
++	bruno106::State st = l;
++	feedbackLoopMono(startSample, endSample, sampleIncrement, fb, gain, [&](q31_t in) {
++		rp.g1 += rp.dg1;
++		rp.invDen += rp.dInvDen;
++		return brunoToQ31(bruno106::tick(static_cast<float>(in) * inGain, st, rp.g1, rp.invDen, f) * outGain);
++	});
++	l = st;
++	g1_ = g1Target_;
++	invDen_ = invDenTarget_;
++}
++
++void Bruno106Filter::doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL,
++                                            FeedbackChannel& fbR, q31_t gain) {
++	const int32_t n = static_cast<int32_t>((endSample - startSample) >> 1);
++	Ramp rp = rampFor(n);
++	const bruno106::Fixed f = fixed_;
++	const float inGain = inGain_, outGain = outGain_;
++	bruno106::State sl = l;
++	bruno106::State sr = r;
++	feedbackLoopStereo(
++	    startSample, endSample, fbL, fbR, gain,
++	    [&](q31_t in) {
++		    rp.g1 += rp.dg1; // left runs first on each sample, then right uses the same coefficients
++		    rp.invDen += rp.dInvDen;
++		    return brunoToQ31(bruno106::tick(static_cast<float>(in) * inGain, sl, rp.g1, rp.invDen, f) * outGain);
++	    },
++	    [&](q31_t in) {
++		    return brunoToQ31(bruno106::tick(static_cast<float>(in) * inGain, sr, rp.g1, rp.invDen, f) * outGain);
++	    });
++	l = sl;
++	r = sr;
++	g1_ = g1Target_;
++	invDen_ = invDenTarget_;
++}
++
++} // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/bruno106.h b/src/deluge/dsp/filter/bruno106.h
+new file mode 100644
+index 000000000..d4771917c
+--- /dev/null
++++ b/src/deluge/dsp/filter/bruno106.h
+@@ -0,0 +1,62 @@
++/*
++ * BRUNO106 filter: the IR3109 four pole OTA filter of Ultramaster KR-106, in the Deluge's LPF list.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * This is a modified version: lowpass only, at 1x, with the Deluge's cutoff, resonance and drive (see
++ * bruno106_core.h for the filter itself). Not affiliated with or endorsed by Roland.
++ */
++
++#pragma once
++
++#include "dsp/filter/bruno106_core.h"
++#include "dsp/filter/filter.h"
++#include "util/fixedpoint.h"
++
++namespace deluge::dsp::filter {
++
++/// Four OTA-C stages with the BA662 feedback around them, each stage soft clipping as the IR3109's do. Self
++/// oscillates near the top of the resonance. Runs in float, in KR-106's units (a full saw 0.6, a loud Deluge oscillator
++/// being 2^27). Cutoff ramps across each buffer.
++class Bruno106Filter : public Filter<Bruno106Filter> {
++public:
++	Bruno106Filter() = default;
++	q31_t setConfig(q31_t frequency, q31_t resonance, FilterMode mode, q31_t morph, q31_t filterGain);
++	void doFilter(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement);
++	void doFilterStereo(q31_t* startSample, q31_t* endSample);
++	void doFilterFeedback(q31_t* startSample, q31_t* endSample, int32_t sampleIncrement, FeedbackChannel& fb,
++	                      q31_t gain);
++	void doFilterStereoFeedback(q31_t* startSample, q31_t* endSample, FeedbackChannel& fbL, FeedbackChannel& fbR,
++	                            q31_t gain);
++	void resetFilter() {
++		l = {};
++		r = {};
++		l.seed = 123456789u;
++		r.seed = 987654321u;
++		primed_ = false;
++		cached_ = false;
++	}
++
++private:
++	/// g1 and invDen step across a buffer, from where the last ended to this one's target
++	struct Ramp {
++		float g1, dg1, invDen, dInvDen;
++	};
++	[[nodiscard]] Ramp rampFor(int32_t numSamples) const;
++
++	bruno106::State l;
++	bruno106::State r;
++	bruno106::Fixed fixed_;
++	float g1_, invDen_;             ///< Where the last buffer ended
++	float g1Target_, invDenTarget_; ///< Where this one ends
++	float inGain_;                  ///< q31 to KR-106 units, with the drive
++	float outGain_;                 ///< Back to q31 (as q31_from_float takes it), the passband brought back to unity
++	bool primed_;                   ///< g1_ holds a cutoff (false after a reset: the first buffer starts at its target)
++	bool cached_;                   ///< The coefficients below are for lastFrequency_, lastResonance_ and lastMorph_
++	q31_t lastFrequency_, lastResonance_, lastMorph_;
++	bruno106::ResCache res_; ///< For lastResonance_
++};
++
++} // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/filter/bruno106_core.h b/src/deluge/dsp/filter/bruno106_core.h
+new file mode 100644
+index 000000000..8d6e2f510
+--- /dev/null
++++ b/src/deluge/dsp/filter/bruno106_core.h
+@@ -0,0 +1,207 @@
++/*
++ * BRUNO106 filter core: the IR3109 four pole OTA filter of Ultramaster KR-106.
++ *
++ * Portions Copyright (C) 2026 Karl LaRocca (Ultramaster KR-106, kayrockscreenprinting, GPL-3.0).
++ * Deluge integration Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ *
++ * This is a modified version of KR106VCF_OPTIMIZED.h: run at 1x only, the Juno-106 resonance curve only, and the
++ * per sample maths rearranged to cut its divides from about 13 to 5 with the same result (the soft clipper and its
++ * slope share one denominator, the Newton step's divide folds into one, the pitch compensation needs no divide).
++ * Not affiliated with or endorsed by Roland.
++ *
++ * No Deluge headers: the host test builds this too.
++ */
++
++#pragma once
++
++#include <algorithm>
++#include <arm_neon.h>
++#include <cmath>
++#include <cstdint>
++
++namespace deluge::dsp::filter::bruno106 {
++
++constexpr float kDirectGain = 0.142f; ///< The osc mix straight to the filter input (10K)
++constexpr float kInputRatio = 0.065f; ///< The osc mix into the BA662's + input, against the fed back output
++constexpr float kOta = 0.35f;         ///< Each stage's OTA drive
++constexpr float kInvOta = 1.f / kOta;
++constexpr float kOutGain = 8.59f; ///< The four poles' passband makeup: kDirectGain x this = 1.22
++
++/// min / max through NEON: no compare, so no wait for the compare's flags (VFP has no scalar min or max)
++[[gnu::always_inline]] inline float clampF(float x, float lo, float hi) {
++	return vget_lane_f32(vmin_f32(vmax_f32(vdup_n_f32(x), vdup_n_f32(lo)), vdup_n_f32(hi)), 0);
++}
++
++/// One channel's state. All zeros is a valid start (the noise seed is set by reset()).
++struct State {
++	float s0, s1, s2, s3; ///< The integrators
++	uint32_t seed;        ///< Thermal noise, which seeds self oscillation from silence
++};
++
++/// What stays put across a buffer
++struct Fixed {
++	float k;           ///< Resonance feedback
++	float kFb, invKFb; ///< The feedback OTA's drive and its inverse
++	float noise;       ///< Thermal noise level
++};
++
++/// KR-106's resonance slider (0 to 1) to feedback, Juno-106 curve: k reaches 4 just past 0.9 to self oscillate
++inline float resKJ106(float r) {
++	float k = r * (4.6265f + r * (4.3866f + r * (-8.9869f + r * 3.3902f)));
++	if (r > 0.7f) {
++		const float knee = (r - 0.7f) * (1.f / 0.3f);
++		k += std::min(knee * knee * 1.2f, 0.35f);
++	}
++	const float boost = std::max(0.f, (r - 0.898f) * (0.17f / 0.102f));
++	return k * (1.f + boost);
++}
++
++/// What depends on the resonance alone: worked out when it moves, not when only the cutoff does
++struct ResCache {
++	float k0;          ///< Feedback before the fade near Nyquist
++	float expM;        ///< The peak pull correction at k0
++	float kFb, invKFb; ///< The feedback OTA's drive at k0
++};
++
++/// KR-106's peak pull correction, fitted on hardware: fades in to k = 1 and out from k = 3.7 to 4.4
++inline float peakPull(float k) {
++	const float kFit = std::clamp(k, 0.f, 5.f);
++	float logM = 0.20646f + kFit * (-0.04140f + kFit * (0.00602f - kFit * 0.00127f));
++	if (k < 1.f) {
++		logM *= std::max(k, 0.f);
++	}
++	if (k > 3.7f) {
++		logM *= std::min(1.f, std::max(0.f, (4.4f - k) * (1.f / 0.7f)));
++	}
++	return expf(logM);
++}
++
++inline ResCache resCache(float res) {
++	ResCache c;
++	c.k0 = resKJ106(res);
++	c.expM = peakPull(c.k0);
++	c.kFb = 4.2f * std::clamp(c.k0 - 2.5f, 0.3f, 1.f);
++	c.invKFb = 1.f / c.kFb;
++	return c;
++}
++
++/// The coefficients for a cutoff, given the resonance's. frq is the cutoff over Nyquist (0 to 1), g its
++/// tan(frq pi / 2). Writes the fixed ones, returns g1 = g / (1 + g) after the peak pull correction; invDen from that.
++inline float freqCoefs(float frq, float g, const ResCache& rc, Fixed& f, float& invDen) {
++	float k = rc.k0, expM = rc.expM, kFb = rc.kFb, invKFb = rc.invKFb;
++	// At 1x a resonant peak near Nyquist folds: fade the resonance out from 0.7 to 0.9 of Nyquist
++	if (frq > 0.7f) {
++		k *= std::max(1.f - (frq - 0.7f) * 5.f, 0.f);
++		expM = peakPull(k);
++		kFb = 4.2f * std::clamp(k - 2.5f, 0.3f, 1.f);
++		invKFb = 1.f / kFb;
++	}
++	g = std::min(std::min(g, 4.1652998f) * expM, 10.f); // tan(0.85 pi / 2): where the integrators stay well behaved
++	const float g1 = g / (1.f + g);
++	const float g1sq = g1 * g1;
++	invDen = 1.f / (1.f + k * g1sq * g1sq);
++	f.k = k;
++	f.kFb = kFb;
++	f.invKFb = invKFb;
++	return g1;
++}
++
++/// Both at once (the host tests use this)
++inline float coefs(float frq, float g, float res, Fixed& f, float& invDen) {
++	return freqCoefs(frq, g, resCache(res), f, invDen);
++}
++
++/// The thermal noise level for the filter's state now: bigger when quiet, so it seeds self oscillation, and too small
++/// to hear once there's signal. (KR-106 also follows the input level; the state carries it a buffer later.)
++inline float noiseFor(const State& s) {
++	const float energy = std::fabs(s.s0) + std::fabs(s.s1) + std::fabs(s.s2) + std::fabs(s.s3);
++	return 1e-2f / (1.f + energy * 1000.f);
++}
++
++/// One OTA-C stage: solves y = s + g tanh(x - y) by one Newton step from the linear estimate. h = 1 - g1.
++/// KR-106's NLStage with the clipper, its slope and the Newton divide sharing one denominator.
++[[gnu::always_inline]] inline float stage(float& s, float x, float g1, float h) {
++	float y = s + g1 * (x - s);
++	const float sd = clampF((x - y) * kOta, -3.f, 3.f); // the curve is flat at 1 beyond 3, and so is KR-106's
++	const float x2 = sd * sd;
++	const float d = 27.f + 9.f * x2;
++	const float num = h * (y - s) * d * d - g1 * sd * (27.f + x2) * d * kInvOta;
++	const float den = h * d * d + g1 * 27.f * (27.f - 3.f * x2);
++	y -= num / den;
++	s = 2.f * y - s;
++	return y;
++}
++
++/// One sample as the Deluge runs it, in KR-106's units (a full saw 0.6). g1 and invDen ramp across a buffer; f holds
++/// still. KR-106's BA662 feedback OTA as it is (the resonance, its compression and self oscillation), with the four
++/// IR3109 stages linear: their saturation only shows when driven hot, and solving it per stage cost four times the
++/// rest of the voice on the Deluge (see tickFull). With linear stages there is no saturation to pull the pitch, so no
++/// pitch compensation either.
++[[gnu::always_inline]] inline float tick(float in, State& st, float g1, float invDen, const Fixed& f) {
++	st.seed = st.seed * 196314165u + 907633515u;
++	union {
++		uint32_t u;
++		float fl;
++	} n;
++	n.u = (st.seed >> 9) | 0x40000000u;
++	in += (n.fl - 3.f) * f.noise;
++
++	st.s0 += 1e-20f;
++	const float h = 1.f - g1;
++	const float g1sq = g1 * g1;
++	// The cascade's output with no input: what the fed back path sees before this sample's input arrives
++	const float S = h * ((st.s0 * g1 + st.s1) * g1sq + st.s2 * g1 + st.s3);
++
++	const float dd = clampF((in * kInputRatio - S) * f.kFb, -3.f, 3.f);
++	const float dd2 = dd * dd;
++	const float otaOut = dd * (27.f + dd2) / (27.f + 9.f * dd2) * f.invKFb;
++	const float u = (in * kDirectGain + f.k * otaOut) * invDen;
++
++	// Four trapezoidal one poles. Each output is the next one's input; the states update off that path.
++	const float y1 = st.s0 + g1 * (u - st.s0);
++	const float y2 = st.s1 + g1 * (y1 - st.s1);
++	const float y3 = st.s2 + g1 * (y2 - st.s2);
++	const float y4 = st.s3 + g1 * (y3 - st.s3);
++	st.s0 = 2.f * y1 - st.s0;
++	st.s1 = 2.f * y2 - st.s1;
++	st.s2 = 2.f * y3 - st.s2;
++	st.s3 = 2.f * y4 - st.s3;
++	return y4 * kOutGain;
++}
++
++/// One sample with KR-106's nonlinear stages, each solved by a Newton step (kept for the host comparison: too heavy for
++/// the Deluge, about 1 us a voice)
++[[gnu::always_inline]] inline float tickFull(float in, State& st, float g1, float invDen, const Fixed& f) {
++	st.seed = st.seed * 196314165u + 907633515u;
++	union {
++		uint32_t u;
++		float fl;
++	} n;
++	n.u = (st.seed >> 9) | 0x40000000u;
++	in += (n.fl - 3.f) * f.noise;
++
++	st.s0 += 1e-20f;
++	const float g1sq = g1 * g1;
++	const float S = (1.f - g1) * (st.s0 * g1sq * g1 + st.s1 * g1sq + st.s2 * g1 + st.s3);
++
++	// The BA662: input and fed back output share its differential pair
++	const float dd = clampF((in * kInputRatio - S) * f.kFb, -3.f, 3.f);
++	const float dd2 = dd * dd;
++	const float otaOut = dd * (27.f + dd2) / (27.f + 9.f * dd2) * f.invKFb;
++	const float u = (in * kDirectGain + f.k * otaOut) * invDen;
++
++	// Pitch held as the stages saturate in self oscillation: g1 / max(1 / sqrt(1 + 0.6 a^2), 0.65), at most 0.98
++	const float a = st.s3;
++	const float m = std::min(sqrtf(1.f + 0.6f * a * a), 1.f / 0.65f);
++	const float gN = std::min(g1 * m, 0.98f);
++	const float h = 1.f - gN;
++
++	const float y1 = stage(st.s0, u, gN, h);
++	const float y2 = stage(st.s1, y1, gN, h);
++	const float y3 = stage(st.s2, y2, gN, h);
++	const float y4 = stage(st.s3, y3, gN, h);
++	return y4 * kOutGain;
++}
++
++} // namespace deluge::dsp::filter::bruno106
 diff --git a/src/deluge/dsp/filter/filter.h b/src/deluge/dsp/filter/filter.h
 index 1011b6bed..9115eee05 100644
 --- a/src/deluge/dsp/filter/filter.h
@@ -12627,10 +13908,10 @@ index 1011b6bed..9115eee05 100644
  	 * reset the internal filter state to avoid clicks and pops
  	 * All zeroes must be a valid reset state as the filter data will be zeroed by the filterset
 diff --git a/src/deluge/dsp/filter/filter_set.cpp b/src/deluge/dsp/filter/filter_set.cpp
-index 5c972a78c..c7d20c43b 100644
+index 5c972a78c..84652fb76 100644
 --- a/src/deluge/dsp/filter/filter_set.cpp
 +++ b/src/deluge/dsp/filter/filter_set.cpp
-@@ -23,63 +23,137 @@ namespace deluge::dsp::filter {
+@@ -23,63 +23,153 @@ namespace deluge::dsp::filter {
  
  q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate stereo samples
  
@@ -12696,6 +13977,14 @@ index 5c972a78c..c7d20c43b 100644
 +				lpfilter.brophet.filterMono(startSample, endSample, sampleIncrement);
 +			}
 +		}
++		else if (lpfMode_ == FilterMode::BRUNO106) {
++			if (feedback) {
++				lpfilter.bruno106.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
++			}
++			else {
++				lpfilter.bruno106.filterMono(startSample, endSample, sampleIncrement);
++			}
++		}
 +		else if ((lpfMode_ == FilterMode::SVF_BAND) || (lpfMode_ == FilterMode::SVF_NOTCH)) {
 +			if (feedback) {
 +				lpfilter.svf.filterMonoFeedback(startSample, endSample, sampleIncrement, feedbackL_, feedback);
@@ -12728,6 +14017,14 @@ index 5c972a78c..c7d20c43b 100644
 +			}
 +			else {
 +				lpfilter.brophet.filterStereo(startSample, endSample);
++			}
++		}
++		else if (lpfMode_ == FilterMode::BRUNO106) {
++			if (feedback) {
++				lpfilter.bruno106.filterStereoFeedback(startSample, endSample, feedbackL_, feedbackR_, feedback);
++			}
++			else {
++				lpfilter.bruno106.filterStereo(startSample, endSample);
 +			}
 +		}
 +		else if ((lpfMode_ == FilterMode::SVF_BAND) || (lpfMode_ == FilterMode::SVF_NOTCH)) {
@@ -12789,7 +14086,7 @@ index 5c972a78c..c7d20c43b 100644
  
  		break;
  
-@@ -89,8 +163,8 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+@@ -89,8 +179,8 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
  		int32_t length = endSample - startSample;
  		memcpy(tempRenderBuffer, startSample, length * sizeof(q31_t));
  
@@ -12800,7 +14097,7 @@ index 5c972a78c..c7d20c43b 100644
  
  		for (int i = 0; i < length; i++) {
  			startSample[i] += tempRenderBuffer[i];
-@@ -99,21 +173,41 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+@@ -99,21 +189,41 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
  	}
  }
  // expects to receive an interleaved stereo stream
@@ -12848,7 +14145,7 @@ index 5c972a78c..c7d20c43b 100644
  
  		break;
  	case FilterRoute::PARALLEL:
-@@ -121,9 +215,9 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
+@@ -121,9 +231,9 @@ q31_t tempRenderBuffer[SSI_TX_BUFFER_NUM_SAMPLES * 2]; // * 2 to accomodate ster
  
  		memcpy(tempRenderBuffer, startSample, length * sizeof(q31_t));
  
@@ -12860,7 +14157,7 @@ index 5c972a78c..c7d20c43b 100644
  
  		for (int i = 0; i < length; i++) {
  			startSample[i] += tempRenderBuffer[i];
-@@ -145,14 +239,22 @@ int32_t FilterSet::setConfig(q31_t lpfFrequency, q31_t lpfResonance, FilterMode
+@@ -145,14 +255,28 @@ int32_t FilterSet::setConfig(q31_t lpfFrequency, q31_t lpfResonance, FilterMode
  	hpfResonance = (hpfResonance >> 21) << 21;
  
  	if (LPFOn) {
@@ -12872,6 +14169,12 @@ index 5c972a78c..c7d20c43b 100644
 +			}
 +			filterGain = lpfilter.brophet.configure(lpfFrequency, lpfResonance, lpfMode_, lpfMorph, filterGain);
 +		}
++		else if (lpfMode_ == FilterMode::BRUNO106) {
++			if (lastLPFMode_ != FilterMode::BRUNO106) {
++				lpfilter.bruno106.reset(lastLPFMode_ == FilterMode::OFF);
++			}
++			filterGain = lpfilter.bruno106.configure(lpfFrequency, lpfResonance, lpfMode_, lpfMorph, filterGain);
++		}
 +		else if ((lpfMode_ == FilterMode::SVF_BAND) || (lpfMode_ == FilterMode::SVF_NOTCH)) {
  			if (SpecificFilter(lastLPFMode_).getFamily() != FilterFamily::SVF) {
  				lpfilter.svf.reset(lastLPFMode_ == FilterMode::OFF);
@@ -12881,31 +14184,33 @@ index 5c972a78c..c7d20c43b 100644
  		else {
 -			if (SpecificFilter(lastLPFMode_).getFamily() != FilterFamily::LP_LADDER) {
 +			if (SpecificFilter(lastLPFMode_).getFamily() != FilterFamily::LP_LADDER
-+			    || lastLPFMode_ == FilterMode::BROPHET) {
++			    || lastLPFMode_ == FilterMode::BROPHET || lastLPFMode_ == FilterMode::BRUNO106) {
  				lpfilter.ladder.reset(lastLPFMode_ == FilterMode::OFF);
  			}
  			filterGain = lpfilter.ladder.configure(lpfFrequency, lpfResonance, lpfMode_, lpfMorph, filterGain);
 diff --git a/src/deluge/dsp/filter/filter_set.h b/src/deluge/dsp/filter/filter_set.h
-index 34c70810a..efdd41ee8 100644
+index 34c70810a..82d642e80 100644
 --- a/src/deluge/dsp/filter/filter_set.h
 +++ b/src/deluge/dsp/filter/filter_set.h
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,8 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
 +#include "dsp/filter/brophet.h"
++#include "dsp/filter/bruno106.h"
  #include "dsp/filter/hpladder.h"
  #include "dsp/filter/lpladder.h"
  #include "dsp/filter/svf.h"
-@@ -32,6 +33,7 @@ namespace deluge::dsp::filter {
+@@ -32,6 +34,8 @@ namespace deluge::dsp::filter {
  union LowPass {
  	LpLadderFilter ladder;
  	SVFilter svf;
 +	BrophetFilter brophet;
++	Bruno106Filter bruno106;
  	LowPass() {}
  };
  
-@@ -50,10 +52,13 @@ public:
+@@ -50,10 +54,13 @@ public:
  	                  q31_t hpfResonance, FilterMode hpfmode, q31_t hpfMorph, q31_t filterGain, FilterRoute routing,
  	                  bool adjustVolumeForHPFResonance, q31_t* overallOscAmplitude);
  
@@ -12921,7 +14226,7 @@ index 34c70810a..efdd41ee8 100644
  
  	// used to check whether the filter is used at all
  	inline bool isLPFOn() { return LPFOn; }
-@@ -67,10 +72,11 @@ private:
+@@ -67,10 +74,11 @@ private:
  	FilterMode lastHPFMode_;
  	FilterRoute routing_;
  
@@ -12937,7 +14242,7 @@ index 34c70810a..efdd41ee8 100644
  
  	// all filters share a state. This is fine since they just hold plain data and initialization is handled by
  	// reset/configure calls.  This is faster than using a variant at the cost of not throwing on incorrect access.
-@@ -81,5 +87,9 @@ private:
+@@ -81,5 +89,9 @@ private:
  
  	bool LPFOn;
  	bool HPFOn;
@@ -15313,10 +16618,10 @@ index 000000000..9872e7267
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.cpp b/src/deluge/gui/context_menu/synth_instrument.cpp
 new file mode 100644
-index 000000000..39dd67a12
+index 000000000..f418649d0
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.cpp
-@@ -0,0 +1,324 @@
+@@ -0,0 +1,327 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -15412,6 +16717,8 @@ index 000000000..39dd67a12
 +	                   && dsp::drum_synth::isRings(synth->sources[0].drumPatch.engine());
 +	const bool brophet = synth->sources[0].oscType == OscType::DRUM_SYNTH
 +	                     && dsp::drum_synth::isBrophet(synth->sources[0].drumPatch.engine());
++	const bool bruno106 = synth->sources[0].oscType == OscType::DRUM_SYNTH
++	                      && dsp::drum_synth::isBruno106(synth->sources[0].drumPatch.engine());
 +	const bool wavetable =
 +	    synth->getSynthMode() == SynthMode::SUBTRACTIVE
 +	    && (synth->sources[0].oscType == OscType::WAVETABLE || synth->sources[1].oscType == OscType::WAVETABLE);
@@ -15420,11 +16727,12 @@ index 000000000..39dd67a12
 +		if (type.init) {
 +			continue;
 +		}
-+		if (rings     ? type.rings
-+		    : brophet ? type.brophet
-+		    : dx      ? type.dx
-+		              : (!type.dx && !type.rings && !type.brophet && type.mode == synth->getSynthMode()
-+                    && type.wavetable == wavetable)) {
++		if (rings      ? type.rings
++		    : brophet  ? type.brophet
++		    : bruno106 ? type.bruno106
++		    : dx       ? type.dx
++		         : (!type.dx && !type.rings && !type.brophet && !type.bruno106 && type.mode == synth->getSynthMode()
++		            && type.wavetable == wavetable)) {
 +			return i;
 +		}
 +	}
@@ -16096,7 +17404,7 @@ index 683a26648..e3d62437c 100644
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..bcc387f7b 100644
+index 0032e81ac..b39423ab2 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -16382,7 +17690,7 @@ index 0032e81ac..bcc387f7b 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1230,78 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1230,98 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -16452,6 +17760,26 @@ index 0032e81ac..bcc387f7b 100644
 +        {STRING_FOR_BROPHET_FREQ_A, "Freq A"},
 +        {STRING_FOR_BROPHET_PWIDTH_A, "PW A"},
 +        {STRING_FOR_BROPHET_BOTH, "Both"},
++        {STRING_FOR_BRUNO106, "BRUNO106"},
++        {STRING_FOR_BRUNO106_FILTER, "Bruno106"},
++        {STRING_FOR_SYNTH_TYPE_BRUNO106, "Bruno106"},
++        {STRING_FOR_BRUNO_PW, "Pulse width"},
++        {STRING_FOR_BRUNO_SUB, "Sub level"},
++        {STRING_FOR_BRUNO_NOISE, "Noise level"},
++        {STRING_FOR_BRUNO_SLOP, "Slop"},
++        {STRING_FOR_BRUNO_SAW, "Saw"},
++        {STRING_FOR_BRUNO_PULSE, "Pulse"},
++        {STRING_FOR_BRUNO_CHORUS, "Bruno chorus"},
++        {STRING_FOR_BRUNO_CHORUS_MODE, "Chorus mode"},
++        {STRING_FOR_BRUNO_CHORUS_ON, "Chorus"},
++        {STRING_FOR_BRUNO_CHORUS_I, "I"},
++        {STRING_FOR_BRUNO_CHORUS_II, "II"},
++        {STRING_FOR_BRUNO_CHORUS_I_II, "I+II"},
++        {STRING_FOR_BRUNO_HPF, "HPF"},
++        {STRING_FOR_BRUNO_HPF_BOOST, "Bass boost"},
++        {STRING_FOR_BRUNO_HPF_FLAT, "Flat"},
++        {STRING_FOR_BRUNO_HPF_236, "236 Hz"},
++        {STRING_FOR_BRUNO_HPF_754, "754 Hz"},
 +        {STRING_FOR_VOICE_SPREAD, "Pan spread"},
 +        {STRING_FOR_VOICE_SPREAD_SHORT, "PSPR"},
 +        {STRING_FOR_VOICE_SPREAD_MODE, "Spread mode"},
@@ -16462,7 +17790,7 @@ index 0032e81ac..bcc387f7b 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..480b7efb8 100644
+index 2024bd2f7..e1b3743ce 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -16706,7 +18034,7 @@ index 2024bd2f7..480b7efb8 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +776,76 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +776,96 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -16774,6 +18102,26 @@ index 2024bd2f7..480b7efb8 100644
 +        {STRING_FOR_BROPHET_FREQ_A, "FRQA"},
 +        {STRING_FOR_BROPHET_PWIDTH_A, "PWA"},
 +        {STRING_FOR_BROPHET_BOTH, "BOTH"},
++        {STRING_FOR_BRUNO106, "BRUNO106"},
++        {STRING_FOR_BRUNO106_FILTER, "BRUNO106"},
++        {STRING_FOR_SYNTH_TYPE_BRUNO106, "BRUNO106"},
++        {STRING_FOR_BRUNO_PW, "PW"},
++        {STRING_FOR_BRUNO_SUB, "SUB"},
++        {STRING_FOR_BRUNO_NOISE, "NOIS"},
++        {STRING_FOR_BRUNO_SLOP, "SLOP"},
++        {STRING_FOR_BRUNO_SAW, "SAW"},
++        {STRING_FOR_BRUNO_PULSE, "PULS"},
++        {STRING_FOR_BRUNO_CHORUS, "BRUNO CHORUS"},
++        {STRING_FOR_BRUNO_CHORUS_MODE, "CMOD"},
++        {STRING_FOR_BRUNO_CHORUS_ON, "CHOR"},
++        {STRING_FOR_BRUNO_CHORUS_I, "I"},
++        {STRING_FOR_BRUNO_CHORUS_II, "II"},
++        {STRING_FOR_BRUNO_CHORUS_I_II, "I-II"},
++        {STRING_FOR_BRUNO_HPF, "HPF"},
++        {STRING_FOR_BRUNO_HPF_BOOST, "BOST"},
++        {STRING_FOR_BRUNO_HPF_FLAT, "FLAT"},
++        {STRING_FOR_BRUNO_HPF_236, "236"},
++        {STRING_FOR_BRUNO_HPF_754, "754"},
 +        {STRING_FOR_VOICE_SPREAD, "PAN SPREAD"},
 +        {STRING_FOR_VOICE_SPREAD_SHORT, "PSPR"},
 +        {STRING_FOR_VOICE_SPREAD_MODE, "SPREAD MODE"},
@@ -17121,7 +18469,7 @@ index bc5dd6c8c..15744c3b9 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..13c2f0ad0 100644
+index 2039f041f..9518870de 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -17416,7 +18764,7 @@ index 2039f041f..13c2f0ad0 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1367,72 @@ enum class String : size_t {
+@@ -1145,6 +1367,92 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -17480,6 +18828,26 @@ index 2039f041f..13c2f0ad0 100644
 +	STRING_FOR_BROPHET_FREQ_A,
 +	STRING_FOR_BROPHET_PWIDTH_A,
 +	STRING_FOR_BROPHET_BOTH,
++	STRING_FOR_BRUNO106,
++	STRING_FOR_BRUNO106_FILTER,
++	STRING_FOR_SYNTH_TYPE_BRUNO106,
++	STRING_FOR_BRUNO_PW,
++	STRING_FOR_BRUNO_SUB,
++	STRING_FOR_BRUNO_NOISE,
++	STRING_FOR_BRUNO_SLOP,
++	STRING_FOR_BRUNO_SAW,
++	STRING_FOR_BRUNO_PULSE,
++	STRING_FOR_BRUNO_CHORUS,
++	STRING_FOR_BRUNO_CHORUS_MODE,
++	STRING_FOR_BRUNO_CHORUS_ON,
++	STRING_FOR_BRUNO_CHORUS_I,
++	STRING_FOR_BRUNO_CHORUS_II,
++	STRING_FOR_BRUNO_CHORUS_I_II,
++	STRING_FOR_BRUNO_HPF,
++	STRING_FOR_BRUNO_HPF_BOOST,
++	STRING_FOR_BRUNO_HPF_FLAT,
++	STRING_FOR_BRUNO_HPF_236,
++	STRING_FOR_BRUNO_HPF_754,
 +	STRING_FOR_VOICE_SPREAD,
 +	STRING_FOR_VOICE_SPREAD_SHORT,
 +	STRING_FOR_VOICE_SPREAD_MODE,
@@ -17937,10 +19305,10 @@ index 000000000..466e7dab2
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 000000000..6e672915b
+index 000000000..889f74073
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
-@@ -0,0 +1,387 @@
+@@ -0,0 +1,392 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -18060,6 +19428,9 @@ index 000000000..6e672915b
 +		return {};
 +	}
 +	const Engine engine = sound->sources[0].drumPatch.engine();
++	if (deluge::dsp::drum_synth::isBruno106(engine)) {
++		return layouts_[10];
++	}
 +	if (deluge::dsp::drum_synth::isBrophet(engine)) {
 +		return layouts_[9];
 +	}
@@ -18104,6 +19475,8 @@ index 000000000..6e672915b
 +		return l10n::getView(STRING_FOR_RINGS);
 +	case Engine::BROPHET:
 +		return l10n::getView(STRING_FOR_BROPHET);
++	case Engine::BRUNO106:
++		return l10n::getView(STRING_FOR_BRUNO106);
 +	case Engine::ULTRAKIK:
 +		return l10n::getView(STRING_FOR_DRUM_ENGINE_ULTRAKIK);
 +	case Engine::GIN:
@@ -18330,7 +19703,7 @@ index 000000000..6e672915b
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.h b/src/deluge/gui/menu_item/drum_synth/editor.h
 new file mode 100644
-index 000000000..91fe7372f
+index 000000000..cae1f4eb3
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.h
 @@ -0,0 +1,100 @@
@@ -18391,9 +19764,9 @@ index 000000000..91fe7372f
 +
 +	Editor(l10n::String name, Layout drumLayout, Layout snareLayout, Layout metalLayout, Layout tiaLayout,
 +	       Layout iiaLayout, Layout cycLayout, Layout ginLayout, Layout ultrakikLayout, Layout ringsLayout,
-+	       Layout brophetLayout, MenuItem* fullMenu)
-+	    : MenuItem(name), layouts_{drumLayout, snareLayout, metalLayout,    tiaLayout,   iiaLayout,
-+	                               cycLayout,  ginLayout,   ultrakikLayout, ringsLayout, brophetLayout},
++	       Layout brophetLayout, Layout bruno106Layout, MenuItem* fullMenu)
++	    : MenuItem(name), layouts_{drumLayout, snareLayout,    metalLayout, tiaLayout,     iiaLayout,     cycLayout,
++	                               ginLayout,  ultrakikLayout, ringsLayout, brophetLayout, bruno106Layout},
 +	      fullMenu_(fullMenu) {}
 +
 +	void beginSession(MenuItem* navigatedBackwardFrom) override;
@@ -18426,7 +19799,7 @@ index 000000000..91fe7372f
 +	void changed();
 +
 +	/// LXR drum, snare and metal, TIA, IIA, one shared by all the Cyc engines, then GIN, ULTRAKIK and RINGS
-+	std::array<Layout, 10> layouts_;
++	std::array<Layout, 11> layouts_;
 +	MenuItem* fullMenu_;
 +	int32_t selectedColumn_ = 0;
 +};
@@ -18436,10 +19809,10 @@ index 000000000..91fe7372f
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 000000000..1f372f3f3
+index 000000000..a7de4fec1
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
-@@ -0,0 +1,853 @@
+@@ -0,0 +1,906 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -18550,6 +19923,22 @@ index 000000000..1f372f3f3
 +	Sound& sound = *soundEditor.currentSound;
 +	auto user = [](int32_t p, int32_t value) { setSoundParam(p, getParamFromUserValue(p, value)); };
 +	sound.lpfMode = FilterMode::BROPHET;
++	user(params::LOCAL_LPF_FREQ, 28);
++	user(params::LOCAL_LPF_RESONANCE, 12);
++	user(params::LOCAL_ENV_1_ATTACK, 0);
++	user(params::LOCAL_ENV_1_DECAY, 22);
++	user(params::LOCAL_ENV_1_SUSTAIN, 12);
++	user(params::LOCAL_ENV_1_RELEASE, 15);
++	setCable(params::LOCAL_LPF_FREQ, PatchSource::ENVELOPE_1, 18);
++}
++
++/// BRUNO106 is a synth too: the BRUNO106 filter (KR-106's IR3109) a little closed, a touch of resonance, envelope 2
++/// opening it, and a held envelope 1, as BROPHET
++inline void setupBruno106Sound() {
++	namespace params = deluge::modulation::params;
++	Sound& sound = *soundEditor.currentSound;
++	auto user = [](int32_t p, int32_t value) { setSoundParam(p, getParamFromUserValue(p, value)); };
++	sound.lpfMode = FilterMode::BRUNO106;
 +	user(params::LOCAL_LPF_FREQ, 28);
 +	user(params::LOCAL_LPF_RESONANCE, 12);
 +	user(params::LOCAL_ENV_1_ATTACK, 0);
@@ -18696,6 +20085,9 @@ index 000000000..1f372f3f3
 +	else if (deluge::dsp::drum_synth::isBrophet(engine)) {
 +		patch.setBrophet();
 +	}
++	else if (deluge::dsp::drum_synth::isBruno106(engine)) {
++		patch.setBruno106();
++	}
 +	else {
 +		patch.setPreset(deluge::dsp::drum_synth::presetForLxrEngine(engine));
 +	}
@@ -18704,6 +20096,9 @@ index 000000000..1f372f3f3
 +	setEngineDecay(row);
 +	if (deluge::dsp::drum_synth::isBrophet(engine)) {
 +		setupBrophetSound();
++	}
++	if (deluge::dsp::drum_synth::isBruno106(engine)) {
++		setupBruno106Sound();
 +	}
 +	setDrumKnobs(sound, engine);
 +	soundEditor.markInstrumentAsEdited();
@@ -18830,6 +20225,18 @@ index 000000000..1f372f3f3
 +	}
 +};
 +
++/// A continuous setting of BRUNO106
++class Bruno106Control final : public Control {
++public:
++	using Control::Control;
++
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		const auto* sound = static_cast<Sound*>(modControllable);
++		return sound->sources[0].oscType == OscType::DRUM_SYNTH
++		       && deluge::dsp::drum_synth::isBruno106(sound->sources[0].drumPatch.engine());
++	}
++};
++
 +/// A drum synth setting kept in the patch as a number, 0-127: GIN's EQ gain and level, ULTRAKIK's crush, bend time and
 +/// snap. Menu edits only: not a patched param.
 +class PatchNumber final : public Integer {
@@ -18915,6 +20322,25 @@ index 000000000..1f372f3f3
 +		using enum l10n::String;
 +		return {l10n::getView(STRING_FOR_OFF), l10n::getView(STRING_FOR_ON)};
 +	}
++};
++
++/// BRUNO106's HPF slider, shown in the slider's order (bass boost, flat, 236 Hz, 754 Hz) though saved FLAT first
++class Bruno106Hpf final : public Choice {
++public:
++	explicit Bruno106Hpf(l10n::String name) : Choice(name, Patch::BRUNO_HPF) {}
++
++	void readCurrentValue() override { setValue(kToMenu[std::min<uint8_t>(currentPatch().get(param_), 3)]); }
++	void writeCurrentValue() override { currentPatch().set(param_, kToSaved[std::clamp<int32_t>(getValue(), 0, 3)]); }
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_BRUNO_HPF_BOOST), l10n::getView(STRING_FOR_BRUNO_HPF_FLAT),
++		        l10n::getView(STRING_FOR_BRUNO_HPF_236), l10n::getView(STRING_FOR_BRUNO_HPF_754)};
++	}
++
++private:
++	static constexpr uint8_t kToMenu[4] = {1, 0, 2, 3};  ///< Saved FLAT, BOOST, 236, 754 to the slider's order
++	static constexpr uint8_t kToSaved[4] = {1, 0, 2, 3}; ///< and back
 +};
 +
 +class MixMode final : public Choice {
@@ -19294,7 +20720,7 @@ index 000000000..1f372f3f3
 +
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/filter/mode.h b/src/deluge/gui/menu_item/filter/mode.h
-index 51b360b01..a5988e52f 100644
+index 51b360b01..40c661abc 100644
 --- a/src/deluge/gui/menu_item/filter/mode.h
 +++ b/src/deluge/gui/menu_item/filter/mode.h
 @@ -20,6 +20,7 @@
@@ -19339,15 +20765,16 @@ index 51b360b01..a5988e52f 100644
  		if (info.getSlot() == FilterSlot::HPF) {
  			return {
  			    l10n::getView(shortOpt ? STRING_FOR_SVF_BAND_SHORT : STRING_FOR_SVF_BAND),
-@@ -74,6 +89,7 @@ public:
+@@ -74,6 +89,8 @@ public:
  		    l10n::getView(shortOpt ? STRING_FOR_12DB_LADDER_SHORT : STRING_FOR_12DB_LADDER),
  		    l10n::getView(shortOpt ? STRING_FOR_24DB_LADDER_SHORT : STRING_FOR_24DB_LADDER),
  		    l10n::getView(STRING_FOR_DRIVE),
 +		    l10n::getView(STRING_FOR_BROPHET_FILTER),
++		    l10n::getView(STRING_FOR_BRUNO106_FILTER),
  		    l10n::getView(shortOpt ? STRING_FOR_SVF_BAND_SHORT : STRING_FOR_SVF_BAND),
  		    l10n::getView(shortOpt ? STRING_FOR_SVF_NOTCH_SHORT : STRING_FOR_SVF_NOTCH),
  		    l10n::getView(STRING_FOR_OFF),
-@@ -81,6 +97,12 @@ public:
+@@ -81,6 +98,12 @@ public:
  	}
  
  private:
@@ -19811,6 +21238,120 @@ index 000000000..5439ca21f
 +};
 +
 +} // namespace deluge::gui::menu_item::midi
+diff --git a/src/deluge/gui/menu_item/mod_fx/bruno_chorus.h b/src/deluge/gui/menu_item/mod_fx/bruno_chorus.h
+new file mode 100644
+index 000000000..5e2a1a870
+--- /dev/null
++++ b/src/deluge/gui/menu_item/mod_fx/bruno_chorus.h
+@@ -0,0 +1,78 @@
++/*
++ * BRUNO CHORUS menus: its mode (shown only with BRUNO CHORUS as the Mod FX type), and an on / off switch for a pad.
++ *
++ * Copyright © 2026 the Deluge community.
++ * SPDX-License-Identifier: GPL-3.0-or-later
++ */
++
++#pragma once
++
++#include "definitions_cxx.hpp"
++#include "gui/l10n/l10n.h"
++#include "gui/menu_item/selection.h"
++#include "gui/menu_item/toggle.h"
++#include "gui/ui/sound_editor.h"
++#include "hid/display/display.h"
++#include "model/drum/drum.h"
++#include "model/instrument/kit.h"
++#include "model/mod_controllable/mod_controllable_audio.h"
++#include "model/song/song.h"
++#include "processing/sound/sound_drum.h"
++
++namespace deluge::gui::menu_item::mod_fx {
++
++/// BRUNO CHORUS's mode: I, II or I+II, as the Juno's buttons. Only there while BRUNO CHORUS is the Mod FX type.
++class BrunoChorusMode final : public Selection {
++public:
++	using Selection::Selection;
++
++	void readCurrentValue() override {
++		setValue(std::clamp<int32_t>(soundEditor.currentModControllable->modfx.brunoChorusMode, 1, 3) - 1);
++	}
++	bool usesAffectEntire() override { return true; }
++	void writeCurrentValue() override {
++		const auto mode = static_cast<uint8_t>(getValue() + 1);
++		if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
++			for (Drum* d = getCurrentKit()->firstDrum; d != nullptr; d = d->next) {
++				if (d->type == DrumType::SOUND) {
++					static_cast<SoundDrum*>(d)->modfx.brunoChorusMode = mode;
++				}
++			}
++		}
++		else {
++			soundEditor.currentModControllable->modfx.brunoChorusMode = mode;
++		}
++	}
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {l10n::getView(STRING_FOR_BRUNO_CHORUS_I), l10n::getView(STRING_FOR_BRUNO_CHORUS_II),
++		        l10n::getView(STRING_FOR_BRUNO_CHORUS_I_II)};
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return modControllable->getModFXType() == ModFXType::BRUNO_CHORUS;
++	}
++};
++
++/// BRUNO CHORUS on or off: on makes it the Mod FX type, off takes the Mod FX off. On a pad, each press flips it (see
++/// SoundEditor::potentialShortcutPadAction).
++class BrunoChorusOnOff final : public Toggle {
++public:
++	using Toggle::Toggle;
++
++	void readCurrentValue() override {
++		setValue(soundEditor.currentModControllable->getModFXType() == ModFXType::BRUNO_CHORUS);
++	}
++	void writeCurrentValue() override {
++		if (!soundEditor.currentModControllable->setModFXType(getValue() ? ModFXType::BRUNO_CHORUS : ModFXType::NONE)) {
++			display->displayError(Error::INSUFFICIENT_RAM);
++		}
++	}
++	/// The pad's press: flip it and show which way it went
++	void flipFromPad() {
++		toggleValue();
++		drawValue();
++	}
++};
++
++} // namespace deluge::gui::menu_item::mod_fx
+diff --git a/src/deluge/gui/menu_item/mod_fx/rate.h b/src/deluge/gui/menu_item/mod_fx/rate.h
+index 5170b4832..7ea6663b8 100644
+--- a/src/deluge/gui/menu_item/mod_fx/rate.h
++++ b/src/deluge/gui/menu_item/mod_fx/rate.h
+@@ -25,7 +25,9 @@ public:
+ 	using patched_param::Integer::Integer;
+ 
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
+-		return modControllable->getModFXType() != ModFXType::NONE;
++		// BRUNO CHORUS's rate is its mode's, as on the hardware
++		return modControllable->getModFXType() != ModFXType::NONE
++		       && modControllable->getModFXType() != ModFXType::BRUNO_CHORUS;
+ 	}
+ };
+ } // namespace deluge::gui::menu_item::mod_fx
+diff --git a/src/deluge/gui/menu_item/mod_fx/rate_unpatched.h b/src/deluge/gui/menu_item/mod_fx/rate_unpatched.h
+index 80517af2c..e791a5b9d 100644
+--- a/src/deluge/gui/menu_item/mod_fx/rate_unpatched.h
++++ b/src/deluge/gui/menu_item/mod_fx/rate_unpatched.h
+@@ -24,7 +24,9 @@ public:
+ 	using UnpatchedParam::UnpatchedParam;
+ 
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const {
+-		return modControllable->getModFXType() != ModFXType::NONE;
++		// BRUNO CHORUS's rate is its mode's, as on the hardware
++		return modControllable->getModFXType() != ModFXType::NONE
++		       && modControllable->getModFXType() != ModFXType::BRUNO_CHORUS;
+ 	}
+ };
+ } // namespace deluge::gui::menu_item::mod_fx
 diff --git a/src/deluge/gui/menu_item/number.h b/src/deluge/gui/menu_item/number.h
 index 2409a2c35..e3bd0985d 100644
 --- a/src/deluge/gui/menu_item/number.h
@@ -20193,10 +21734,10 @@ index 000000000..bb20e6814
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/synth_mode.h b/src/deluge/gui/menu_item/synth_mode.h
-index 02acbd45b..a57e39ff1 100644
+index 02acbd45b..4e58761e6 100644
 --- a/src/deluge/gui/menu_item/synth_mode.h
 +++ b/src/deluge/gui/menu_item/synth_mode.h
-@@ -16,33 +16,168 @@
+@@ -16,33 +16,170 @@
   */
  #pragma once
  #include "definitions_cxx.hpp"
@@ -20326,6 +21867,8 @@ index 02acbd45b..a57e39ff1 100644
 +		}
 +		// BROPHET, after Pro-53
 +		list.push_back({K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::BROPHET, 0, STRING_FOR_BROPHET});
++		// BRUNO106, after the KR-106
++		list.push_back({K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::BRUNO106, 0, STRING_FOR_BRUNO106});
 +		static constexpr std::array<Entry, 19> kDrumEngines{{
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::DRUM, 0, STRING_FOR_DRUM_ENGINE_DRUM},
 +		    {K::DRUM, ::SynthMode::SUBTRACTIVE, Engine::SNARE, 0, STRING_FOR_DRUM_ENGINE_SNARE},
@@ -20369,7 +21912,7 @@ index 02acbd45b..a57e39ff1 100644
  					if (soundDrum->sources[0].oscType <= kLastRingmoddableOscType
  					    && soundDrum->sources[1].oscType <= kLastRingmoddableOscType) {
  						soundDrum->setSynthMode(current_value, currentSong);
-@@ -51,25 +186,20 @@ public:
+@@ -51,25 +188,20 @@ public:
  			}
  		}
  		// Or, the normal case of just one sound
@@ -20897,7 +22440,7 @@ index f4e341a9b..422d12415 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..476ad3b9d 100644
+index 7bbd559f6..c514d7dcf 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -20956,7 +22499,15 @@ index 7bbd559f6..476ad3b9d 100644
  #include "gui/menu_item/midi/follow/follow_channel.h"
  #include "gui/menu_item/midi/follow/follow_feedback_automation.h"
  #include "gui/menu_item/midi/follow/follow_feedback_channel_type.h"
-@@ -189,6 +199,7 @@
+@@ -118,6 +128,7 @@
+ #include "gui/menu_item/midi/sub.h"
+ #include "gui/menu_item/midi/takeover.h"
+ #include "gui/menu_item/midi/transpose.h"
++#include "gui/menu_item/mod_fx/bruno_chorus.h"
+ #include "gui/menu_item/mod_fx/depth_patched.h"
+ #include "gui/menu_item/mod_fx/depth_unpatched.h"
+ #include "gui/menu_item/mod_fx/feedback.h"
+@@ -189,6 +200,7 @@
  #include "gui/menu_item/sample/repeat.h"
  #include "gui/menu_item/sample/reverse.h"
  #include "gui/menu_item/sample/start.h"
@@ -20964,7 +22515,7 @@ index 7bbd559f6..476ad3b9d 100644
  #include "gui/menu_item/sample/time_stretch.h"
  #include "gui/menu_item/sample/transpose.h"
  #include "gui/menu_item/sequence/direction.h"
-@@ -216,7 +227,10 @@
+@@ -216,7 +228,10 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -20975,7 +22526,7 @@ index 7bbd559f6..476ad3b9d 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -224,6 +238,7 @@
+@@ -224,6 +239,7 @@
  #include "gui/menu_item/unison/stereoSpread.h"
  #include "gui/menu_item/unpatched_param.h"
  #include "gui/menu_item/unpatched_param/pan.h"
@@ -20983,7 +22534,7 @@ index 7bbd559f6..476ad3b9d 100644
  #include "gui/menu_item/voice/polyphony.h"
  #include "gui/menu_item/voice/portamento.h"
  #include "gui/menu_item/voice/priority.h"
-@@ -243,6 +258,7 @@ namespace params = deluge::modulation::params;
+@@ -243,6 +259,7 @@ namespace params = deluge::modulation::params;
  // Include the autogenerated menu structures
  #include "gui/menu_item/audio_clip/specific_output_source_selector.h"
  #include "gui/menu_item/generate/g_menus.inc"
@@ -20991,7 +22542,7 @@ index 7bbd559f6..476ad3b9d 100644
  #include "gui/menu_item/midi/y_axis_to_cc1.h"
  
  // Arp --------------------------------------------------------------------------------------
-@@ -453,15 +469,17 @@ PLACE_SDRAM_BSS voice::PolyphonyType polyphonyMenu{STRING_FOR_POLYPHONY};
+@@ -453,15 +470,17 @@ PLACE_SDRAM_BSS voice::PolyphonyType polyphonyMenu{STRING_FOR_POLYPHONY};
  PLACE_SDRAM_BSS voice::VoiceCount voice::polyphonicVoiceCountMenu{STRING_FOR_MAX_VOICES};
  PLACE_SDRAM_BSS voice::Portamento portaMenu{STRING_FOR_PORTAMENTO};
  PLACE_SDRAM_BSS voice::Priority priorityMenu{STRING_FOR_PRIORITY};
@@ -21018,7 +22569,24 @@ index 7bbd559f6..476ad3b9d 100644
  PLACE_SDRAM_BSS HorizontalMenuGroup voiceMenuGroup{{&unisonMenu, &voiceMenuWithoutUnison}};
  
  // Envelope 1-4 menu -----------------------------------------------------------------------------
-@@ -512,6 +530,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -472,6 +491,8 @@ PLACE_SDRAM_BSS HorizontalMenuGroup lfoMenuGroup{{&lfo1Menu, &lfo2Menu, &lfo3Men
+ 
+ // Mod FX ----------------------------------------------------------------------------------
+ PLACE_SDRAM_BSS mod_fx::Type modFXTypeMenu{STRING_FOR_TYPE, STRING_FOR_MODFX_TYPE};
++PLACE_SDRAM_BSS mod_fx::BrunoChorusMode brunoChorusModeMenu{STRING_FOR_BRUNO_CHORUS_MODE};
++PLACE_SDRAM_BSS mod_fx::BrunoChorusOnOff brunoChorusOnMenu{STRING_FOR_BRUNO_CHORUS_ON, STRING_FOR_BRUNO_CHORUS};
+ PLACE_SDRAM_BSS mod_fx::Rate modFXRateMenu{STRING_FOR_RATE, STRING_FOR_MODFX_RATE, params::GLOBAL_MOD_FX_RATE};
+ PLACE_SDRAM_BSS mod_fx::Feedback modFXFeedbackMenu{STRING_FOR_FEEDBACK, STRING_FOR_MODFX_FEEDBACK,
+                                                    params::UNPATCHED_MOD_FX_FEEDBACK};
+@@ -484,6 +505,7 @@ PLACE_SDRAM_BSS submenu::ModFxHorizontalMenu modFXMenu{
+     STRING_FOR_MOD_FX,
+     {
+         &modFXTypeMenu,
++        &brunoChorusModeMenu,
+         &modFXDepthMenu,
+         &modFXRateMenu,
+         &modFXFeedbackMenu,
+@@ -512,6 +534,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
@@ -21029,7 +22597,7 @@ index 7bbd559f6..476ad3b9d 100644
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +543,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +547,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
@@ -21038,7 +22606,7 @@ index 7bbd559f6..476ad3b9d 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,20 +654,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,20 +658,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -21067,7 +22635,7 @@ index 7bbd559f6..476ad3b9d 100644
      },
  };
  
-@@ -674,6 +705,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
+@@ -674,6 +709,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
  PLACE_SDRAM_BSS midi::Sub midiSubMenu{STRING_FOR_SUB_BANK_SHORT, STRING_FOR_MIDI_SUB_BANK};
  PLACE_SDRAM_BSS midi::PGM midiPGMMenu{STRING_FOR_PGM, STRING_FOR_MIDI_PGM_NUMB_MENU_TITLE};
  PLACE_SDRAM_BSS midi::MPEYToModWheel mpeyToModWheelMenu{STRING_FOR_Y_AXIS_CONVERSION, STRING_FOR_Y_AXIS_CONVERSION};
@@ -21075,7 +22643,7 @@ index 7bbd559f6..476ad3b9d 100644
  PLACE_SDRAM_BSS cv::DualCVSelection cv2SourceMenu{STRING_FOR_CV2_SOURCE};
  PLACE_SDRAM_BSS midi::AftertouchToMono midiAftertouchCollapseMenu{STRING_FOR_PATCH_SOURCE_AFTERTOUCH,
                                                                    STRING_FOR_PATCH_SOURCE_AFTERTOUCH};
-@@ -772,6 +804,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +808,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -21084,7 +22652,7 @@ index 7bbd559f6..476ad3b9d 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -840,6 +874,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
+@@ -840,6 +878,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
      {
          &srrMenu,
          &bitcrushMenu,
@@ -21092,7 +22660,7 @@ index 7bbd559f6..476ad3b9d 100644
      },
  };
  
-@@ -855,6 +890,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +894,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -21123,7 +22691,7 @@ index 7bbd559f6..476ad3b9d 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,8 +969,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,8 +973,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -21134,7 +22702,7 @@ index 7bbd559f6..476ad3b9d 100644
      },
  };
  
-@@ -985,6 +1046,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1050,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -21146,7 +22714,7 @@ index 7bbd559f6..476ad3b9d 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1115,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1119,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -21154,7 +22722,7 @@ index 7bbd559f6..476ad3b9d 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1349,10 +1416,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+@@ -1349,10 +1420,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
  PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
      STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
  
@@ -21172,7 +22740,7 @@ index 7bbd559f6..476ad3b9d 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1543,740 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1547,785 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -21288,6 +22856,13 @@ index 7bbd559f6..476ad3b9d 100644
 +PLACE_SDRAM_BSS drum_synth::BrophetControl brophetMixBMenu{STRING_FOR_BROPHET_MIX_B, XiaSlot::BROPHET_MIX_B};
 +PLACE_SDRAM_BSS drum_synth::BrophetControl brophetNoiseMenu{STRING_FOR_BROPHET_NOISE, XiaSlot::BROPHET_NOISE};
 +PLACE_SDRAM_BSS drum_synth::BrophetControl brophetAnalogMenu{STRING_FOR_BROPHET_ANALOG, XiaSlot::BROPHET_ANALOG};
++PLACE_SDRAM_BSS drum_synth::OffOn bruno106SawMenu{STRING_FOR_BRUNO_SAW, DrumParam::BRUNO_SAW};
++PLACE_SDRAM_BSS drum_synth::OffOn bruno106PulseMenu{STRING_FOR_BRUNO_PULSE, DrumParam::BRUNO_PULSE};
++PLACE_SDRAM_BSS drum_synth::Bruno106Control bruno106PwMenu{STRING_FOR_BRUNO_PW, XiaSlot::BRUNO_PW};
++PLACE_SDRAM_BSS drum_synth::Bruno106Control bruno106SubMenu{STRING_FOR_BRUNO_SUB, XiaSlot::BRUNO_SUB};
++PLACE_SDRAM_BSS drum_synth::Bruno106Control bruno106NoiseMenu{STRING_FOR_BRUNO_NOISE, XiaSlot::BRUNO_NOISE};
++PLACE_SDRAM_BSS drum_synth::Bruno106Control bruno106SlopMenu{STRING_FOR_BRUNO_SLOP, XiaSlot::BRUNO_SLOP};
++PLACE_SDRAM_BSS drum_synth::Bruno106Hpf bruno106HpfMenu{STRING_FOR_BRUNO_HPF};
 +PLACE_SDRAM_BSS KitGateOut kitGateOutMenu{STRING_FOR_KIT_GATE_OUT};
 +PLACE_SDRAM_BSS KitRowGate kitRowGateMenu{STRING_FOR_ROW_GATE};
 +// Items the current engine doesn't use hide themselves
@@ -21398,6 +22973,13 @@ index 7bbd559f6..476ad3b9d 100644
 +        &brophetMixBMenu,
 +        &brophetNoiseMenu,
 +        &brophetAnalogMenu,
++        &bruno106SawMenu,
++        &bruno106PulseMenu,
++        &bruno106PwMenu,
++        &bruno106SubMenu,
++        &bruno106NoiseMenu,
++        &bruno106SlopMenu,
++        &bruno106HpfMenu,
 +        &drumSnappyDecayMenu,
 +    },
 +};
@@ -21576,6 +23158,19 @@ index 7bbd559f6..476ad3b9d 100644
 +    {&lpfFreqMenu, DrumKind::NUMBER, DrumGroup::SOUND},
 +    {&lpfResMenu, DrumKind::NUMBER, DrumGroup::SOUND},
 +}};
++// BRUNO106: the DCO's switches and sliders as on its panel (saw, pulse, width, sub, noise), slop, then the Deluge's
++// filter (the BRUNO106 one when picked)
++PLACE_SDRAM_DATA std::array<DrumColumn, 9> drumEditorBruno106Layout{{
++    {&bruno106SawMenu, DrumKind::CHOICE, DrumGroup::OSC},
++    {&bruno106PulseMenu, DrumKind::CHOICE, DrumGroup::OSC},
++    {&bruno106PwMenu, DrumKind::NUMBER, DrumGroup::OSC},
++    {&bruno106SubMenu, DrumKind::NUMBER, DrumGroup::PITCH},
++    {&bruno106NoiseMenu, DrumKind::NUMBER, DrumGroup::NOISE},
++    {&bruno106SlopMenu, DrumKind::NUMBER, DrumGroup::MOD2},
++    {&bruno106HpfMenu, DrumKind::CHOICE, DrumGroup::SOUND},
++    {&lpfFreqMenu, DrumKind::NUMBER, DrumGroup::SOUND},
++    {&lpfResMenu, DrumKind::NUMBER, DrumGroup::SOUND},
++}};
 +
 +// Drum synth shortcut pads. On a drum synth sound, the MOD1 and MOD2 columns hold the standard layout, the same on
 +// every engine: from the bottom of MOD1 up, decay, drive, pitch, pitch envelope amount and speed, character A and B and
@@ -21584,7 +23179,8 @@ index 7bbd559f6..476ad3b9d 100644
 +// with more settings than that (ULTRAKIK) puts four more on the OSC1 pads a drum synth has no use for: pulse width,
 +// retrigger phase, feedback and wave index, bottom up. Every other pad keeps its usual job, except those whose param is
 +// one of the drum controls (osc 1's pulse width, the carriers' feedback, the wave indexes), which do nothing: they
-+// would edit the control raw. The synth engines (RINGS, BROPHET) lay out as a synth instead: see synthLayouts.
++// would edit the control raw. The synth engines (RINGS, BROPHET, BRUNO106) lay out as a synth instead: see
++// synthLayouts.
 +extern SynthModeSelection synthModeMenu;
 +extern MenuItem* paramShortcutsForSounds[][kDisplayHeight];
 +namespace {
@@ -21658,11 +23254,11 @@ index 7bbd559f6..476ad3b9d 100644
 +constexpr int32_t kNumModSlots = static_cast<int32_t>(StandardSlot::NUM_MOD_SLOTS);
 +constexpr int32_t kNumOsc1Extras = kNumStandardSlots - kNumModSlots;
 +
-+// The synth engines (RINGS, BROPHET) lay out as a synth does, not as a drum: their basic settings on the OSC1 and
-+// OSC2 pads that already name them (level, transpose, type, pulse width, noise, sync), and only what has no such pad
-+// on the FM MOD 1 and 2 columns, matched to those pads' names where one fits (a level, a pitch, the mod destination).
-+// Indexed [column - OSC1][row], bottom row first. A pad without a setting here keeps its usual job (one whose param
-+// is a drum control does nothing). SYNTH MODE is on its own pad (VOLUME column), as on any synth.
++// The synth engines (RINGS, BROPHET, BRUNO106) lay out as a synth does, not as a drum: their basic settings on the OSC1
++// and OSC2 pads that already name them (level, transpose, type, pulse width, noise, sync), and only what has no such
++// pad on the FM MOD 1 and 2 columns, matched to those pads' names where one fits (a level, a pitch, the mod
++// destination). Indexed [column - OSC1][row], bottom row first. A pad without a setting here keeps its usual job (one
++// whose param is a drum control does nothing). SYNTH MODE is on its own pad (VOLUME column), as on any synth.
 +constexpr int32_t kNumSynthColumns = 4; ///< OSC1, OSC2, FM MOD 1, FM MOD 2
 +using SynthColumns = std::array<std::array<MenuItem*, kDisplayHeight>, kNumSynthColumns>;
 +struct SynthLayout {
@@ -21702,6 +23298,22 @@ index 7bbd559f6..476ad3b9d 100644
 +          nullptr},
 +         // FM MOD 2: level, transpose, -, -, -, -, mod dest
 +         {&brophetPmEnvMenu, &brophetAnalogMenu, nullptr, nullptr, nullptr, nullptr, &brophetPmDestMenu, nullptr},
++     }}},
++    // BRUNO106: one DCO. OSC1 holds it: the Deluge's own level and tuning, the saw switch as its type, the pulse width,
++    // the noise level on the noise pad. OSC2 holds the DCO's other waves: the sub level on its level, the pulse switch
++    // as its type, and the pulse width again. FM MOD 1: the HPF, BRUNO CHORUS on / off and its mode. FM MOD 2: slop on
++    // its transpose (as BROPHET's analog drift).
++    {DrumEngine::BRUNO106,
++     {{
++         // OSC1: level, transpose, type, pulse width, -, -, -, noise
++         {&source0VolumeMenu, &source0TransposeMenu, &bruno106SawMenu, &bruno106PwMenu, nullptr, nullptr, nullptr,
++          &bruno106NoiseMenu},
++         // OSC2: level, -, type, pulse width
++         {&bruno106SubMenu, nullptr, &bruno106PulseMenu, &bruno106PwMenu, nullptr, nullptr, nullptr, nullptr},
++         // FM MOD 1: the panel's right half, bottom up: HPF, chorus on / off (each press flips it), chorus mode
++         {&bruno106HpfMenu, &brunoChorusOnMenu, &brunoChorusModeMenu, nullptr, nullptr, nullptr, nullptr, nullptr},
++         // FM MOD 2: -, transpose
++         {nullptr, &bruno106SlopMenu, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
 +     }}},
 +};
 +
@@ -21837,7 +23449,8 @@ index 7bbd559f6..476ad3b9d 100644
 +PLACE_SDRAM_BSS Editor drumSynthEditor{STRING_FOR_DRUM_SYNTH, drumEditorDrumLayout,    drumEditorSnareLayout,
 +                                       drumEditorMetalLayout, drumEditorTiaLayout,     drumEditorIiaLayout,
 +                                       drumEditorCycLayout,   drumEditorGinLayout,     drumEditorUltrakikLayout,
-+                                       drumEditorRingsLayout, drumEditorBrophetLayout, &drumSynthMenu};
++                                       drumEditorRingsLayout, drumEditorBrophetLayout, drumEditorBruno106Layout,
++                                       &drumSynthMenu};
 +} // namespace deluge::gui::menu_item::drum_synth
 +
  // Not FM
@@ -21913,7 +23526,7 @@ index 7bbd559f6..476ad3b9d 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2318,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2367,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -21925,7 +23538,7 @@ index 7bbd559f6..476ad3b9d 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2347,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2396,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -21934,7 +23547,7 @@ index 7bbd559f6..476ad3b9d 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2356,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2405,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -21945,7 +23558,7 @@ index 7bbd559f6..476ad3b9d 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2386,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2435,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -21953,7 +23566,7 @@ index 7bbd559f6..476ad3b9d 100644
      },
  };
  
-@@ -1668,8 +2476,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2525,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -21967,7 +23580,7 @@ index 7bbd559f6..476ad3b9d 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2510,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2559,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -21984,7 +23597,7 @@ index 7bbd559f6..476ad3b9d 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2530,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2579,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -21993,7 +23606,7 @@ index 7bbd559f6..476ad3b9d 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2652,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2701,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -22002,7 +23615,7 @@ index 7bbd559f6..476ad3b9d 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2703,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2752,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -22017,7 +23630,7 @@ index 7bbd559f6..476ad3b9d 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2731,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2780,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -22025,7 +23638,7 @@ index 7bbd559f6..476ad3b9d 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2748,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2797,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -22034,7 +23647,7 @@ index 7bbd559f6..476ad3b9d 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1943,7 +2766,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1943,7 +2815,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	&stutterDirectionMenu},
@@ -22043,7 +23656,7 @@ index 7bbd559f6..476ad3b9d 100644
      {nullptr,	        &voice::polyphonicVoiceCountMenu, nullptr,  nullptr,	        &unison::stereoSpreadMenu,  &compRatio,	nullptr,	nullptr              },
      {&env3ReleaseMenu,	&env3SustainMenu,	    &env3DecayMenu,	    &env3AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
      {&env4ReleaseMenu,	&env4SustainMenu,	    &env4DecayMenu,	    &env4AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
-@@ -1951,10 +2774,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2823,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -22077,7 +23690,7 @@ index 7bbd559f6..476ad3b9d 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2845,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2894,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -22086,7 +23699,7 @@ index 7bbd559f6..476ad3b9d 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2869,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2918,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -22096,10 +23709,18 @@ index 7bbd559f6..476ad3b9d 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd62..0ccc8d2d8 100644
+index 09efdfd62..2eb09fbef 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
-@@ -25,6 +25,7 @@
+@@ -4,6 +4,7 @@
+ #include "gui/menu_item/edit_name.h"
+ #include "gui/menu_item/filter/param.h"
+ #include "gui/menu_item/firmware/version.h"
++#include "gui/menu_item/mod_fx/bruno_chorus.h"
+ #include "gui/menu_item/note/fill.h"
+ #include "gui/menu_item/note/iterance_divisor.h"
+ #include "gui/menu_item/note/iterance_preset.h"
+@@ -25,6 +26,7 @@
  #include "gui/menu_item/randomizer/randomizer_lock.h"
  #include "gui/menu_item/sample/end.h"
  #include "gui/menu_item/sample/start.h"
@@ -22107,7 +23728,15 @@ index 09efdfd62..0ccc8d2d8 100644
  #include "gui/menu_item/sequence/direction.h"
  #include "gui/menu_item/source/patched_param/modulator_level.h"
  #include "gui/menu_item/stem_export/start.h"
-@@ -46,6 +47,8 @@ extern gui::menu_item::sample::Start sample0StartMenu;
+@@ -38,6 +40,7 @@ class HorizontalMenuContainer;
+ } // namespace deluge::gui::menu_item
+ 
+ extern gui::menu_item::patched_param::IntegerNonFM noiseMenu;
++extern gui::menu_item::mod_fx::BrunoChorusOnOff brunoChorusOnMenu;
+ extern gui::menu_item::osc::Sync oscSyncMenu;
+ extern gui::menu_item::osc::source::WaveIndex source0WaveIndexMenu;
+ extern gui::menu_item::osc::source::WaveIndex source1WaveIndexMenu;
+@@ -46,6 +49,8 @@ extern gui::menu_item::sample::Start sample0StartMenu;
  extern gui::menu_item::sample::Start sample1StartMenu;
  extern gui::menu_item::sample::End sample0EndMenu;
  extern gui::menu_item::sample::End sample1EndMenu;
@@ -22116,7 +23745,7 @@ index 09efdfd62..0ccc8d2d8 100644
  extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
  extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
  extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
-@@ -113,7 +116,39 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
+@@ -113,7 +118,39 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
  extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
@@ -22243,7 +23872,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index 1cd5b7410..90baa0fbd 100644
+index 1cd5b7410..71d2ddd8d 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -2,7 +2,10 @@
@@ -22609,7 +24238,7 @@ index 1cd5b7410..90baa0fbd 100644
  			    && runtimeFeatureSettings.get(HorizontalMenus) == On
  			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
  
-@@ -1677,11 +1898,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1677,11 +1898,23 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				setupSuccess = setup(currentClip, item, thingIndex);
  			}
  
@@ -22626,10 +24255,14 @@ index 1cd5b7410..90baa0fbd 100644
  			enterOrUpdateSoundEditor(on);
 +			showShortcutName(x, y);
 +			blinkModButtonFor(const_cast<MenuItem*>(item));
++			// BRUNO CHORUS's pad is a switch: each press flips it
++			if (item == &brunoChorusOnMenu) {
++				brunoChorusOnMenu.flipFromPad();
++			}
  		}
  	}
  
-@@ -1727,6 +1956,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1727,6 +1960,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -22644,7 +24277,7 @@ index 1cd5b7410..90baa0fbd 100644
  	RootUI* rootUI = getRootUI();
  
  	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2170,6 +2407,7 @@ doMIDIOrCV:
+@@ -2170,6 +2411,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -26600,7 +28233,7 @@ index 8158be2c4..a6a825f8d 100644
 +	int32_t shifted(int32_t noteCode) const { return std::clamp<int32_t>(noteCode + noteShift_, 0, kMaxMIDIValue); }
  };
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
-index a7bbbd46a..02b2c7a57 100644
+index a7bbbd46a..219a56d32 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable.cpp
 @@ -710,6 +710,16 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
@@ -26672,6 +28305,32 @@ index a7bbbd46a..02b2c7a57 100644
  		delayWorkingState.delayFeedbackAmount =
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
+@@ -1162,7 +1194,7 @@ void GlobalEffectable::processFXForGlobalEffectable(std::span<StereoSample> buff
+ 	// TODO: this saves a tiny amount of memory at the cost of needing allocations during the audio render cycle...
+ 	// seems kinda dumb
+ 	if (util::one_of(modFXTypeNow, {ModFXType::CHORUS_STEREO, ModFXType::CHORUS, ModFXType::FLANGER, ModFXType::WARBLE,
+-	                                ModFXType::DIMENSION})) {
++	                                ModFXType::DIMENSION, ModFXType::BRUNO_CHORUS})) {
+ 		modfx.setupBuffer();
+ 		disableGrain();
+ 	}
+@@ -1194,6 +1226,7 @@ deluge::vector<std::string_view> getModNames() {
+ 	    l10n::getView(STRING_FOR_WARBLE),
+ 	    l10n::getView(STRING_FOR_DIMENSION), //<
+ 	    l10n::getView(STRING_FOR_GRAIN),     //<
++	    l10n::getView(STRING_FOR_BRUNO_CHORUS),
+ 	};
+ }
+ 
+@@ -1246,6 +1279,8 @@ const char* modFXToString(ModFXType type) {
+ 		return l10n::get(STRING_FOR_DIMENSION);
+ 	case ModFXType::GRAIN:
+ 		return l10n::get(STRING_FOR_GRAIN);
++	case ModFXType::BRUNO_CHORUS:
++		return l10n::get(STRING_FOR_BRUNO_CHORUS);
+ 	case ModFXType::WARBLE:
+ 		return l10n::get(STRING_FOR_WARBLE);
+ 	default:
 diff --git a/src/deluge/model/global_effectable/global_effectable.h b/src/deluge/model/global_effectable/global_effectable.h
 index 24472813b..808b95c86 100644
 --- a/src/deluge/model/global_effectable/global_effectable.h
@@ -27994,10 +29653,10 @@ index 000000000..b48b60583
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/synth_instruments.h b/src/deluge/model/instrument/synth_instruments.h
 new file mode 100644
-index 000000000..6b511885f
+index 000000000..9cd15c757
 --- /dev/null
 +++ b/src/deluge/model/instrument/synth_instruments.h
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,112 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -28042,11 +29701,14 @@ index 000000000..6b511885f
 +	bool brophet;
 +	/// The stock blank synth, as SHIFT + SYNTH made before: no folder of its own, not a default instrument
 +	bool init;
++	/// BRUNO106 (the KR-106 DCO voice in SYNTH MODE). As BROPHET: its presets are the way in.
++	bool bruno106 = false;
 +};
 +
-+// BROPHET goes after DX7 so the types saved before it (Defaults > Synth instrument) keep their numbers. DX7 only shows
++// BROPHET goes after DX7, and BRUNO106 after BROPHET, so the types saved before them (Defaults > Synth instrument) keep
++// their numbers. DX7 only shows
 +// with its setting on, so it usually comes straight after BRINGS.
-+inline constexpr std::array<SynthInstrument, 8> kSynthInstruments{{
++inline constexpr std::array<SynthInstrument, 9> kSynthInstruments{{
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_SUBT, "SYNTHS/SUBT", SynthMode::SUBTRACTIVE, false, false, false, false,
 +     false},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_FM, "SYNTHS/FM", SynthMode::FM, false, false, false, false, false},
@@ -28058,6 +29720,8 @@ index 000000000..6b511885f
 +     false},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_BROPHET, "SYNTHS/BROPHET", SynthMode::SUBTRACTIVE, false, false, false, true,
 +     false},
++    {l10n::String::STRING_FOR_SYNTH_TYPE_BRUNO106, "SYNTHS/BRUNO106", SynthMode::SUBTRACTIVE, false, false, false,
++     false, false, true},
 +    {l10n::String::STRING_FOR_SYNTH_TYPE_INIT, "SYNTHS", SynthMode::SUBTRACTIVE, false, false, false, false, true},
 +}};
 +
@@ -28105,29 +29769,95 @@ index 000000000..6b511885f
 +}
 +
 +} // namespace deluge::synth_instruments
+diff --git a/src/deluge/model/mod_controllable/ModFXProcessor.cpp b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
+index eec776ee6..1ffdb3412 100644
+--- a/src/deluge/model/mod_controllable/ModFXProcessor.cpp
++++ b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
+@@ -31,6 +31,21 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+ 	// if nothing rendered into the clip then we can just return
+ 	if (anySoundComingIn == false)
+ 		return;
++	if (modFXType == ModFXType::BRUNO_CHORUS) {
++		if (modFXBuffer == nullptr) {
++			return;
++		}
++		if (!brunoChorus.started) {
++			memset(modFXBuffer, 0, kModFXBufferSize * sizeof(StereoSample));
++			brunoChorus.reset();
++		}
++		static_assert(kModFXBufferSize * sizeof(StereoSample)
++		              >= deluge::dsp::drum_synth::bruno106::Chorus::kMemoryFloats * sizeof(float));
++		brunoChorus.process(buffer, reinterpret_cast<float*>(modFXBuffer), brunoChorusMode);
++		*postFXVolume = multiply_32x32_rshift32(*postFXVolume, 1518500250) << 1; // Divide by sqrt(2), as the chorus
++		return;
++	}
++	brunoChorus.started = false;
+ 	if (modFXType != ModFXType::NONE) {
+ 
+ 		LFOType modFXLFOWaveType{};
+@@ -75,6 +90,7 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+ 			                                      thisModFXDelayDepth, feedback, AudioEngine::renderInStereo);
+ 			break;
+ 		case ModFXType::GRAIN:
++		case ModFXType::BRUNO_CHORUS: // handled above
+ 			break;
+ 		case ModFXType::DIMENSION:
+ 			processModFXBuffer<ModFXType::DIMENSION>(buffer, modFXRate, modFXDepth, modFXLFOWaveType, modFXDelayOffset,
+@@ -268,6 +284,7 @@ StereoSample ModFXProcessor::processOnePhaserSample(StereoSample sample, int32_t
+ }
+ 
+ void ModFXProcessor::resetMemory() {
++	brunoChorus.started = false;
+ 	if (modFXBuffer) {
+ 		memset(modFXBuffer, 0, kModFXBufferSize * sizeof(StereoSample));
+ 	}
+diff --git a/src/deluge/model/mod_controllable/ModFXProcessor.h b/src/deluge/model/mod_controllable/ModFXProcessor.h
+index 47d9c940c..547c601e7 100644
+--- a/src/deluge/model/mod_controllable/ModFXProcessor.h
++++ b/src/deluge/model/mod_controllable/ModFXProcessor.h
+@@ -17,6 +17,7 @@
+ #pragma once
+ 
+ #include "definitions_cxx.hpp"
++#include "dsp/drum_synth/bruno106_chorus.h"
+ #include "dsp/stereo_sample.h"
+ #include "modulation/lfo.h"
+ #include "util/containers.h"
+@@ -67,6 +68,9 @@ public:
+ 	uint16_t modFXBufferWriteIndex{0};
+ 	LFO modFXLFO;
+ 	LFO modFXLFOStereo;
++	/// BRUNO CHORUS: its state (its delay lines are modFXBuffer) and mode, 1 to 3 (I, II, I+II)
++	deluge::dsp::drum_synth::bruno106::Chorus brunoChorus;
++	uint8_t brunoChorusMode{1};
+ 	void processModFX(std::span<StereoSample> buffer, const ModFXType& modFXType, int32_t modFXRate, int32_t modFXDepth,
+ 	                  int32_t* postFXVolume, UnpatchedParamSet* unpatchedParams, bool anySoundComingIn);
+ 	void resetMemory();
 diff --git a/src/deluge/model/mod_controllable/filters/filter_config.cpp b/src/deluge/model/mod_controllable/filters/filter_config.cpp
-index 486170691..ec1bcc099 100644
+index 486170691..f2ac253c6 100644
 --- a/src/deluge/model/mod_controllable/filters/filter_config.cpp
 +++ b/src/deluge/model/mod_controllable/filters/filter_config.cpp
-@@ -8,6 +8,7 @@ namespace deluge::dsp::filter {
+@@ -8,6 +8,8 @@ namespace deluge::dsp::filter {
  EnumStringMap<FilterMode, kNumFilterModes> filterMap({{{FilterMode::TRANSISTOR_12DB, "12dB"},
                                                         {FilterMode::TRANSISTOR_24DB, "24dB"},
                                                         {FilterMode::TRANSISTOR_24DB_DRIVE, "24dBDrive"},
 +                                                       {FilterMode::BROPHET, "Brophet"},
++                                                       {FilterMode::BRUNO106, "Bruno106"},
                                                         {FilterMode::SVF_BAND, "SVF_Band"},
                                                         {FilterMode::SVF_NOTCH, "SVF_Notch"},
                                                         {FilterMode::HPLADDER, "HPLadder"},
 diff --git a/src/deluge/model/mod_controllable/filters/filter_config.h b/src/deluge/model/mod_controllable/filters/filter_config.h
-index 701919156..888574d64 100644
+index 701919156..d793ba43b 100644
 --- a/src/deluge/model/mod_controllable/filters/filter_config.h
 +++ b/src/deluge/model/mod_controllable/filters/filter_config.h
-@@ -26,13 +26,14 @@ enum class FilterMode {
+@@ -26,13 +26,15 @@ enum class FilterMode {
  	TRANSISTOR_12DB,
  	TRANSISTOR_24DB,
  	TRANSISTOR_24DB_DRIVE, // filter logic relies on ladders being first and contiguous
 -	SVF_BAND,              // first HPF mode
 -	SVF_NOTCH,             // last LPF mode
 +	BROPHET,   // Pro-54's old filter (see dsp/filter/brophet.h). Counted with the ladders: its morph is drive
++	BRUNO106,  // KR-106's IR3109 filter (see dsp/filter/bruno106.h). Counted with the ladders: its morph is drive
 +	SVF_BAND,  // first HPF mode
 +	SVF_NOTCH, // last LPF mode
  	HPLADDER,
@@ -28135,22 +29865,22 @@ index 701919156..888574d64 100644
  };
  constexpr int32_t kNumFilterModes = util::to_underlying(FilterMode::OFF) + 1;
 -constexpr FilterMode kLastLadder = FilterMode::TRANSISTOR_24DB_DRIVE;
-+constexpr FilterMode kLastLadder = FilterMode::BROPHET;
++constexpr FilterMode kLastLadder = FilterMode::BRUNO106;
  constexpr int32_t kNumLPFModes = util::to_underlying(FilterMode::SVF_NOTCH) + 1;
  constexpr FilterMode lastLpfMode = FilterMode::SVF_NOTCH;
  constexpr FilterMode firstHPFMode = FilterMode::SVF_BAND;
-@@ -56,8 +57,8 @@ namespace deluge::dsp::filter {
+@@ -56,8 +58,8 @@ namespace deluge::dsp::filter {
  
  enum class FilterFamily { LP_LADDER, SVF, HP_LADDER, NONE };
  constexpr uint8_t kNumFamilies = 3;
 -enum LpLadderType { LP12, LP24, DRIVE };
 -constexpr uint8_t kNumLadders = 3;
-+enum LpLadderType { LP12, LP24, DRIVE, BROPHET };
-+constexpr uint8_t kNumLadders = 4;
++enum LpLadderType { LP12, LP24, DRIVE, BROPHET, BRUNO106 };
++constexpr uint8_t kNumLadders = 5;
  enum SVFType { BAND, NOTCH };
  constexpr uint8_t kNumSVF = 2;
  enum HPFType { HP12 };
-@@ -102,6 +103,10 @@ public:
+@@ -102,6 +104,14 @@ public:
  			family = FilterFamily::LP_LADDER;
  			type = LpLadderType::DRIVE;
  			break;
@@ -28158,11 +29888,15 @@ index 701919156..888574d64 100644
 +			family = FilterFamily::LP_LADDER;
 +			type = LpLadderType::BROPHET;
 +			break;
++		case FilterMode::BRUNO106:
++			family = FilterFamily::LP_LADDER;
++			type = LpLadderType::BRUNO106;
++			break;
  		}
  	}
  
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04f..52fbdad7e 100644
+index fd80ba04f..31dda0e13 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -28268,22 +30002,25 @@ index fd80ba04f..52fbdad7e 100644
  	// Bitcrushing ------------------------------------------------------------------------------
  	if (isBitcrushingEnabled(paramManager)) {
  		uint32_t positivePreset =
-@@ -409,9 +467,12 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+@@ -409,9 +467,15 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
  	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
 -	if (clippingAmount) {
 -		writer.writeAttribute("clippingAmount", clippingAmount);
++	if (modFXType_ == ModFXType::BRUNO_CHORUS) {
++		writer.writeAttribute("brunoChorusMode", modfx.brunoChorusMode);
+ 	}
 +	// The drive is a param now, written with the others
 +	if (saturation.type != deluge::dsp::SaturationSettings{}.type) {
 +		writer.writeAttribute("satType", deluge::dsp::saturationTypeToString(saturation.type));
- 	}
++	}
 +	// Always written: a file without it is from before the crush types and loads as classic
 +	writer.writeAttribute("crushType", deluge::dsp::crushTypeToString(crushType));
  }
  
  void ModControllableAudio::writeTagsToFile(Serializer& writer) {
-@@ -503,6 +564,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
+@@ -503,6 +567,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	unpatchedParams->writeParamAsAttribute(writer, "compressorThreshold", params::UNPATCHED_COMPRESSOR_THRESHOLD,
  	                                       writeAutomation, false, valuesForOverride);
@@ -28292,7 +30029,7 @@ index fd80ba04f..52fbdad7e 100644
  
  	unpatchedParams->writeParamAsAttribute(writer, "arpeggiatorGate", params::UNPATCHED_ARP_GATE, writeAutomation);
  	unpatchedParams->writeParamAsAttribute(writer, "noteProbability", params::UNPATCHED_NOTE_PROBABILITY,
-@@ -615,6 +678,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
+@@ -615,6 +681,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
  		                           readAutomationUpToPos);
  		reader.exitTag("compressorThreshold");
  	}
@@ -28303,7 +30040,18 @@ index fd80ba04f..52fbdad7e 100644
  
  	// Arpeggiator stuff
  
-@@ -734,9 +801,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -724,6 +794,10 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+ 		lpfMode = stringToLPFType(reader.readTagOrAttributeValue());
+ 		reader.exitTag("lpfMode");
+ 	}
++	else if (!strcmp(tagName, "brunoChorusMode")) {
++		modfx.brunoChorusMode = static_cast<uint8_t>(std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 1, 3));
++		reader.exitTag("brunoChorusMode");
++	}
+ 	else if (!strcmp(tagName, "hpfMode")) {
+ 		hpfMode = stringToLPFType(reader.readTagOrAttributeValue());
+ 		reader.exitTag("hpfMode");
+@@ -734,9 +808,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  	}
  
  	else if (!strcmp(tagName, "clippingAmount")) {
@@ -28332,7 +30080,7 @@ index fd80ba04f..52fbdad7e 100644
  
  	// Arpeggiator
  
-@@ -806,6 +891,7 @@ doReadPatchedParam:
+@@ -806,6 +898,7 @@ doReadPatchedParam:
  					PatchedParamSet* patchedParams = (PatchedParamSet*)patchedParamsSummary->paramCollection;
  					patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_DELAY_FEEDBACK,
  					                         readAutomationUpToPos);
@@ -28340,12 +30088,14 @@ index fd80ba04f..52fbdad7e 100644
  				}
  				reader.exitTag();
  			}
-@@ -1439,6 +1525,8 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
+@@ -1439,6 +1532,10 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
  		return l10n::get(STRING_FOR_24DB_LADDER);
  	case FilterMode::TRANSISTOR_24DB_DRIVE:
  		return l10n::get(STRING_FOR_DRIVE);
 +	case FilterMode::BROPHET:
 +		return l10n::get(STRING_FOR_BROPHET_FILTER);
++	case FilterMode::BRUNO106:
++		return l10n::get(STRING_FOR_BRUNO106_FILTER);
  	case FilterMode::SVF_BAND:
  		return l10n::get(STRING_FOR_SVF_BAND);
  	case FilterMode::SVF_NOTCH:
@@ -32338,10 +34088,10 @@ index 9eca346b7..31f46a097 100644
  	void switchGateOn(int32_t channel, int32_t doInstantlyIfPossible = false);
 diff --git a/src/deluge/processing/sound/drum_synth_params.h b/src/deluge/processing/sound/drum_synth_params.h
 new file mode 100644
-index 000000000..2a0a92f50
+index 000000000..1ad5d88dc
 --- /dev/null
 +++ b/src/deluge/processing/sound/drum_synth_params.h
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,228 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -32521,6 +34271,23 @@ index 000000000..2a0a92f50
 +	}
 +}
 +
++/// What BRUNO106 calls the setting on a control slot, or EMPTY_STRING for a slot it doesn't use
++inline deluge::l10n::String bruno106KnobName(int32_t slot) {
++	using enum deluge::l10n::String;
++	switch (slot) {
++	case DrumControls::BRUNO_PW:
++		return STRING_FOR_BRUNO_PW;
++	case DrumControls::BRUNO_SUB:
++		return STRING_FOR_BRUNO_SUB;
++	case DrumControls::BRUNO_NOISE:
++		return STRING_FOR_BRUNO_NOISE;
++	case DrumControls::BRUNO_SLOP:
++		return STRING_FOR_BRUNO_SLOP;
++	default:
++		return EMPTY_STRING;
++	}
++}
++
 +/// What GIN calls the setting on a control slot
 +inline deluge::l10n::String ginKnobName(int32_t slot) {
 +	using enum deluge::l10n::String;
@@ -32554,7 +34321,7 @@ index 000000000..2a0a92f50
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..b165dab58 100644
+index 5f4a82450..c7cb8c6d5 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -32729,7 +34496,7 @@ index 5f4a82450..b165dab58 100644
  
  	if (song_firmware_version < FirmwareVersion::official({4, 0, 0, "beta"})) {
  
-@@ -325,6 +450,287 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
+@@ -325,6 +450,295 @@ void Sound::setupAsBlankSynth(ParamManager* paramManager, bool is_dx) {
  	doneReadingFromFile();
  }
  
@@ -32809,9 +34576,13 @@ index 5f4a82450..b165dab58 100644
 +		          DrumControls::RINGS_STRUCTURE};
 +		break;
 +	case Engine::BROPHET:
-+		// Poly mod's depths, from osc B and from envelope 2, then osc B's detune and osc A's pulse width
-+		layout = {DrumControls::BROPHET_PM_OSC_B, DrumControls::BROPHET_PM_ENV, DrumControls::BROPHET_FINE_B,
-+		          DrumControls::BROPHET_PW_A};
++		// A synth: mod rate / depth are the Deluge's vibrato (LFO 1 rate, LFO 1 to pitch), as on any synth. Osc B's
++		// detune and osc A's pulse width on Custom 2 / 3.
++		layout = {-1, -1, DrumControls::BROPHET_FINE_B, DrumControls::BROPHET_PW_A};
++		break;
++	case Engine::BRUNO106:
++		// A synth: vibrato on mod rate / depth, as BROPHET. Sub and pulse width on Custom 2 / 3.
++		layout = {-1, -1, DrumControls::BRUNO_SUB, DrumControls::BRUNO_PW};
 +		break;
 +	default:
 +		// The Cyc engines: Sweep / Contour, Color / Shape
@@ -32839,7 +34610,7 @@ index 5f4a82450..b165dab58 100644
 +		layout.custom3 = sharedControlSlot(engine, StandardSlot::CHARACTER_B);
 +	}
 +
-+	if (deluge::dsp::drum_synth::isBrophet(engine)) {
++	if (deluge::dsp::drum_synth::isBrophet(engine) || deluge::dsp::drum_synth::isBruno106(engine)) {
 +		// A synth: the Deluge's own attack and release
 +		modKnobs[2][1].paramDescriptor.setToHaveParamOnly(params::LOCAL_ENV_0_ATTACK);
 +		modKnobs[2][0].paramDescriptor.setToHaveParamOnly(params::LOCAL_ENV_0_RELEASE);
@@ -32921,6 +34692,10 @@ index 5f4a82450..b165dab58 100644
 +	const auto engine = sources[0].drumPatch.engine();
 +	if (deluge::dsp::drum_synth::isBrophet(engine)) {
 +		const auto name = deluge::dsp::drum_synth::brophetKnobName(slot);
++		return (name == EMPTY_STRING) ? nullptr : deluge::l10n::get(name);
++	}
++	if (deluge::dsp::drum_synth::isBruno106(engine)) {
++		const auto name = deluge::dsp::drum_synth::bruno106KnobName(slot);
 +		return (name == EMPTY_STRING) ? nullptr : deluge::l10n::get(name);
 +	}
 +	if (deluge::dsp::drum_synth::isRings(engine)) {
@@ -33017,7 +34792,16 @@ index 5f4a82450..b165dab58 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -435,6 +841,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -333,7 +747,7 @@ ModFXType Sound::getModFXType() {
+ bool Sound::setModFXType(ModFXType newType) {
+ 
+ 	if (util::one_of(newType, {ModFXType::FLANGER, ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::WARBLE,
+-	                           ModFXType::DIMENSION})) {
++	                           ModFXType::DIMENSION, ModFXType::BRUNO_CHORUS})) {
+ 		modfx.setupBuffer();
+ 		disableGrain();
+ 	}
+@@ -435,6 +849,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -33027,7 +34811,7 @@ index 5f4a82450..b165dab58 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -638,6 +1047,27 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -638,6 +1055,27 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("unison", true);
  	}
  
@@ -33055,7 +34839,7 @@ index 5f4a82450..b165dab58 100644
  	else if (!strcmp(tagName, "oscAPitchAdjust")) {
  		ENSURE_PARAM_MANAGER_EXISTS
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_A_PITCH_ADJUST, readAutomationUpToPos);
-@@ -1249,6 +1679,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1687,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -33068,7 +34852,7 @@ index 5f4a82450..b165dab58 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1280,6 +1716,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1280,6 +1724,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -33080,7 +34864,7 @@ index 5f4a82450..b165dab58 100644
  	else if (!strcmp(tagName, "midiOutput")) {
  		reader.match('{');
  		while (*(tagName = reader.readNextTagOrAttributeName())) {
-@@ -1347,6 +1788,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1796,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -33094,7 +34878,7 @@ index 5f4a82450..b165dab58 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1962,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1970,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -33104,7 +34888,7 @@ index 5f4a82450..b165dab58 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2095,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2103,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -33123,7 +34907,7 @@ index 5f4a82450..b165dab58 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1654,6 +2113,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1654,6 +2121,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  			const ActiveVoice& voice = voiceToReuse != nullptr ? *voiceToReuse : this->acquireVoice();
  			int32_t envelopePositions[kNumEnvelopes];
  
@@ -33135,7 +34919,7 @@ index 5f4a82450..b165dab58 100644
  			if (voiceToReuse != nullptr) [[unlikely]] {
  				// The osc phases and stuff will remain
  				for (int32_t e = 0; e < kNumEnvelopes; e++) {
-@@ -1692,6 +2156,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1692,6 +2164,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  
  	lastNoteCode = noteCodePostArp; // Store for porta. We store that at both note-on and note-off.
  
@@ -33144,7 +34928,7 @@ index 5f4a82450..b165dab58 100644
  	// Send midi out for sound drums
  	if (outputMidiChannel != MIDI_CHANNEL_NONE) {
  		int32_t outputNoteCode = noteCodePostArp;
-@@ -1708,9 +2174,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1708,9 +2182,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendNote(this, true, outputNoteCode, velocity, outputMidiChannel, 0);
  
  		// If the note doesn't have a tail (for ONCE samples for example and if ARP is OFF), we will never get a noteOff
@@ -33156,7 +34940,7 @@ index 5f4a82450..b165dab58 100644
  		}
  	}
  }
-@@ -1778,6 +2244,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
+@@ -1778,6 +2252,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
  
  // noteCode = ALL_NOTES_OFF (default) means stop *any* voice, regardless of noteCode
  void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t noteCode) {
@@ -33165,7 +34949,7 @@ index 5f4a82450..b165dab58 100644
  	// Send midi note offs out for specific notes,
  	// but only if the type of sound allows note tails (if not, note off was already sent right after its note on)
  	if (outputMidiChannel != MIDI_CHANNEL_NONE && allowNoteTails(modelStack, true)) {
-@@ -1865,6 +2333,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2341,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -33182,7 +34966,7 @@ index 5f4a82450..b165dab58 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2405,11 @@ justSwitchOff:
+@@ -1927,6 +2413,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -33194,7 +34978,7 @@ index 5f4a82450..b165dab58 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2659,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2667,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -33203,7 +34987,7 @@ index 5f4a82450..b165dab58 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2868,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2876,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -33216,7 +35000,7 @@ index 5f4a82450..b165dab58 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2392,6 +2881,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2889,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -33226,7 +35010,7 @@ index 5f4a82450..b165dab58 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +2988,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2996,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -33257,7 +35041,7 @@ index 5f4a82450..b165dab58 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +3018,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +3026,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -33279,7 +35063,7 @@ index 5f4a82450..b165dab58 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +3048,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +3056,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -33294,8 +35078,26 @@ index 5f4a82450..b165dab58 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +3119,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2605,9 +3125,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+ 	int32_t modFXDepth = paramFinalValues[params::GLOBAL_MOD_FX_DEPTH - params::FIRST_GLOBAL];
+ 	int32_t modFXRate = paramFinalValues[params::GLOBAL_MOD_FX_RATE - params::FIRST_GLOBAL];
  
++	// BRUNO106's HPF slider: once per track on the summed voices, before the Mod FX, as on the hardware. FLAT (and any
++	// other engine) skips it altogether.
++	{
++		namespace ds = deluge::dsp::drum_synth;
++		const ds::bruno106::Hpf hpf =
++		    (sources[0].oscType == OscType::DRUM_SYNTH && ds::isBruno106(sources[0].drumPatch.engine()))
++		        ? static_cast<ds::bruno106::Hpf>(std::min<uint8_t>(sources[0].drumPatch.get(ds::Patch::BRUNO_HPF), 3))
++		        : ds::bruno106::Hpf::FLAT;
++		if (hpf != ds::bruno106::Hpf::FLAT) {
++			brunoHpf_.process(sound_stereo, hpf);
++		}
++		else {
++			brunoHpf_.idle();
++		}
++	}
++
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
 -	          !voices_.empty(), reverbSendAmount >> 1);
@@ -33303,7 +35105,7 @@ index 5f4a82450..b165dab58 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3405,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3429,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -33339,7 +35141,7 @@ index 5f4a82450..b165dab58 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3511,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3535,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -33355,7 +35157,7 @@ index 5f4a82450..b165dab58 100644
  }
  
  // Set cents for master transpose
-@@ -3042,6 +3577,32 @@ void Sound::setupUnisonStereoSpread() {
+@@ -3042,6 +3601,32 @@ void Sound::setupUnisonStereoSpread() {
  	}
  }
  
@@ -33388,7 +35190,7 @@ index 5f4a82450..b165dab58 100644
  void Sound::calculateEffectiveVolume() {
  	// volumeNeutralValueForUnison = (float)getParamNeutralValue(params::LOCAL_VOLUME) / sqrt(numUnison);
  	volumeNeutralValueForUnison = (float)134217728 / sqrtf(numUnison);
-@@ -3053,8 +3614,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3638,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -33409,7 +35211,7 @@ index 5f4a82450..b165dab58 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3672,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3696,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -33510,7 +35312,7 @@ index 5f4a82450..b165dab58 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3879,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3903,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -33519,7 +35321,7 @@ index 5f4a82450..b165dab58 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3411,6 +4078,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4102,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -33541,7 +35343,7 @@ index 5f4a82450..b165dab58 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4115,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4139,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -33552,7 +35354,7 @@ index 5f4a82450..b165dab58 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4329,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4353,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -33562,7 +35364,7 @@ index 5f4a82450..b165dab58 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4456,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4480,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -33574,7 +35376,7 @@ index 5f4a82450..b165dab58 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4550,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4574,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -33593,7 +35395,7 @@ index 5f4a82450..b165dab58 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4744,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4768,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -33614,7 +35416,7 @@ index 5f4a82450..b165dab58 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4837,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4861,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -33626,7 +35428,7 @@ index 5f4a82450..b165dab58 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4855,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4879,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -33637,7 +35439,7 @@ index 5f4a82450..b165dab58 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4908,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4932,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -33648,7 +35450,7 @@ index 5f4a82450..b165dab58 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4255,6 +4985,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4255,6 +5009,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	writer.writeAttribute("spread", unisonStereoSpread, false);
  	writer.closeTag();
  
@@ -33663,7 +35465,7 @@ index 5f4a82450..b165dab58 100644
  	if (paramManager) {
  		writer.writeOpeningTagBeginning("defaultParams", true);
  		Sound::writeParamsToFile(writer, paramManager, false);
-@@ -4441,6 +5179,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5203,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -33686,7 +35488,7 @@ index 5f4a82450..b165dab58 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4818,6 +5572,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+@@ -4818,6 +5596,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
  		return true;
  	}
  
@@ -33698,7 +35500,7 @@ index 5f4a82450..b165dab58 100644
  	if (unisonStereoSpread && numUnison > 1) {
  		return true;
  	}
-@@ -4948,6 +5707,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5731,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -33709,18 +35511,19 @@ index 5f4a82450..b165dab58 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 504b075f1..d8f8c669c 100644
+index 504b075f1..2d72a4ac3 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,8 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
++#include "dsp/drum_synth/bruno106_hpf.h"
 +#include "dsp/tb303/open303.h"
  #include "model/mod_controllable/mod_controllable_audio.h"
  #include "model/sample/sample_recorder.h"
  #include "model/voiced.h"
-@@ -38,6 +39,15 @@
+@@ -38,6 +40,15 @@
  struct CableGroup;
  class StereoSample;
  class Voice;
@@ -33736,7 +35539,7 @@ index 504b075f1..d8f8c669c 100644
  class Kit;
  class ParamManagerForTimeline;
  class TimelineCounter;
-@@ -73,6 +83,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
+@@ -73,6 +84,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
  /// The depth of the VELOCITY -> LOCAL_VOLUME patch cable that Sound::setupAsSample() installs, as a user value.
  constexpr int32_t kSampleDrumVelocityCableUserValue = 50;
  
@@ -33768,7 +35571,7 @@ index 504b075f1..d8f8c669c 100644
  class Sound : public ModControllableAudio, public virtual Voiced {
  public:
  	using ActiveVoice = AudioEngine::VoicePool::pointer_type;
-@@ -116,6 +151,7 @@ public:
+@@ -116,6 +152,7 @@ public:
  	alignas(8) ModKnob modKnobs[kNumModButtons][kNumPhysicalModKnobs];
  
  	int32_t sideChainSendLevel = 0;
@@ -33776,7 +35579,7 @@ index 504b075f1..d8f8c669c 100644
  
  	PolyphonyMode polyphonic = PolyphonyMode::POLY;
  	uint8_t maxVoiceCount = 8;
-@@ -128,6 +164,16 @@ public:
+@@ -128,6 +165,16 @@ public:
  	int8_t unisonDetune = 8;
  	uint8_t unisonStereoSpread = 0;
  
@@ -33793,7 +35596,7 @@ index 504b075f1..d8f8c669c 100644
  	// For sending MIDI notes for SoundDrums
  	uint8_t outputMidiChannel = MIDI_CHANNEL_NONE;
  	uint8_t outputMidiNoteForDrum = MIDI_NOTE_NONE;
-@@ -173,6 +219,7 @@ public:
+@@ -173,6 +220,7 @@ public:
  	virtual void setSkippingRendering(bool newSkipping);
  
  	ModFXType getModFXType() override;
@@ -33801,7 +35604,7 @@ index 504b075f1..d8f8c669c 100644
  	bool setModFXType(ModFXType newType) final;
  
  	void patchedParamPresetValueChanged(uint8_t p, ModelStackWithSoundFlags* modelStack, int32_t oldValue,
-@@ -236,7 +283,28 @@ public:
+@@ -236,7 +284,28 @@ public:
  	[[nodiscard]] SynthMode getSynthMode() const { return synthMode; }
  
  	virtual bool isDrum() { return false; }
@@ -33830,7 +35633,7 @@ index 504b075f1..d8f8c669c 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
-@@ -290,20 +358,38 @@ public:
+@@ -290,20 +359,38 @@ public:
  	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
  	virtual ArpeggiatorBase* getArp() = 0;
  	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
@@ -33874,7 +35677,15 @@ index 504b075f1..d8f8c669c 100644
  
  	/// @brief Get the number of active voices
  	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
-@@ -366,6 +452,12 @@ private:
+@@ -334,6 +421,7 @@ public:
+ 	virtual const char* getName() { return nullptr; }
+ 
+ private:
++	deluge::dsp::drum_synth::bruno106::HpfState brunoHpf_; ///< BRUNO106's HPF slider, on the summed voices
+ 	uint32_t getGlobalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Global param);
+ 	void recalculateFineTuner();
+ 	void recalculateModulatorTransposer(uint8_t m, ModelStackWithSoundFlags* modelStack);
+@@ -366,6 +454,12 @@ private:
  	// we're constantly cycling between a minimum and maximum number of voices.
  	deluge::fast_vector<ActiveVoice> voices_;
  
@@ -34196,7 +36007,7 @@ index b2e373032..50316f348 100644
  Error openFavouriteFile(FilePointer* filePointer);
  Error loadFavouriteFile(FilePointer* filePointer, String* fileName);
 diff --git a/src/deluge/util/functions.cpp b/src/deluge/util/functions.cpp
-index c1d99a448..795be649c 100644
+index c1d99a448..d1b6318eb 100644
 --- a/src/deluge/util/functions.cpp
 +++ b/src/deluge/util/functions.cpp
 @@ -117,6 +117,9 @@ int32_t getParamNeutralValue(int32_t p) {
@@ -34248,6 +36059,25 @@ index c1d99a448..795be649c 100644
 +	}
  	else {
  		return SynthMode::SUBTRACTIVE;
+ 	}
+@@ -891,6 +906,8 @@ char const* fxTypeToString(ModFXType fxType) {
+ 		return "StereoChorus";
+ 	case ModFXType::GRAIN:
+ 		return "grainFX";
++	case ModFXType::BRUNO_CHORUS:
++		return "brunoChorus";
+ 
+ 	case ModFXType::PHASER:
+ 		return "phaser";
+@@ -919,6 +936,9 @@ ModFXType stringToFXType(char const* string) {
+ 	else if (!strcmp(string, "grainFX")) {
+ 		return ModFXType::GRAIN;
+ 	}
++	else if (!strcmp(string, "brunoChorus")) {
++		return ModFXType::BRUNO_CHORUS;
++	}
+ 	else if (!strcmp(string, "phaser")) {
+ 		return ModFXType::PHASER;
  	}
 diff --git a/tests/unit/CMakeLists.txt b/tests/unit/CMakeLists.txt
 index bac241e5b..0678b99c3 100644
