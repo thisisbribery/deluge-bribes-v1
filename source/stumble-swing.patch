@@ -15730,7 +15730,7 @@ index 000000000..d667db434
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..cfe9f37af 100644
+index 683a26648..e3d62437c 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -16016,7 +16016,7 @@ index 683a26648..cfe9f37af 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1217,71 @@
+@@ -997,9 +1217,77 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -16086,11 +16086,17 @@ index 683a26648..cfe9f37af 100644
 +    "STRING_FOR_BROPHET_ALL": "All three",
 +    "STRING_FOR_BROPHET_FREQ_A": "Freq A",
 +    "STRING_FOR_BROPHET_PWIDTH_A": "PW A",
-+    "STRING_FOR_BROPHET_BOTH": "Both"
++    "STRING_FOR_BROPHET_BOTH": "Both",
++    "STRING_FOR_VOICE_SPREAD": "Pan spread",
++    "STRING_FOR_VOICE_SPREAD_SHORT": "PSPR",
++    "STRING_FOR_VOICE_SPREAD_MODE": "Spread mode",
++    "STRING_FOR_VOICE_SPREAD_MODE_SHORT": "SMOD",
++    "STRING_FOR_VOICE_SPREAD_KEY": "Key",
++    "STRING_FOR_VOICE_SPREAD_PING_PONG": "Ping pong"
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..d1f773cf6 100644
+index 0032e81ac..bcc387f7b 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -16376,7 +16382,7 @@ index 0032e81ac..d1f773cf6 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1230,72 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1230,78 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -16446,11 +16452,17 @@ index 0032e81ac..d1f773cf6 100644
 +        {STRING_FOR_BROPHET_FREQ_A, "Freq A"},
 +        {STRING_FOR_BROPHET_PWIDTH_A, "PW A"},
 +        {STRING_FOR_BROPHET_BOTH, "Both"},
++        {STRING_FOR_VOICE_SPREAD, "Pan spread"},
++        {STRING_FOR_VOICE_SPREAD_SHORT, "PSPR"},
++        {STRING_FOR_VOICE_SPREAD_MODE, "Spread mode"},
++        {STRING_FOR_VOICE_SPREAD_MODE_SHORT, "SMOD"},
++        {STRING_FOR_VOICE_SPREAD_KEY, "Key"},
++        {STRING_FOR_VOICE_SPREAD_PING_PONG, "Ping pong"},
      },
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..ff372e0fe 100644
+index 2024bd2f7..480b7efb8 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -16694,7 +16706,7 @@ index 2024bd2f7..ff372e0fe 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +776,70 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +776,76 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -16762,11 +16774,17 @@ index 2024bd2f7..ff372e0fe 100644
 +        {STRING_FOR_BROPHET_FREQ_A, "FRQA"},
 +        {STRING_FOR_BROPHET_PWIDTH_A, "PWA"},
 +        {STRING_FOR_BROPHET_BOTH, "BOTH"},
++        {STRING_FOR_VOICE_SPREAD, "PAN SPREAD"},
++        {STRING_FOR_VOICE_SPREAD_SHORT, "PSPR"},
++        {STRING_FOR_VOICE_SPREAD_MODE, "SPREAD MODE"},
++        {STRING_FOR_VOICE_SPREAD_MODE_SHORT, "SMOD"},
++        {STRING_FOR_VOICE_SPREAD_KEY, "KEY"},
++        {STRING_FOR_VOICE_SPREAD_PING_PONG, "PING"},
      },
      &built_in::english,
  };
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..0313ac82f 100644
+index bc5dd6c8c..15744c3b9 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,43 @@
@@ -17023,7 +17041,7 @@ index bc5dd6c8c..0313ac82f 100644
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +831,71 @@
+@@ -605,9 +831,77 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -17093,11 +17111,17 @@ index bc5dd6c8c..0313ac82f 100644
 +        "STRING_FOR_BROPHET_ALL": "ALL",
 +        "STRING_FOR_BROPHET_FREQ_A": "FRQA",
 +        "STRING_FOR_BROPHET_PWIDTH_A": "PWA",
-+        "STRING_FOR_BROPHET_BOTH": "BOTH"
++        "STRING_FOR_BROPHET_BOTH": "BOTH",
++        "STRING_FOR_VOICE_SPREAD": "PAN SPREAD",
++        "STRING_FOR_VOICE_SPREAD_SHORT": "PSPR",
++        "STRING_FOR_VOICE_SPREAD_MODE": "SPREAD MODE",
++        "STRING_FOR_VOICE_SPREAD_MODE_SHORT": "SMOD",
++        "STRING_FOR_VOICE_SPREAD_KEY": "KEY",
++        "STRING_FOR_VOICE_SPREAD_PING_PONG": "PING"
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..fa84adaab 100644
+index 2039f041f..13c2f0ad0 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -17392,7 +17416,7 @@ index 2039f041f..fa84adaab 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1367,66 @@ enum class String : size_t {
+@@ -1145,6 +1367,72 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -17456,6 +17480,12 @@ index 2039f041f..fa84adaab 100644
 +	STRING_FOR_BROPHET_FREQ_A,
 +	STRING_FOR_BROPHET_PWIDTH_A,
 +	STRING_FOR_BROPHET_BOTH,
++	STRING_FOR_VOICE_SPREAD,
++	STRING_FOR_VOICE_SPREAD_SHORT,
++	STRING_FOR_VOICE_SPREAD_MODE,
++	STRING_FOR_VOICE_SPREAD_MODE_SHORT,
++	STRING_FOR_VOICE_SPREAD_KEY,
++	STRING_FOR_VOICE_SPREAD_PING_PONG,
  
  	STRING_LAST
  };
@@ -20500,6 +20530,121 @@ index 4448a56cf..142b28876 100644
  	// 7SEG ONLY
  	virtual void drawValue() = 0;
  
+diff --git a/src/deluge/gui/menu_item/voice/pan_spread.h b/src/deluge/gui/menu_item/voice/pan_spread.h
+new file mode 100644
+index 000000000..b33d321a9
+--- /dev/null
++++ b/src/deluge/gui/menu_item/voice/pan_spread.h
+@@ -0,0 +1,109 @@
++/*
++ * Copyright © 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++
++// VOICE > PAN SPREAD and SPREAD MODE: place each poly voice across the stereo field at note-on
++
++#include "definitions_cxx.hpp"
++#include "gui/menu_item/integer.h"
++#include "gui/menu_item/selection.h"
++#include "gui/ui/sound_editor.h"
++#include "model/drum/drum.h"
++#include "model/instrument/kit.h"
++#include "model/song/song.h"
++#include "processing/sound/sound.h"
++#include "processing/sound/sound_drum.h"
++
++namespace deluge::gui::menu_item::voice {
++
++namespace pan_spread_detail {
++// Run fn on the current sound, or every sound row in the kit when AFFECT ENTIRE is held
++template <typename Fn>
++inline void forEachTargetSound(Fn fn) {
++	if (currentUIMode == UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR && soundEditor.editingKitRow()) {
++		Kit* kit = getCurrentKit();
++		for (Drum* thisDrum = kit->firstDrum; thisDrum != nullptr; thisDrum = thisDrum->next) {
++			if (thisDrum->type == DrumType::SOUND) {
++				fn(*static_cast<SoundDrum*>(thisDrum));
++			}
++		}
++	}
++	else {
++		fn(*soundEditor.currentSound);
++	}
++}
++
++inline bool relevantFor(ModControllableAudio* modControllable) {
++	Sound* sound = static_cast<Sound*>(modControllable);
++	return sound->polyphonic == PolyphonyMode::POLY && sound->synthMode != SynthMode::TB303;
++}
++} // namespace pan_spread_detail
++
++class PanSpread final : public Integer {
++public:
++	using Integer::Integer;
++	void readCurrentValue() override { this->setValue(soundEditor.currentSound->voiceStereoSpread); }
++	bool usesAffectEntire() override { return true; }
++	void writeCurrentValue() override {
++		const auto value = static_cast<uint8_t>(this->getValue());
++		pan_spread_detail::forEachTargetSound([value](Sound& sound) { sound.voiceStereoSpread = value; });
++	}
++	[[nodiscard]] int32_t getMaxValue() const override { return kMaxVoiceStereoSpread; }
++	// SELECT goes on to SPREAD MODE (handy from the PAN pad's second layer)
++	MenuItem* selectButtonPress() override;
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return pan_spread_detail::relevantFor(modControllable);
++	}
++	void getColumnLabel(StringBuf& label) override {
++		label.append(deluge::l10n::get(l10n::String::STRING_FOR_VOICE_SPREAD_SHORT));
++	}
++};
++
++class PanSpreadMode final : public Selection {
++public:
++	using Selection::Selection;
++	void readCurrentValue() override { this->setValue(soundEditor.currentSound->voiceSpreadMode); }
++	bool usesAffectEntire() override { return true; }
++	void writeCurrentValue() override {
++		const auto mode = this->getValue<VoiceSpreadMode>();
++		pan_spread_detail::forEachTargetSound([mode](Sound& sound) { sound.voiceSpreadMode = mode; });
++	}
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		return {
++		    l10n::getView(l10n::String::STRING_FOR_ALTERNATE),
++		    l10n::getView(l10n::String::STRING_FOR_VOICE_SPREAD_KEY),
++		    l10n::getView(l10n::String::STRING_FOR_RANDOM),
++		    l10n::getView(l10n::String::STRING_FOR_VOICE_SPREAD_PING_PONG),
++		};
++	}
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return pan_spread_detail::relevantFor(modControllable);
++	}
++	void getColumnLabel(StringBuf& label) override {
++		label.append(deluge::l10n::get(l10n::String::STRING_FOR_VOICE_SPREAD_MODE_SHORT));
++	}
++};
++
++extern PanSpread panSpreadMenu;
++extern PanSpreadMode panSpreadModeMenu;
++
++inline MenuItem* PanSpread::selectButtonPress() {
++	return &panSpreadModeMenu;
++}
++
++} // namespace deluge::gui::menu_item::voice
 diff --git a/src/deluge/gui/ui/keyboard/keyboard_screen.cpp b/src/deluge/gui/ui/keyboard/keyboard_screen.cpp
 index 3b9089ec8..0679f9646 100644
 --- a/src/deluge/gui/ui/keyboard/keyboard_screen.cpp
@@ -20752,7 +20897,7 @@ index f4e341a9b..422d12415 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..6fb1a1d81 100644
+index 7bbd559f6..476ad3b9d 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -20830,7 +20975,15 @@ index 7bbd559f6..6fb1a1d81 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -243,6 +257,7 @@ namespace params = deluge::modulation::params;
+@@ -224,6 +238,7 @@
+ #include "gui/menu_item/unison/stereoSpread.h"
+ #include "gui/menu_item/unpatched_param.h"
+ #include "gui/menu_item/unpatched_param/pan.h"
++#include "gui/menu_item/voice/pan_spread.h"
+ #include "gui/menu_item/voice/polyphony.h"
+ #include "gui/menu_item/voice/portamento.h"
+ #include "gui/menu_item/voice/priority.h"
+@@ -243,6 +258,7 @@ namespace params = deluge::modulation::params;
  // Include the autogenerated menu structures
  #include "gui/menu_item/audio_clip/specific_output_source_selector.h"
  #include "gui/menu_item/generate/g_menus.inc"
@@ -20838,7 +20991,34 @@ index 7bbd559f6..6fb1a1d81 100644
  #include "gui/menu_item/midi/y_axis_to_cc1.h"
  
  // Arp --------------------------------------------------------------------------------------
-@@ -512,6 +527,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -453,15 +469,17 @@ PLACE_SDRAM_BSS voice::PolyphonyType polyphonyMenu{STRING_FOR_POLYPHONY};
+ PLACE_SDRAM_BSS voice::VoiceCount voice::polyphonicVoiceCountMenu{STRING_FOR_MAX_VOICES};
+ PLACE_SDRAM_BSS voice::Portamento portaMenu{STRING_FOR_PORTAMENTO};
+ PLACE_SDRAM_BSS voice::Priority priorityMenu{STRING_FOR_PRIORITY};
+-
+-PLACE_SDRAM_BSS HorizontalMenu voiceMenu{
+-    STRING_FOR_VOICE,
+-    {&priorityMenu, &polyphonyMenu, &voice::polyphonicVoiceCountMenu, &portaMenu, &unisonMenu},
+-    HorizontalMenu::Layout::FIXED};
+-PLACE_SDRAM_BSS HorizontalMenu voiceMenuWithoutUnison{
+-    STRING_FOR_VOICE,
+-    {&priorityMenu, &polyphonyMenu, &voice::polyphonicVoiceCountMenu, &portaMenu},
+-    HorizontalMenu::Layout::FIXED};
++PLACE_SDRAM_BSS voice::PanSpread voice::panSpreadMenu{STRING_FOR_VOICE_SPREAD};
++PLACE_SDRAM_BSS voice::PanSpreadMode voice::panSpreadModeMenu{STRING_FOR_VOICE_SPREAD_MODE};
++
++PLACE_SDRAM_BSS HorizontalMenu voiceMenu{STRING_FOR_VOICE,
++                                         {&priorityMenu, &polyphonyMenu, &voice::polyphonicVoiceCountMenu, &portaMenu,
++                                          &voice::panSpreadMenu, &voice::panSpreadModeMenu, &unisonMenu},
++                                         HorizontalMenu::Layout::FIXED};
++PLACE_SDRAM_BSS HorizontalMenu voiceMenuWithoutUnison{STRING_FOR_VOICE,
++                                                      {&priorityMenu, &polyphonyMenu, &voice::polyphonicVoiceCountMenu,
++                                                       &portaMenu, &voice::panSpreadMenu, &voice::panSpreadModeMenu},
++                                                      HorizontalMenu::Layout::FIXED};
+ PLACE_SDRAM_BSS HorizontalMenuGroup voiceMenuGroup{{&unisonMenu, &voiceMenuWithoutUnison}};
+ 
+ // Envelope 1-4 menu -----------------------------------------------------------------------------
+@@ -512,6 +530,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
@@ -20849,7 +21029,7 @@ index 7bbd559f6..6fb1a1d81 100644
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +540,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +543,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
@@ -20858,7 +21038,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,20 +651,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,20 +654,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -20887,7 +21067,7 @@ index 7bbd559f6..6fb1a1d81 100644
      },
  };
  
-@@ -674,6 +702,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
+@@ -674,6 +705,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
  PLACE_SDRAM_BSS midi::Sub midiSubMenu{STRING_FOR_SUB_BANK_SHORT, STRING_FOR_MIDI_SUB_BANK};
  PLACE_SDRAM_BSS midi::PGM midiPGMMenu{STRING_FOR_PGM, STRING_FOR_MIDI_PGM_NUMB_MENU_TITLE};
  PLACE_SDRAM_BSS midi::MPEYToModWheel mpeyToModWheelMenu{STRING_FOR_Y_AXIS_CONVERSION, STRING_FOR_Y_AXIS_CONVERSION};
@@ -20895,7 +21075,7 @@ index 7bbd559f6..6fb1a1d81 100644
  PLACE_SDRAM_BSS cv::DualCVSelection cv2SourceMenu{STRING_FOR_CV2_SOURCE};
  PLACE_SDRAM_BSS midi::AftertouchToMono midiAftertouchCollapseMenu{STRING_FOR_PATCH_SOURCE_AFTERTOUCH,
                                                                    STRING_FOR_PATCH_SOURCE_AFTERTOUCH};
-@@ -772,6 +801,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -772,6 +804,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -20904,7 +21084,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -840,6 +871,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
+@@ -840,6 +874,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
      {
          &srrMenu,
          &bitcrushMenu,
@@ -20912,7 +21092,7 @@ index 7bbd559f6..6fb1a1d81 100644
      },
  };
  
-@@ -855,6 +887,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +890,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -20943,7 +21123,7 @@ index 7bbd559f6..6fb1a1d81 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,8 +966,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,8 +969,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -20954,7 +21134,7 @@ index 7bbd559f6..6fb1a1d81 100644
      },
  };
  
-@@ -985,6 +1043,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1046,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -20966,7 +21146,7 @@ index 7bbd559f6..6fb1a1d81 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1112,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1115,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -20974,7 +21154,7 @@ index 7bbd559f6..6fb1a1d81 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1349,10 +1413,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+@@ -1349,10 +1416,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
  PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
      STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
  
@@ -20992,7 +21172,7 @@ index 7bbd559f6..6fb1a1d81 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1540,740 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1543,740 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -21733,7 +21913,7 @@ index 7bbd559f6..6fb1a1d81 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2315,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2318,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -21745,7 +21925,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2344,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2347,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -21754,7 +21934,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2353,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2356,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -21765,7 +21945,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2383,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2386,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -21773,7 +21953,7 @@ index 7bbd559f6..6fb1a1d81 100644
      },
  };
  
-@@ -1668,8 +2473,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2476,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -21787,7 +21967,7 @@ index 7bbd559f6..6fb1a1d81 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2507,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2510,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -21804,7 +21984,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2527,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2530,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -21813,7 +21993,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2649,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2652,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -21822,7 +22002,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2700,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2703,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -21837,7 +22017,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2728,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2731,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -21845,7 +22025,7 @@ index 7bbd559f6..6fb1a1d81 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2745,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2748,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -21854,7 +22034,16 @@ index 7bbd559f6..6fb1a1d81 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1951,10 +2771,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1943,7 +2766,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+     {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
+     {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
+     {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	&stutterDirectionMenu},
+-    {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
++    {nullptr,	        nullptr,	            nullptr,	        &voice::panSpreadMenu,	nullptr,	        nullptr,	nullptr,	nullptr              },
+     {nullptr,	        &voice::polyphonicVoiceCountMenu, nullptr,  nullptr,	        &unison::stereoSpreadMenu,  &compRatio,	nullptr,	nullptr              },
+     {&env3ReleaseMenu,	&env3SustainMenu,	    &env3DecayMenu,	    &env3AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
+     {&env4ReleaseMenu,	&env4SustainMenu,	    &env4DecayMenu,	    &env4AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
+@@ -1951,10 +2774,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -21888,7 +22077,7 @@ index 7bbd559f6..6fb1a1d81 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2842,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2845,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -21897,7 +22086,7 @@ index 7bbd559f6..6fb1a1d81 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2866,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2869,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -29188,7 +29377,7 @@ index 000000000..6c4f55856
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index a22b64aa9..591e8b220 100644
+index a22b64aa9..3848a46a4 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -29448,7 +29637,23 @@ index a22b64aa9..591e8b220 100644
  					Source* source = &sound.sources[s];
  					int32_t bytesPerSample = sample->byteDepth * sample->numChannels;
  
-@@ -1512,6 +1688,12 @@ carriersDone: {}
+@@ -1165,9 +1341,12 @@ skipAutoRelease: {}
+ 		doPanning = false;
+ 	}
+ 	else {
+-		// Set up panning
+-		doPanning = (AudioEngine::renderInStereo
+-		             && shouldDoPanning(paramFinalValues[params::LOCAL_PAN], &amplitudeL, &amplitudeR));
++		// Set up panning, plus this voice's VOICE > SPREAD place scaled by the current amount
++		int32_t pan = paramFinalValues[params::LOCAL_PAN];
++		if (spreadPan != 0 && sound.voiceSpreadActive()) {
++			pan = add_saturate(pan, (int32_t)(((int64_t)spreadPan * sound.voiceStereoSpread) / kMaxVoiceStereoSpread));
++		}
++		doPanning = (AudioEngine::renderInStereo && shouldDoPanning(pan, &amplitudeL, &amplitudeR));
+ 	}
+ 
+ 	uint32_t sourcesToRenderInStereo = 0;
+@@ -1512,6 +1691,12 @@ carriersDone: {}
  skipUnisonPart: {}
  	}
  
@@ -29461,7 +29666,7 @@ index a22b64aa9..591e8b220 100644
  	if (didStereoTempBuffer) {
  		int32_t* const oscBufferEnd = oscBuffer + (numSamples << 1);
  		// fold
-@@ -1519,10 +1701,10 @@ skipUnisonPart: {}
+@@ -1519,10 +1704,10 @@ skipUnisonPart: {}
  			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, paramFinalValues[params::LOCAL_FOLD]);
  		}
  		// Filters
@@ -29474,7 +29679,7 @@ index a22b64aa9..591e8b220 100644
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
-@@ -1550,7 +1732,38 @@ skipUnisonPart: {}
+@@ -1550,7 +1735,38 @@ skipUnisonPart: {}
  			} while (oscBufferPos != oscBufferEnd);
  		}
  
@@ -29514,7 +29719,7 @@ index a22b64aa9..591e8b220 100644
  		else {
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
-@@ -1603,10 +1816,10 @@ skipUnisonPart: {}
+@@ -1603,10 +1819,10 @@ skipUnisonPart: {}
  			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, foldAmount);
  		}
  
@@ -29527,7 +29732,7 @@ index a22b64aa9..591e8b220 100644
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
  			int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
-@@ -1635,7 +1848,39 @@ skipUnisonPart: {}
+@@ -1635,7 +1851,39 @@ skipUnisonPart: {}
  			} while (++oscBufferPos != oscBufferEnd);
  		}
  
@@ -29568,7 +29773,7 @@ index a22b64aa9..591e8b220 100644
  		else {
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
-@@ -1956,6 +2201,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
+@@ -1956,6 +2204,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
  // require an additional copying(summing) step, 		and we might as well just apply amplitude while that's
  // happening, which is exactly how it is currently.
  
@@ -29611,7 +29816,7 @@ index a22b64aa9..591e8b220 100644
  void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManager, int32_t s,
                                int32_t* __restrict__ oscBuffer, int32_t numSamples, bool stereoBuffer,
                                int32_t sourceAmplitude, bool* __restrict__ unisonPartBecameInactive,
-@@ -1966,6 +2247,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
+@@ -1966,6 +2250,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
  
  	GeneralMemoryAllocator::get().checkStack("Voice::renderBasicSource");
  
@@ -29713,7 +29918,7 @@ index a22b64aa9..591e8b220 100644
  	// For each unison part
  	for (int32_t u = 0; u < sound.numUnison; u++) {
  
-@@ -2116,6 +2492,11 @@ pitchTooHigh:
+@@ -2116,6 +2495,11 @@ pitchTooHigh:
  
  			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
  
@@ -29725,7 +29930,7 @@ index a22b64aa9..591e8b220 100644
  			int32_t interpolationBufferSize;
  
  			// If pitch adjustment...
-@@ -2133,6 +2514,12 @@ pitchTooHigh:
+@@ -2133,6 +2517,12 @@ pitchTooHigh:
  				if (!voiceSample->doneFirstRenderYet && !tryToStartMidNote
  				    && portaEnvelopePos == 0xFFFFFFFF) { // No porta
  
@@ -29738,7 +29943,7 @@ index a22b64aa9..591e8b220 100644
  					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
  					// accurate
  					if (loopingType != LoopType::NONE) {
-@@ -2447,6 +2834,41 @@ dontUseCache: {}
+@@ -2447,6 +2837,41 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -29780,7 +29985,7 @@ index a22b64aa9..591e8b220 100644
  
  			// Or regular wave
  		}
-@@ -2562,6 +2984,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
+@@ -2562,6 +2987,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
  static_assert(kNumVoicePriorities < 4, "Too many priority options");
  
  // Higher numbers are lower priority. 1 is top priority. Will never return 0, because nextVoiceState starts at 1
@@ -29813,7 +30018,7 @@ index a22b64aa9..591e8b220 100644
  uint32_t Voice::getPriorityRating() const {
  	return
  	    // Bits 30-31 - manual priority setting
-@@ -2574,7 +3022,7 @@ uint32_t Voice::getPriorityRating() const {
+@@ -2574,7 +3025,7 @@ uint32_t Voice::getPriorityRating() const {
  	    + ((uint32_t)std::min<size_t>(sound.numActiveVoices(), 7) << 27)
  
  	    // Bits 24-26 - envelope state
@@ -29823,7 +30028,7 @@ index a22b64aa9..591e8b220 100644
  	    // Bits  0-23 - time entered
  	    + ((uint32_t)(-envelopes[0].timeEnteredState) & (0xFFFFFFFF >> 8));
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e25..3425fbad6 100644
+index 33be91e25..f035d7046 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
 @@ -18,7 +18,9 @@
@@ -29850,7 +30055,17 @@ index 33be91e25..3425fbad6 100644
  
  	int32_t filterGainLastTime;
  	bool doneFirstRender;
-@@ -109,6 +113,8 @@ public:
+@@ -88,6 +92,9 @@ public:
+ 
+ 	int32_t overrideAmplitudeEnvelopeReleaseRate;
+ 
++	// VOICE > SPREAD offset added to this voice's pan (+-1073741824 = full width), set at note-on
++	int32_t spreadPan{0};
++
+ 	bool justCreated{false};
+ 
+ 	uint32_t getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Local param);
+@@ -109,6 +116,8 @@ public:
  	bool hasReleaseStage();
  	void unassignStuff(bool deletingSong);
  	[[nodiscard]] uint32_t getPriorityRating() const;
@@ -29859,7 +30074,7 @@ index 33be91e25..3425fbad6 100644
  	void expressionEventImmediate(const Sound& sound, int32_t voiceLevelValue, int32_t s);
  	void expressionEventSmooth(int32_t newValue, int32_t s);
  
-@@ -159,4 +165,5 @@ private:
+@@ -159,4 +168,5 @@ private:
  	bool areAllUnisonPartsInactive(ModelStackWithSoundFlags& modelStack) const;
  	void setupPorta(const Sound& sound);
  	int32_t combineExpressionValues(const Sound& sound, int32_t expressionDimension) const;
@@ -32339,7 +32554,7 @@ index 000000000..2a0a92f50
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..b88eeac89 100644
+index 5f4a82450..b165dab58 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -32812,7 +33027,35 @@ index 5f4a82450..b88eeac89 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -1249,6 +1658,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -638,6 +1047,27 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+ 		reader.exitTag("unison", true);
+ 	}
+ 
++	// Bribes VOICE > SPREAD
++	else if (!strcmp(tagName, "voiceSpread")) {
++		reader.match('{');
++		while (*(tagName = reader.readNextTagOrAttributeName())) {
++			if (!strcmp(tagName, "amount")) {
++				voiceStereoSpread = std::clamp(reader.readTagOrAttributeValueInt(), 0_i32, kMaxVoiceStereoSpread);
++				reader.exitTag("amount");
++			}
++			else if (!strcmp(tagName, "mode")) {
++				voiceSpreadMode =
++				    static_cast<VoiceSpreadMode>(std::clamp(reader.readTagOrAttributeValueInt(), 0_i32,
++				                                            (int32_t)util::to_underlying(VoiceSpreadMode::PING_PONG)));
++				reader.exitTag("mode");
++			}
++			else {
++				reader.exitTag(tagName);
++			}
++		}
++		reader.exitTag("voiceSpread", true);
++	}
++
+ 	else if (!strcmp(tagName, "oscAPitchAdjust")) {
+ 		ENSURE_PARAM_MANAGER_EXISTS
+ 		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_A_PITCH_ADJUST, readAutomationUpToPos);
+@@ -1249,6 +1679,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -32825,7 +33068,7 @@ index 5f4a82450..b88eeac89 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1280,6 +1695,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1280,6 +1716,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -32837,7 +33080,7 @@ index 5f4a82450..b88eeac89 100644
  	else if (!strcmp(tagName, "midiOutput")) {
  		reader.match('{');
  		while (*(tagName = reader.readNextTagOrAttributeName())) {
-@@ -1347,6 +1767,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1788,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -32851,7 +33094,7 @@ index 5f4a82450..b88eeac89 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1941,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1962,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -32861,7 +33104,7 @@ index 5f4a82450..b88eeac89 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2074,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2095,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -32880,7 +33123,19 @@ index 5f4a82450..b88eeac89 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1692,6 +2130,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1654,6 +2113,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+ 			const ActiveVoice& voice = voiceToReuse != nullptr ? *voiceToReuse : this->acquireVoice();
+ 			int32_t envelopePositions[kNumEnvelopes];
+ 
++			// VOICE > SPREAD: a fresh poly voice takes its place in the stereo field (reused mono voices keep theirs)
++			if (voiceToReuse == nullptr) {
++				voice->spreadPan = voiceSpreadActive() ? nextVoiceSpreadPan(noteCodePostArp) : 0;
++			}
++
+ 			if (voiceToReuse != nullptr) [[unlikely]] {
+ 				// The osc phases and stuff will remain
+ 				for (int32_t e = 0; e < kNumEnvelopes; e++) {
+@@ -1692,6 +2156,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  
  	lastNoteCode = noteCodePostArp; // Store for porta. We store that at both note-on and note-off.
  
@@ -32889,7 +33144,7 @@ index 5f4a82450..b88eeac89 100644
  	// Send midi out for sound drums
  	if (outputMidiChannel != MIDI_CHANNEL_NONE) {
  		int32_t outputNoteCode = noteCodePostArp;
-@@ -1708,9 +2148,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1708,9 +2174,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendNote(this, true, outputNoteCode, velocity, outputMidiChannel, 0);
  
  		// If the note doesn't have a tail (for ONCE samples for example and if ARP is OFF), we will never get a noteOff
@@ -32901,7 +33156,7 @@ index 5f4a82450..b88eeac89 100644
  		}
  	}
  }
-@@ -1778,6 +2218,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
+@@ -1778,6 +2244,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
  
  // noteCode = ALL_NOTES_OFF (default) means stop *any* voice, regardless of noteCode
  void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t noteCode) {
@@ -32910,7 +33165,7 @@ index 5f4a82450..b88eeac89 100644
  	// Send midi note offs out for specific notes,
  	// but only if the type of sound allows note tails (if not, note off was already sent right after its note on)
  	if (outputMidiChannel != MIDI_CHANNEL_NONE && allowNoteTails(modelStack, true)) {
-@@ -1865,6 +2307,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2333,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -32927,7 +33182,7 @@ index 5f4a82450..b88eeac89 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2379,11 @@ justSwitchOff:
+@@ -1927,6 +2405,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -32939,7 +33194,7 @@ index 5f4a82450..b88eeac89 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2633,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2659,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -32948,7 +33203,7 @@ index 5f4a82450..b88eeac89 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2842,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2868,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -32961,7 +33216,7 @@ index 5f4a82450..b88eeac89 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2392,6 +2855,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2881,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -32971,7 +33226,7 @@ index 5f4a82450..b88eeac89 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +2962,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +2988,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -33002,7 +33257,7 @@ index 5f4a82450..b88eeac89 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +2992,16 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +3018,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -33010,11 +33265,13 @@ index 5f4a82450..b88eeac89 100644
 +	if (anyVoicesActive) {
  
  		// Very often, we'll just apply panning here at the Sound level rather than the Voice level
++		// VOICE > SPREAD also needs every voice to pan itself
  		bool applyingPanAtVoiceLevel =
 -		    (AudioEngine::renderInStereo
 -		     && paramManager->getPatchCableSet()->doesParamHaveSomethingPatchedToIt(params::LOCAL_PAN));
 +		    !renderingTb303 && AudioEngine::renderInStereo
-+		    && paramManager->getPatchCableSet()->doesParamHaveSomethingPatchedToIt(params::LOCAL_PAN);
++		    && (voiceSpreadActive()
++		        || paramManager->getPatchCableSet()->doesParamHaveSomethingPatchedToIt(params::LOCAL_PAN));
 +
 +		if (renderingTb303) {
 +			renderTb303(paramManager, sound_mono);
@@ -33022,7 +33279,7 @@ index 5f4a82450..b88eeac89 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +3020,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +3048,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -33037,7 +33294,7 @@ index 5f4a82450..b88eeac89 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2607,7 +3091,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2607,7 +3119,7 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	processSRRAndBitcrushing(sound_stereo, &postFXVolume, paramManager);
  	processFX(sound_stereo, modFXType_, modFXRate, modFXDepth, delayWorkingState, &postFXVolume, paramManager,
@@ -33046,7 +33303,7 @@ index 5f4a82450..b88eeac89 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3377,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3405,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -33082,7 +33339,7 @@ index 5f4a82450..b88eeac89 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3483,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3511,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -33098,7 +33355,40 @@ index 5f4a82450..b88eeac89 100644
  }
  
  // Set cents for master transpose
-@@ -3053,8 +3560,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3042,6 +3577,32 @@ void Sound::setupUnisonStereoSpread() {
+ 	}
+ }
+ 
++// VOICE > SPREAD: where the next voice sits, +-1073741824 = hard left / right at full spread.
++// The SPREAD amount scales this live in Voice::render, so turning it moves held notes too.
++int32_t Sound::nextVoiceSpreadPan(int32_t noteCode) {
++	constexpr int32_t kFull = 1073741824;
++	switch (voiceSpreadMode) {
++	case VoiceSpreadMode::KEY:
++		// Middle C in the centre, two and a half octaves either side reaches the edge
++		return std::clamp<int32_t>(noteCode - 60, -30, 30) * (kFull / 30);
++	case VoiceSpreadMode::RANDOM:
++		return ((int32_t)getRandom255() - 128) * (kFull >> 7);
++	case VoiceSpreadMode::PING_PONG:
++		// Each new voice takes the other side
++		voiceSpreadCounter ^= 1;
++		return (voiceSpreadCounter & 1) ? -kFull : kFull;
++	case VoiceSpreadMode::ALTERNATE:
++	default: {
++		// Eight fixed places, taken round robin: outer pair first, then inner pairs,
++		// always swapping sides, so two-note chords go wide and fuller chords fill in
++		static constexpr int8_t kPlaces[8] = {-7, 7, -3, 3, -5, 5, -1, 1};
++		int32_t place = kPlaces[voiceSpreadCounter & 7];
++		voiceSpreadCounter = (voiceSpreadCounter + 1) & 7;
++		return place * (kFull / 7);
++	}
++	}
++}
++
+ void Sound::calculateEffectiveVolume() {
+ 	// volumeNeutralValueForUnison = (float)getParamNeutralValue(params::LOCAL_VOLUME) / sqrt(numUnison);
+ 	volumeNeutralValueForUnison = (float)134217728 / sqrtf(numUnison);
+@@ -3053,8 +3614,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -33119,7 +33409,7 @@ index 5f4a82450..b88eeac89 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3618,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3672,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -33220,7 +33510,7 @@ index 5f4a82450..b88eeac89 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3825,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3879,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -33229,7 +33519,7 @@ index 5f4a82450..b88eeac89 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3411,6 +4024,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4078,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -33251,7 +33541,7 @@ index 5f4a82450..b88eeac89 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4061,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4115,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -33262,7 +33552,7 @@ index 5f4a82450..b88eeac89 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4275,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4329,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -33272,7 +33562,7 @@ index 5f4a82450..b88eeac89 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4402,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4456,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -33284,7 +33574,7 @@ index 5f4a82450..b88eeac89 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4496,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4550,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -33303,7 +33593,7 @@ index 5f4a82450..b88eeac89 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4690,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4744,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -33324,7 +33614,7 @@ index 5f4a82450..b88eeac89 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4783,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4837,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -33336,7 +33626,7 @@ index 5f4a82450..b88eeac89 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4801,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4855,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -33347,7 +33637,7 @@ index 5f4a82450..b88eeac89 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4854,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4908,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -33358,7 +33648,22 @@ index 5f4a82450..b88eeac89 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4441,6 +5117,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4255,6 +4985,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+ 	writer.writeAttribute("spread", unisonStereoSpread, false);
+ 	writer.closeTag();
+ 
++	// Bribes VOICE > SPREAD, only written when it's been touched
++	if (voiceStereoSpread != 0 || voiceSpreadMode != VoiceSpreadMode::ALTERNATE) {
++		writer.writeOpeningTagBeginning("voiceSpread");
++		writer.writeAttribute("amount", voiceStereoSpread, false);
++		writer.writeAttribute("mode", util::to_underlying(voiceSpreadMode), false);
++		writer.closeTag();
++	}
++
+ 	if (paramManager) {
+ 		writer.writeOpeningTagBeginning("defaultParams", true);
+ 		Sound::writeParamsToFile(writer, paramManager, false);
+@@ -4441,6 +5179,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -33381,7 +33686,19 @@ index 5f4a82450..b88eeac89 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4948,6 +5640,9 @@ void Sound::killAllVoices() {
+@@ -4818,6 +5572,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+ 		return true;
+ 	}
+ 
++	// VOICE > SPREAD pans each voice on its own
++	if (voiceSpreadActive()) {
++		return true;
++	}
++
+ 	if (unisonStereoSpread && numUnison > 1) {
+ 		return true;
+ 	}
+@@ -4948,6 +5707,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -33392,7 +33709,7 @@ index 5f4a82450..b88eeac89 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 504b075f1..81c9490a4 100644
+index 504b075f1..d8f8c669c 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
 @@ -18,6 +18,7 @@
@@ -33403,7 +33720,23 @@ index 504b075f1..81c9490a4 100644
  #include "model/mod_controllable/mod_controllable_audio.h"
  #include "model/sample/sample_recorder.h"
  #include "model/voiced.h"
-@@ -73,6 +74,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
+@@ -38,6 +39,15 @@
+ struct CableGroup;
+ class StereoSample;
+ class Voice;
++
++// How VOICE > SPREAD places each new voice
++enum class VoiceSpreadMode : uint8_t {
++	ALTERNATE, // round robin over 8 fixed places, alternating sides, like a poly synth's voice slots
++	KEY,       // low notes left, high notes right
++	RANDOM,    // a new random place per note
++	PING_PONG, // hard left, hard right, alternating, widening with the amount
++};
++constexpr int32_t kMaxVoiceStereoSpread = 50;
+ class Kit;
+ class ParamManagerForTimeline;
+ class TimelineCounter;
+@@ -73,6 +83,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
  /// The depth of the VELOCITY -> LOCAL_VOLUME patch cable that Sound::setupAsSample() installs, as a user value.
  constexpr int32_t kSampleDrumVelocityCableUserValue = 50;
  
@@ -33435,7 +33768,7 @@ index 504b075f1..81c9490a4 100644
  class Sound : public ModControllableAudio, public virtual Voiced {
  public:
  	using ActiveVoice = AudioEngine::VoicePool::pointer_type;
-@@ -116,6 +142,7 @@ public:
+@@ -116,6 +151,7 @@ public:
  	alignas(8) ModKnob modKnobs[kNumModButtons][kNumPhysicalModKnobs];
  
  	int32_t sideChainSendLevel = 0;
@@ -33443,7 +33776,24 @@ index 504b075f1..81c9490a4 100644
  
  	PolyphonyMode polyphonic = PolyphonyMode::POLY;
  	uint8_t maxVoiceCount = 8;
-@@ -173,6 +200,7 @@ public:
+@@ -128,6 +164,16 @@ public:
+ 	int8_t unisonDetune = 8;
+ 	uint8_t unisonStereoSpread = 0;
+ 
++	// Bribes VOICE > SPREAD: each new poly voice gets its own place in the stereo field at note-on,
++	// like a poly synth's voice pan spread. 0 = off (everything stays on the pan knob).
++	uint8_t voiceStereoSpread = 0;
++	VoiceSpreadMode voiceSpreadMode = VoiceSpreadMode::ALTERNATE;
++	uint8_t voiceSpreadCounter = 0;
++	[[nodiscard]] bool voiceSpreadActive() const {
++		return voiceStereoSpread != 0 && polyphonic == PolyphonyMode::POLY && synthMode != SynthMode::TB303;
++	}
++	int32_t nextVoiceSpreadPan(int32_t noteCode);
++
+ 	// For sending MIDI notes for SoundDrums
+ 	uint8_t outputMidiChannel = MIDI_CHANNEL_NONE;
+ 	uint8_t outputMidiNoteForDrum = MIDI_NOTE_NONE;
+@@ -173,6 +219,7 @@ public:
  	virtual void setSkippingRendering(bool newSkipping);
  
  	ModFXType getModFXType() override;
@@ -33451,7 +33801,7 @@ index 504b075f1..81c9490a4 100644
  	bool setModFXType(ModFXType newType) final;
  
  	void patchedParamPresetValueChanged(uint8_t p, ModelStackWithSoundFlags* modelStack, int32_t oldValue,
-@@ -236,7 +264,28 @@ public:
+@@ -236,7 +283,28 @@ public:
  	[[nodiscard]] SynthMode getSynthMode() const { return synthMode; }
  
  	virtual bool isDrum() { return false; }
@@ -33480,7 +33830,7 @@ index 504b075f1..81c9490a4 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
-@@ -290,20 +339,38 @@ public:
+@@ -290,20 +358,38 @@ public:
  	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
  	virtual ArpeggiatorBase* getArp() = 0;
  	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
@@ -33524,7 +33874,7 @@ index 504b075f1..81c9490a4 100644
  
  	/// @brief Get the number of active voices
  	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
-@@ -366,6 +433,12 @@ private:
+@@ -366,6 +452,12 @@ private:
  	// we're constantly cycling between a minimum and maximum number of voices.
  	deluge::fast_vector<ActiveVoice> voices_;
  

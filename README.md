@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.29
+# BRIBELUGE: Deluge Bribes FW v1.30
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -28,6 +28,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 22. **[Feedback](#22-feedback):** Feeds each synth voice's filter output back into its input: thicker, driven low end, and self-oscillation from patch cables.
 23. **[Crush types](#23-crush-types):** Bitcrush and Decimation that sound like real low bit depths and sample rates: Hard, Vintage, u-Law and Jitter, plus the original.
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
+25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 
 **Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -35,7 +36,7 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.29.bin`](firmware/deluge-bribes-v1.29.bin)
+[`firmware/deluge-bribes-v1.30.bin`](firmware/deluge-bribes-v1.30.bin)
 
 SHA-256: `16824e59c59ae9c85c4b93258e72206bbf6cf2400e7f13f256fab3daf3091d55`
 
@@ -51,7 +52,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.29.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.30.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1088,6 +1089,37 @@ The Attack and Release gold knobs stay on envelope 1, as on any synth. Every con
 
 [Back to top](#readme-top)
 
+## 25. Pan spread
+
+**Pan spread** spreads a poly synth's notes across the stereo field: every new note takes its own place, left or right, and keeps it until it ends. A chord fans out and an arpeggio moves across the speakers, as with the voice pan spread on a poly synth like the Prophet '08. It works on single voices, so it doesn't need unison (unison's own Spread still spreads each note's unison copies, and the two work together).
+
+### Where it is
+
+- **SHIFT + PAN pad, press again.** The pad blinks yellow and opens **PAN SPREAD**. Press **SELECT** to go on to **SPREAD MODE**.
+- In the sound menu under **Voice**, after **Portamento**: **Pan spread** (**PAN SPREAD**, 0 to 50) and **Spread mode** (**SPREAD MODE**).
+- Hold **AFFECT ENTIRE** to set every row of a kit.
+
+### Spread modes
+
+| Mode | Display | Where each new note goes |
+|---|---|---|
+| **Alternate** | **ALT** | Eight fixed places, taken in turn: the outer pair first, then the inner ones, always swapping sides. Two notes go wide, bigger chords fill in |
+| **Key** | **KEY** | By pitch: low notes left, high notes right, middle C in the centre, the edges two and a half octaves out |
+| **Random** | **RAND** | Anywhere, picked fresh for each note |
+| **Ping pong** | **PING** | Left, right, left, right. The amount sets how far out: near the centre at low values, hard left and right at 50 |
+
+### How it plays
+
+- **0 is off**: the sound pans as before, with no extra CPU.
+- **PAN still moves the whole spread**, left or right.
+- **Turning Pan spread moves held notes too:** each note keeps its place and the amount scales how far out that is.
+- **Poly sounds only:** Mono and Legato have one voice, so the setting is hidden there. The 303 is always mono.
+- It works on subtractive, wavetable, FM, ring mod, BRINGS and BROPHET synths, and on kit rows.
+- **CPU:** each voice pans itself instead of the whole sound being panned once, which costs a couple of multiplies per sample per voice.
+- Songs and presets save it (`voiceSpread`). Anything saved before loads with it off.
+
+[Back to top](#readme-top)
+
 ## Quick reference
 
 | Control | What it does |
@@ -1152,6 +1184,7 @@ The Attack and Release gold knobs stay on envelope 1, as on any synth. Every con
 | **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
+| **SHIFT + PAN pad, press again** | **Pan spread**: each poly note gets its own place in the stereo field. The pad blinks yellow; SELECT goes on to **Spread mode**: **ALT**, **KEY**, **RAND** or **PING** (Pan spread, new in v1.30) |
 | **SHIFT + delay AMOUNT pad, press again** | Delay feedback. The pad blinks yellow; press again to go back to Amount (Delay feedback and tone) |
 | **SHIFT + delay RATE pad, press again** | Delay tone. The pad blinks yellow; press again to go back to Rate (Delay feedback and tone) |
 | **SHIFT + AFFECT ENTIRE on an LXR, Cycles or GIN kit** | Snapshot the kit and move every drum at once. AFFECT ENTIRE flashes (Affect all) |
@@ -1175,6 +1208,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.30: Pan spread.** Each note of a poly synth takes its own place in the stereo field: alternating, by key, random or ping pong, on the PAN pad's second layer. *Why:* unison spread only spreads one note's copies, and I wanted a chord spread out like the Prophet '08's voices. *Learned:* the Deluge already had a path where each voice pans itself, used only when something is patched to Pan, so spread is that path plus one number per voice set at note-on.
 
 - **v1.29: Knob button LEDs.** Pressing a shortcut pad blinks the button of the gold knob that edits the same setting, the reverse of the gold knob buttons flashing their pads. *Why:* to learn which pads sit on the knobs from either side. *Learned:* the knob layouts already live in one table per sound, so the lookup is twelve comparisons on a press and costs the audio nothing.
 - **v1.28: BROPHET.** A two-oscillator poly engine from Pro-54, the open source port of NI's Pro-53, with its filter in every LPF list and all 512 Pro-53 programs in the synth browser. BRINGS and BROPHET now lay out on the OSC1, OSC2 and FM MOD pads by their labels, and glow purple. *Why:* Pro-54's release put a classic poly voice in the open, written for 2002 CPUs. *Learned:* Cmajor starts every variable at zero and C++ doesn't, so the first translation left two of sync's anti-aliasing terms holding junk. The first CPU pass took an 8-note chord from 64% to 59%; a second one, which swapped float compares for NEON tricks in the middle of the oscillator maths, measured slower and was rolled back.
