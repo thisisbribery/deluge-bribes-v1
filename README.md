@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.31
+# BRIBELUGE: Deluge Bribes FW v1.32
 
 Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
@@ -9,14 +9,14 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 3. **[Autofill](#3-autofill):** TAP plays a fill to the end of the bar: Ghost, Drive, Build, Climb or Stutter.
 4. **[Mono sequencer](#4-mono-sequencer):** A bassline step sequencer for synth, MIDI and CV tracks: octave per note, slide steps, gate control and a voltage per row on CV.
 5. **[Endless Record](#5-endless-record):** RECORD while playing keeps recording past the end of the loop. RECORD again stops at the next bar.
-6. **[Drum synth](#6-drum-synth):** Synthesised drums on any kit row: LXR voices, DXIA, DIIA, eight Cyc engines, GIN and the ULTRAKIK kick. One pad layout, Cycles-style gold knobs, preset kits on SHIFT + KIT.
+6. **[Drum synth](#6-drum-synth):** Synthesised drums on any kit row: LXR voices, DXIA, DIIA, eight Cyc engines, GIN and the ULTRAKIK kick. One pad layout, Cycles-style gold knobs, preset kits on SHIFT + KIT, and ULTRAKIK or XIA onto a single row from the same menu.
 7. **[Saturation](#7-saturation):** A one-knob drive that gets louder and denser all the way to a hard clip, with five curves. Learnable to a gold knob.
 8. **[Sample start offset](#8-sample-start-offset):** Move where a sample starts, per step: draw it, lock it, modulate it.
 9. **[303 synth](#9-303-synth):** A TB-303 voice from Open303 with accent and slide from the mono sequencer, three filters (303, LP18, DIRT) and an overdrive after them.
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** Delay amount and feedback on separate controls, plus a DJ filter in the loop, one SHIFT layer down.
-11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots an LXR, Cycles or GIN kit: every knob moves all the drums, and it snaps back on the next bar.
+11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots any kit: every knob moves all its sound rows (drum synths, samples and synths), and it snaps back on the next bar.
 12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads (purple on BRINGS, BROPHET and BRUNO106), gold knob buttons flash theirs, shortcut pads blink their gold knob's button, and a held shortcut pad scrolls its name on the 7-segment display.
-13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, BROPHET, BRUNO106, INIT), then BASS, LEAD, PAD or MISC (BROPHET: Pro-53's banks), then play through the presets. 99 wavetable, 37 BRINGS, 536 BROPHET and 13 BRUNO106 presets included.
+13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, DX7, BROPHET, BRUNO106, 303, INIT), then LEAD, BASS, PAD or MISC (BROPHET: Pro-53's banks), then play through the presets. 99 wavetable, 37 BRINGS, 536 BROPHET and 212 BRUNO106 presets included.
 14. **[Instrument Picker](#14-instrument-picker):** The kit and synth type every new track starts as, on its top preset.
 15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
 16. **[MIDI kits](#16-midi-kits):** SHIFT + MIDI makes an MKIT: sixteen MIDI rows that kit patterns and Autofill can play.
@@ -30,6 +30,7 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers and a song view you can tap.
 
 **Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
@@ -37,24 +38,24 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.31.bin`](firmware/deluge-bribes-v1.31.bin)
+[`firmware/deluge-bribes-v1.32.bin`](firmware/deluge-bribes-v1.32.bin)
 
-SHA-256: `a4c1f868128cb8a6371ee9d38393faf3a24175e032dfa242a13ee27c7db8b549`
+SHA-256: `eb50f6da75ae1c7828ea84cc033dd515899af644e2893a1c18b14b3fad4b9b5d`
 
 Presets (optional), copied to the same place on the SD card:
 
-- [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR`. The GIN kits are built into the firmware.
+- [`presets/KITS/CYCLES`](presets/KITS/CYCLES) and [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/CYCLES` and `KITS/LXR` (42 LXR kits). The GIN kits are built into the firmware.
 - [`presets/SYNTHS/WAVE`](presets/SYNTHS/WAVE) to `SYNTHS/WAVE`. These play the free **BVKER Custom Wavetables** pack, which isn't included here: download it from [bvker.com/free-serum-wavetables](https://bvker.com/free-serum-wavetables/) and unzip it into `SAMPLES/WAVETABLES`, so the card has `SAMPLES/WAVETABLES/BVKER - Custom Wavetables/Analog` and the other folders.
 - [`presets/SYNTHS/BRINGS`](presets/SYNTHS/BRINGS) to `SYNTHS/BRINGS`. If your card has `SYNTHS/BRIB` from v1.26, rename it to `BRINGS`.
 - [`presets/SYNTHS/BROPHET`](presets/SYNTHS/BROPHET) to `SYNTHS/BROPHET`: Pro-53's 512 programs in `BNK1` to `BNK8`, and 24 Bribes presets in `BRIB`.
-- [`presets/SYNTHS/BRUNO106`](presets/SYNTHS/BRUNO106) to `SYNTHS/BRUNO106`: 13 Bribes presets in `BASS`, `LEAD`, `PAD` and `MISC`.
+- [`presets/SYNTHS/BRUNO106`](presets/SYNTHS/BRUNO106) to `SYNTHS/BRUNO106`: 212 presets in `LEAD`, `BASS`, `PAD` and `MISC`.
 - Your own synth presets: [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies them into the synth browser's folders (see [Synth browser](#13-synth-browser)).
 
 [Back to top](#readme-top)
 
 ## Install
 
-1. Copy `deluge-bribes-v1.31.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.32.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -294,9 +295,10 @@ The engines:
 1. In clip view on an empty clip, press **SHIFT + KIT**.
 2. The **New kit** (**NEW**) menu opens. Turn **SELECT** to a kit type and press **SELECT**:
    - **Kit** (**KIT**): a normal, sample based kit.
+   - **Cycles** (**CYCL**): the Model:Cycles' usual six tracks, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, playing at the note as the Cycles does at its default tune.
    - **LXR** (**LXR**): seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
-   - **Cycles** (**CYCL**, new in v1.11): the Model:Cycles' usual six tracks, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, playing at the note as the Cycles does at its default tune.
-   - **GIN** (**GIN**, new in v1.13): eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2**, **PERC1**, **PERC2**, **CLAP** and **OTHER**, on the 808 kit. The two hats choke each other, and each row is tuned to its sound.
+   - **GIN** (**GIN**): eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2**, **PERC1**, **PERC2**, **CLAP** and **OTHER**, on the 808 kit. The two hats choke each other, and each row is tuned to its sound.
+   - **ULTRAKIK (single row only)** (**UKIK**) and **XIA (single row only)** (**XIA**): put that engine on the kit's selected row only, and open **SYNTH MODE** on it so you can pick another engine from there. On a track that isn't a kit yet, a sample kit is made first.
 
 Vtg Snr, clap eng, DXIA and DIIA are picked per row in SYNTH MODE.
 
@@ -650,23 +652,23 @@ On the stock Deluge, the delay's Amount sets both how loud the echoes are and ho
 
 ## 11. Affect all
 
-A performance snapshot for LXR, Cycles and GIN kits: push every drum around at once, then drop back to where you started on the next bar.
+A performance snapshot for any kit: push every row around at once, then drop back to where you started on the next bar.
 
 ### Using it
 
 1. In the kit's clip, press **SHIFT + AFFECT ENTIRE**. The kit is snapshotted and **AFFECT ENTIRE** flashes (**ALL**). You start in **All voices**.
-2. **All voices:** turn any gold knob, or press **SHIFT** + a shortcut pad and turn **SELECT**, and every drum synth row moves by the same amount, each from where it was. Turn Sweep and every drum's sweep goes up; turn CUSTOM 1 and the whole kit retunes, staying in tune with itself.
+2. **All voices:** turn any gold knob, or press **SHIFT** + a shortcut pad and turn **SELECT**, and every sound row moves by the same amount, each from where it was. Turn Sweep and every drum's sweep goes up; turn CUSTOM 1 and the whole kit retunes, staying in tune with itself.
 3. **Kit FX:** press **AFFECT ENTIRE** on its own to swap to the kit's FX (**FX**), as AFFECT ENTIRE normally does, and again to go back to **All voices**. Swap as often as you like: the snapshot holds both.
 4. Press **SHIFT + AFFECT ENTIRE** again. **AFFECT ENTIRE** flashes twice as fast (**BACK**), and on the next bar every drum and the kit's FX go back to the snapshot, before that bar's first hits. When stopped, it goes back straight away (**DONE**).
 
 ### Good to know
 
-- Only drum synth rows move, including ones added to the kit since it was made (a BXIA row on a Cycles kit, say). Each moves its own engine's control on that knob or pad. Sample rows, synth rows and the 303 are left alone.
+- Every sound row moves: drum synths, samples and synths. A drum engine's own controls (a decay, a sweep) move on the other drum synth rows only, each on its own engine's control for that knob or pad; settings every sound has, like the filters and envelopes, move on every row. MIDI and gate rows are left alone.
 - A drum pushed to the end of a setting keeps its place against the others when you turn back.
 - Nothing you do in affect all is recorded as automation, so the snapshot always puts the kit back exactly. Holding notes and turning a knob still parameter locks that row, as normal.
 - Choices (waves, modes, filter type), patch cable amounts and transpose stay on the one row.
 - The snapshot is held in memory only. It isn't saved with the song, and loading another song drops it.
-- On any other kit, **SHIFT + AFFECT ENTIRE** shows **CANT**.
+- On a kit with no sound rows (only MIDI or gate rows), **SHIFT + AFFECT ENTIRE** shows **CANT**.
 
 [Back to top](#readme-top)
 
@@ -723,19 +725,20 @@ Drum synth rows' gold knobs follow the shared pad layout (see [Gold knobs](#gold
 | **Wavetable** | **WAVE** | `SYNTHS/WAVE` | Wavetable synths: 99 presets on the free BVKER wavetables |
 | **Ring mod** | **RING** | `SYNTHS/RING` | Ring mod synths |
 | **Brings** | **BRINGS** | `SYNTHS/BRINGS` | [BRIBERING MODE](#21-bribering-mode) sounds: 37 presets |
-| **DX7** | **DX7** | `SYNTHS/DX7` | DX7 patches, listed only with the DX7 engine on in Community Features |
+| **DX7** | **DX7** | `SYNTHS/DX7` | DX7 patches (the DX7 engine is always on) |
 | **Brophet** | **BROPHET** | `SYNTHS/BROPHET` | [BROPHET](#24-brophet) sounds: Pro-53's 512 programs and 24 more |
-| **Bruno106** | **BRUNO106** | `SYNTHS/BRUNO106` | [BRUNO106](#26-bruno106) sounds: 13 presets |
+| **Bruno106** | **BRUNO106** | `SYNTHS/BRUNO106` | [BRUNO106](#26-bruno106) sounds: 212 presets |
+| **303** | **303** | `SYNTHS/303` | [303 synth](#9-303-synth) sounds you save; with none yet, a blank 303 |
 | **Init** | **INIT** | | The stock blank synth |
 
-Every type's folder holds four categories: **BASS**, **LEAD**, **PAD** and **MISC** (DX7's folder is flat). BROPHET's follow Pro-53 instead: **BNK1** to **BNK8**, then **BRIB**.
+Every type's folder holds four categories, in this order: **LEAD**, **BASS**, **PAD** and **MISC** (DX7's folder is flat). BROPHET's follow Pro-53 instead: **BNK1** to **BNK8**, then **BRIB**.
 
 ### Using it
 
 1. Press **SHIFT + SYNTH**. The **Instrument** (**INST**) list opens on the type the track plays.
 2. **SHIFT + SYNTH** again, or turn **SELECT**, to move on. **SELECT** or **SYNTH** opens it.
 3. The **Category** (**CATE**) list shows the categories that hold presets. **SELECT** or **SYNTH** opens one and plays its first preset.
-4. Turn **SELECT** to play through the presets, and press **SELECT** to keep one. **BACK** puts your old synth back and returns to the categories; **BACK** again returns to the types.
+4. Turn **SELECT** to play through the presets, and press **SELECT** to keep one. **BACK** puts your old synth back and returns to the categories; **BACK** again returns to the types. Going back into a category opens on the synth you're replacing if it came from there, else on the preset you were last on.
 
 - It works on synth, MIDI and CV tracks, and on a kit track with no notes or sounds yet.
 - A type's folders are made the first time you pick it, ready to save into. A type with no presets yet gives a blank synth of that type that saves into its folder.
@@ -747,7 +750,7 @@ Every type's folder holds four categories: **BASS**, **LEAD**, **PAD** and **MIS
 - **WAVE:** 99 presets, one or more for each wavetable in the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which you download yourself (see [Download](#download)). Leads, pads and bells play with the filter wide open, so you hear the wavetable itself; basses and plucks start lower and open on each note with envelope 2. On every WAVE preset **CUSTOM 2** moves the wavetable position and **CUSTOM 3** is [Feedback](#22-feedback).
 - **BRINGS:** 37 BRIBERING MODE presets across all five models: basses, plucked and struck leads, bowed and chordal pads, bells and drones.
 - **BROPHET:** all 512 of Pro-53's programs, and 24 Bribes presets (see [BROPHET](#24-brophet)).
-- **BRUNO106:** 13 presets made for this build: basses with the bass boost, PWM leads, chorused strings and pads, brass and organ (see [BRUNO106](#26-bruno106)).
+- **BRUNO106:** 212 presets: 13 made for this build, and 199 converted from the preset data that ships with KR-106 (see [BRUNO106](#26-bruno106)).
 - **Your own presets:** [`tools/sort_synth_presets.py`](tools/sort_synth_presets.py) copies every synth preset in `SYNTHS` (and its other folders, like `DLFM`) into the right type and category, by name first (bass, pad, lead, pluck, bell), then by how it sounds (low transpose, slow attack, long release, mono, arpeggiator). The originals stay where they are, and a preset that lands in the wrong category can be moved by hand.
 
 ```bash
@@ -764,9 +767,9 @@ Pick the instrument every new kit track and every new synth track starts as. Pre
 | Setting | Screen | Options |
 |---|---|---|
 | **Kit Instrument** | **KIT** | **OFF** (stock), **LXR**, **Cycles**, **GIN** |
-| **Synth Instrument** | **SYNT** | **OFF** (stock), **SUBT**, **FM**, **WAVE**, **RING**, **BRINGS**, **DX7** (DX7 only with the DX7 engine on in Community Features), **BROPHET**, **BRUNO106** |
+| **Synth Instrument** | **SYNT** | **OFF** (stock), **SUBT**, **FM**, **WAVE**, **RING**, **BRINGS**, **DX7**, **BROPHET**, **BRUNO106**, **303** |
 
-With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth type's folder, BASS first (see [Synth browser](#13-synth-browser)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
+With one set, a new track of that type starts on the instrument's top preset that isn't already on another track: the first in `KITS/LXR`, `KITS/CYCLES` or the synth type's folder, LEAD first (see [Synth browser](#13-synth-browser)). If there's none, you get a blank one: the kit as SHIFT + KIT makes it, or a blank synth of that kind. A GIN track starts on GIN's first built in kit.
 
 - **Counts as a new track:** a new clip in song view, a new arranger track, the **KIT** or **SYNTH** button on a clip that has never been that type (one that has goes back to what it had), and the synth a new song starts with.
 - **Then:** turning SELECT on a synth steps through its folder as usual, and on an LXR, Cycles or GIN kit through that kit's presets (see [Kit presets](#kit-presets)). SHIFT + KIT and SHIFT + SYNTH still open the full pickers.
@@ -1181,13 +1184,44 @@ The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any t
 
 ### The presets
 
-13 presets made for this build: basses with the bass boost, PWM leads, chorused strings and pads, brass, organ and a couple of effects. Roland's factory sounds aren't included.
+212 presets in `LEAD`, `BASS`, `PAD` and `MISC`:
+
+- **13 made for this build:** basses with the bass boost, PWM leads, chorused strings and pads, brass, organ and a couple of effects.
+- **199 converted from KR-106's preset data** (GPL-3.0): the factory bank and David Churcher's patch library, which KR-106 ships. They use KR-106's own curves for cutoff, envelopes, LFO, pulse width, sub and noise. Bank numbers are dropped from the names. Each plays with BRUNO CHORUS as the original's chorus switches set it, no velocity, and six voices. LFO delay has no equivalent here, so delayed vibrato starts straight away, and the longest releases stop at about 4.9 seconds. A few effects patches play only the filter ringing at full resonance. Credits in [`presets/SYNTHS/BRUNO106/CREDITS.txt`](presets/SYNTHS/BRUNO106/CREDITS.txt).
 
 ### Good to know
 
 - **CPU:** about the same as BROPHET a voice: around 1300 ns on LOAD's **VNS** with an 8-note chord held. It reads higher with one or two notes and while an envelope sweeps the filter, as the Deluge's fixed costs per buffer weigh more then.
 - On a kit row it plays at the row's note.
 - Songs and presets save every setting. Bribes firmware from before v1.31 doesn't know BRUNO106 or BRUNO CHORUS.
+
+[Back to top](#readme-top)
+
+## 27. BRIBELUGE COMPANION
+
+A second screen for the Deluge on a phone or tablet, over USB. It runs in the browser: **[thisisbribery.github.io/bribes-companion](https://thisisbribery.github.io/bribes-companion/)** (source: [thisisbribery/bribes-companion](https://github.com/thisisbribery/bribes-companion)).
+
+### What it shows
+
+- **Top bar:** Play, Record, the tempo, the Deluge's display mirrored (7SEG or OLED, switchable), Back, the select knob left and right, and a big SELECT button.
+- **Readout:** whatever the display shows, spelled out in full English (no four letter abbreviations), with a menu item's name and value side by side.
+- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, BRUNO106's saw, pulse, HPF and chorus, the 303's knobs and filter. Tap a knob and it opens on the Deluge.
+- **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
+- **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
+- **Waveforms:** audio clips, sample markers and Start offset, full width with every playing note's playhead. Drag the start, loop and end markers, or the offset.
+- **Song:** rows view and grid view in the pads' order, each clip with its steps, playhead, the pads' colours and the section pads' glow by track type. Tap a clip or a section to launch it. The arranger shows the same stretch of the song as the pads, with the playhead.
+
+### Using it
+
+1. Connect the phone or tablet to the Deluge's USB port (with a USB-C or OTG cable).
+2. Open the page in Chrome and allow MIDI when asked. It finds the Deluge by itself.
+3. Optional: Chrome's menu > **Add to Home screen**. It then opens fullscreen from its icon, works offline, keeps the screen awake and reconnects on its own.
+
+### Good to know
+
+- It needs a browser with Web MIDI: Chrome or Edge on Android, Windows, macOS or Linux. Safari, and every browser on iPhone and iPad, doesn't have it.
+- The Deluge only sends the companion's messages while a companion is connected, and DEx and other editors keep working alongside it.
+- To charge a tablet while it's connected you need a USB-C hub with Power Delivery pass-through; not every tablet charges while it powers a USB device.
 
 [Back to top](#readme-top)
 
@@ -1212,7 +1246,7 @@ The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any t
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
 | **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR** or **CLAS** (Crush types) |
-| **SHIFT + KIT** | New kit: choose **Kit** (samples), **LXR** (the seven LXR voices), **Cycles** (the six Cyc engines) or **GIN** (eight GIN sounds) |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples), **Cycles** (the six Cyc engines), **LXR** (the seven LXR voices), **GIN** (eight GIN sounds), or **ULTRAKIK** or **XIA** on the selected row only |
 | **SHIFT + KIT on an LXR, Cycles or GIN kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
 | **Turn SELECT on an LXR, Cycles or GIN kit** | Step to the kit's next or previous preset and keep it (Instrument Picker, new in v1.19) |
 | **Tap an empty audition pad on an LXR, Cycles or GIN kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
@@ -1285,6 +1319,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.32: BRIBELUGE COMPANION.** A phone or tablet companion screen over USB (see [BRIBELUGE COMPANION](#27-bribeluge-companion)). Also: ULTRAKIK and XIA on a single row from SHIFT + KIT, kit types in the order Kit, Cycles, LXR, GIN; the 303 as a synth type; affect all on any kit; the DX7 engine always on; synth categories LEAD first; the synth browser picks up where you left a category; 199 more BRUNO106 presets and 26 more LXR kits. *Fixed:* SHIFT + the pulse width pad on a sample oscillator flashed **CANT** before opening Start offset. *Why:* the 7-segment display shows four letters at a time, and a tablet next to it can show everything else. *Learned:* the 7-segment texts are stored once and shared: one **BASS** serves the synth category and Bass Probability, and **FX** is the end of "Kit FX". So the companion only spells a word out when it knows which setting asked for it, never by matching the letters. Menu items read whatever sound the editor last opened, and asking one for its name outside the editor froze the Deluge, so the companion reads settings straight from the sound.
+
 - **v1.31: BRUNO106.** A Juno-style poly engine from Ultramaster KR-106, with its IR3109 filter in every LPF list, the Juno-106's HPF with bass boost on the track, and BRUNO CHORUS as a Mod FX type with its mode menu and an on / off pad. On BROPHET and BRUNO106, Mod rate and Mod depth are now the Deluge's vibrato, as on any synth. *Why:* the Juno sound next to BROPHET in the palette, at no more CPU a voice. *Learned:* KR-106's filter solves every stage's saturation with a Newton step, about 13 divides a sample, and the Deluge's A9 waits on each one: it cost about 2100 ns a voice. Keeping the feedback stage's saturation and running the four stages clean matched the original within 0.1 dB at normal levels and brought it to about 1300, and moving the DCO's phase to integers took out the float compares that stall the A9.
 
 - **v1.30: Pan spread.** Each note of a poly synth takes its own place in the stereo field: alternating, by key, random or ping pong, on the PAN pad's second layer. *Why:* unison spread only spreads one note's copies, and I wanted a chord spread out like the Prophet '08's voices. *Learned:* the Deluge already had a path where each voice pans itself, used only when something is patched to Pan, so spread is that path plus one number per voice set at note-on.
@@ -1348,12 +1384,13 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 - **Pad Guides, the standard drum pad layout and the synth browser** are original designs for this build. The browser reuses the Deluge's own preset browsing.
 - **Feedback** is an original design for this build, inside the Deluge's own filters.
 - **BROPHET's** oscillators, poly mod, mixer and filter are ported from [Pro-54](https://github.com/cmajor-lang/cmajor/tree/main/examples/patches/Pro54) by Cmajor Software (GPL-3.0), which opened up Native Instruments' Pro-53; its copyright and licence notice are kept in the source. The 512 programs come from the preset bank Pro-54 ships, converted for the Deluge. The Deluge integration, controls, drive and the 24 BRIB presets were made for this build.
-- **BRUNO106's** DCO, IR3109 filter, HPF with bass boost and BBD chorus are ported from [Ultramaster KR-106](https://github.com/kayrockscreenprinting/ultramaster_kr106) by Karl LaRocca (GPL-3.0); its copyright and licence notice are kept in the source. The filter's stages run without their per-stage saturation, and the chorus leaves out KR-106's modelled noise, clicks and hum. The Deluge integration, controls, BRUNO CHORUS as a Mod FX type and the 13 presets were made for this build; KR-106's factory presets are not included.
+- **BRUNO106's** DCO, IR3109 filter, HPF with bass boost and BBD chorus are ported from [Ultramaster KR-106](https://github.com/kayrockscreenprinting/ultramaster_kr106) by Karl LaRocca (GPL-3.0); its copyright and licence notice are kept in the source. The filter's stages run without their per-stage saturation, and the chorus leaves out KR-106's modelled noise, clicks and hum. The Deluge integration, controls, BRUNO CHORUS as a Mod FX type and 13 of the presets were made for this build; the other 199 are converted from the preset data KR-106 ships (its factory bank and David Churcher's patch library), under the same GPL-3.0.
 - **Crush types** are an original design for this build. u-Law uses the segmented μ-law companding of the G.711 telephone standard, the scheme Mutable Instruments Clouds and Beads use for their lo-fi modes.
 - **The WAVE presets** were made for this build and play the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which isn't included here: all credit for the wavetables goes to BVKER. The BRINGS presets were made for this build.
 - **Delay feedback and tone** are small changes to the Deluge's own delay: each echo is scaled twice, once for what you hear and once for what goes back into the delay, and passes through a one-pole DJ filter on its way out of the delay line.
 - **The Cycles presets** are my own Model:Cycles kits, made on my own machine and converted for the Cyc engines.
-- **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), converted for the drum synth. All credit for those sounds goes to Hrtl.
+- **The LXR presets** are sixteen kits by **Hrtl**, released free by Erica Synths for the LXR-02 ([Fresh kits and patterns for the LXR-02 from Hrtl!](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), [Hrtl on SoundCloud](https://soundcloud.com/hrtl)), ten kits by **EntropiaLabs** from [ELABS RLX](https://github.com/mcamaradev/ELABS-RLX-02-LXR02-CLONE-VST) (GPL-3.0), both converted for the drum synth, and sixteen kits made for this build. Credit for those sounds goes to Hrtl and EntropiaLabs.
+- **BRIBELUGE COMPANION** is an original design for this build: a web page on Web MIDI, and SysEx messages the firmware sends next to the community firmware's display mirror.
 - **The drum synth's** layout, controls and Deluge integration were designed for this build. Its kick / tom, snare and cymbal / hat voices are a modified version of the drum voices in the open source LXR-02 firmware by Erica Synths (GPL-3.0). DXIA and DIIA are ported from an open source engine set written for the Elektron Model:Cycles. The Cyc engines are original code, modelled on how the Model:Cycles and Syntakt machines respond, measured knob by knob; no Elektron code or data is used.
 - **GIN's** voice is ported from the MIT licensed synthesis core of [GIN by SquareWave Studio](https://github.com/squarewave-studio/op1-mods) and [libpo32 by Eric Lewis](https://github.com/ericlewis/libpo32), with their copyright and licence notices kept in the source. The sixteen GIN kits, the controls and the Deluge integration were made for this build; GIN's own factory kits are not used.
 - **The ideas behind the swing, pattern and fill features were inspired by the Stolperbeats Eurorack module by [Making Sound Machines](https://makingsoundmachines.com/stolperbeats/),** which shuffles beats on tuplet grids and stores patterns in banks. None of its firmware, timing tables, factory timings (Trip, Shake, Push and Clave) or factory patterns are used or included here.
@@ -1362,7 +1399,7 @@ Everything here was designed by [thisisbribery](https://github.com/thisisbribery
 
 ## Not affiliated or endorsed
 
-This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering**, **Sonic Charge**, **Mutable Instruments**, **Native Instruments**, **Cmajor Software**, **Sequential**, **Karl LaRocca (Ultramaster KR-106)** or **BVKER**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 and Juno-106 are products of Roland, the OP-1 and PO-32 are products of Teenage Engineering, Rings is a product of Mutable Instruments, Pro-53 is a product of Native Instruments, and the Prophet-5 is a product of Sequential. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
+This is an independent, unofficial project. It is not affiliated with, endorsed by or supported by **Making Sound Machines**, **Synthstrom Audible**, **Erica Synths**, **Hrtl**, **EntropiaLabs**, **Elektron**, **Roland**, **SquareWave Studio**, **Teenage Engineering**, **Sonic Charge**, **Mutable Instruments**, **Native Instruments**, **Cmajor Software**, **Sequential**, **Karl LaRocca (Ultramaster KR-106)** or **BVKER**. Stolperbeats is a product of Making Sound Machines, the Deluge is a product of Synthstrom Audible, the LXR-02 is a product of Erica Synths, the Model:Cycles and Syntakt are products of Elektron, the TB-303 and Juno-106 are products of Roland, the OP-1 and PO-32 are products of Teenage Engineering, Rings is a product of Mutable Instruments, Pro-53 is a product of Native Instruments, and the Prophet-5 is a product of Sequential. All trademarks belong to their owners. No rights to the Erica Synths, LXR or LXR-02 trademarks are granted.
 
 Use it at your own risk, and please don't contact Making Sound Machines, Synthstrom Audible, Erica Synths, Elektron, Roland, SquareWave Studio, Teenage Engineering, Mutable Instruments, Native Instruments, Cmajor Software, Sequential, Karl LaRocca or BVKER for help with this build.
 

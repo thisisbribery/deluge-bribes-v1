@@ -1,0 +1,17 @@
+BRUNO106 presets converted from KR-106's preset data
+
+These presets are converted from the preset data that ships with Ultramaster KR-106
+by Karl LaRocca (https://github.com/kayrockscreenprinting/ultramaster_kr106),
+licensed under the GNU General Public License v3.0. That data includes the
+Juno-106 factory patches and David Churcher's patch library (made for the
+original Ultramaster KR-106). The converted presets are distributed under the
+same licence, GPL-3.0.
+
+Converted with synth-tools/gen_bruno106_kr.py: KR-106's own parameter curves
+(its hardware-calibrated Juno-106 curves for the factory patches, the original
+Ultramaster scaling for Churcher's), mapped onto the Deluge's BRUNO106 engine
+and its envelopes, LFO and filter. LFO delay is not carried over (the Deluge
+has no equivalent). Bank codes are dropped from the names.
+
+Juno-106 and Juno-6 are trademarks of Roland Corporation. These presets and the
+BRUNO106 engine are not affiliated with or endorsed by Roland.

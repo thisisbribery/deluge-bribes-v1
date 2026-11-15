@@ -1,0 +1,36 @@
+LXR preset kits for Deluge Bribes (KITS/LXR, numbers 16-41)
+============================================================
+
+16-25  EntropiaLabs kits, converted
+-----------------------------------
+16 TEKKNO, 17 BOOM808, 18 ELECTRO, 19 LOFIDUST, 20 INDUSTRL, 21 MINIMAL (bank ELABS)
+22 NTRPBT1, 23 CONCRETO, 24 FERRUGEM, 25 MADRUGA (project ENTROPIA)
+
+By EntropiaLabs (GitHub: mcamaradev), from ELABS RLX, a VST3 of the LXR-02 drum engine:
+  https://github.com/mcamaradev/ELABS-RLX-02-LXR02-CLONE-VST  (kits/elabs/ELABS, kits/elabs/ENTROPIA)
+  commit 8d7d7023068e1dc46a79e0fcf945089bb626092d (fetched 2026-11-15)
+The repository is licensed GPL-3.0 (LICENSE at its root) and its README says the kits are its own work ("11 kits
+and 7 patterns by EntropiaLabs built in"); unlike the LXR-02 factory content, which it says it does not ship, no
+other licence or exception is stated for them. They are used here under GPL-3.0.
+Left out: CHAPA (its voices are the LXR-02 init kit with one tom changed; the rest of it is FX) and 00-NTRPB.SND
+(a byte-identical copy of NTRPBT1).
+
+26-41  Newly designed kits
+--------------------------
+26 DEEP808, 27 PUNCH909, 28 TIGHT606, 29 CR78SOFT, 30 FOUNDRY, 31 CLICKS, 32 BRONX, 33 DUBPLATE, 34 TAPEDUST,
+35 SUBBOOM, 36 TWOSTEP, 37 HEXPADS, 38 BELLTREE, 39 AMENISH, 40 ACIDHAUS, 41 BITROT
+
+Not converted from anyone's kit: written for Deluge Bribes in tools/design_kits.py, each starting from the LXR-02
+firmware's init kit (erica-synths/lxr-desktop-app, Core/Src/Preset/initKit.c, Copyright (C) 2012-2026 Erica
+Synths, GPL-3.0-only) with new per-voice settings. They are also valid LXR-02 kits (designed-snd/*.SND).
+Not yet listened to on hardware.
+
+Tools
+-----
+tools/lxr_to_deluge.py and tools/lxr02_params.json: the Bribes converter (thisisbribery/deluge-bribes-v1 tools/,
+GPL-3.0), unchanged; it reproduces the published Hrtl kits byte for byte. The LXR-02 parameter order it uses was
+checked against erica-synths/lxr-desktop-app Core/Inc/Parameters.h (all 247 sound parameters match).
+The rest of tools/ was written for this folder (GPL-3.0, as the firmware).
+
+"LXR" and "LXR-02" are trademarks of Erica Synths. These kits are not affiliated with or endorsed by Erica Synths,
+Sonic Potions or EntropiaLabs.

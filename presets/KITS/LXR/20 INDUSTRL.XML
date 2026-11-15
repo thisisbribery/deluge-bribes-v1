@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kit
+	firmwareVersion="c1.3.0"
+	earliestCompatibleFirmware="4.1.0-alpha">
+	<defaultParams
+		reverbAmount="0x80000000"
+		volume="0x00000000"
+		pan="0x00000000"
+		modFXDepth="0x00000000"
+		modFXRate="0xE0000000">
+		<delay rate="0x00000000" feedback="0x80000000" />
+		<lpf frequency="0x7FFFFFFF" resonance="0x80000000" />
+		<hpf frequency="0x80000000" resonance="0x80000000" />
+	</defaultParams>
+	<soundSources>
+		<sound
+			name="KICK"
+			presetKit="1"
+			polyphonic="auto"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="-29" cents="-1"
+				drumSynth="0000501616000000214000004040007F007F0005500000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0x1EB851CF"
+				pan="0xFE000000"
+				lpfFrequency="0x3851EB64"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x80000000"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x20820820"
+				modulator2Amount="0xAC000000"
+				modulator1Feedback="0xAC000000"
+				modulator2Feedback="0x80000000"
+				carrier1Feedback="0xC2000000"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x20820820"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0x28A28A28"
+				oscBWavetablePosition="0x04104104">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x570A3D4A" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="SNARE"
+			presetKit="1"
+			polyphonic="auto"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="-60" cents="1"
+				drumSynth="0103321A0F000000404000004040647F02595A00000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0x0F5C28DC"
+				pan="0xFE000000"
+				lpfFrequency="0x7FFFFFFF"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x80000000"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0xE4000000"
+				modulator2Amount="0xB4000000"
+				modulator1Feedback="0x9E000000"
+				modulator2Feedback="0x49249249"
+				carrier1Feedback="0x7FFFFFFF"
+				carrier2Feedback="0x32CB2CB2"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x34D34D34"
+				oscAWavetablePosition="0x08208208"
+				oscBWavetablePosition="0x04104104">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x4CCCCCA8" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="CH"
+			presetKit="1"
+			polyphonic="choke"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="10" cents="-1"
+				drumSynth="0203404040006E0054406E006240007F007F0000000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0xFFFFFFE9"
+				pan="0xF4000000"
+				lpfFrequency="0x7FFFFFFF"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x4CCCCCA8"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x5D75D75D"
+				modulator2Amount="0x45145145"
+				modulator1Feedback="0x00000000"
+				modulator2Feedback="0x5D75D75D"
+				carrier1Feedback="0x28A28A28"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0xA2000000"
+				oscBWavetablePosition="0xD4000000">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x4CCCCCA8" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="OH"
+			presetKit="1"
+			polyphonic="choke"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="10" cents="-1"
+				drumSynth="0203404040006E0054406E006240007F007F0000000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0xFFFFFFE9"
+				pan="0xF4000000"
+				lpfFrequency="0x7FFFFFFF"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x4CCCCCA8"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x5D75D75D"
+				modulator2Amount="0x45145145"
+				modulator1Feedback="0x00000000"
+				modulator2Feedback="0x5D75D75D"
+				carrier1Feedback="0x28A28A28"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0xFC000000"
+				oscBWavetablePosition="0xD4000000">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x4CCCCCA8" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="LTOM"
+			presetKit="1"
+			polyphonic="auto"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="-19" cents="-1"
+				drumSynth="00030A5D0A0064007B4000004040007F007F0000000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0xFFFFFFE9"
+				pan="0xC8000000"
+				lpfFrequency="0x7FFFFFFF"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x80000000"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x94000000"
+				modulator2Amount="0x3AEBAEBA"
+				modulator1Feedback="0x94000000"
+				modulator2Feedback="0x49249249"
+				carrier1Feedback="0x77DF7DF7"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0x16596596"
+				oscBWavetablePosition="0x98000000">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x4CCCCCA8" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="HTOM"
+			presetKit="1"
+			polyphonic="auto"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="-2" cents="-1"
+				drumSynth="000400070E000000064000004040007F007F0000000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0xFFFFFFE9"
+				pan="0x34000000"
+				lpfFrequency="0x3851EB64"
+				lpfResonance="0xC7AE146E"
+				hpfFrequency="0x0A3D708B"
+				hpfResonance="0xC7AE146E"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x80000000"
+				modulator2Amount="0x8E000000"
+				modulator1Feedback="0x9C000000"
+				modulator2Feedback="0x80000000"
+				carrier1Feedback="0x8C000000"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0xF2000000"
+				oscBWavetablePosition="0xF8000000">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x4CCCCCA8" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+		<sound
+			name="CYM"
+			presetKit="1"
+			polyphonic="auto"
+			voicePriority="1">
+			<osc1 type="drumSynth" transpose="50" cents="-1"
+				drumSynth="02034040400078002C4064000E40007F007F0000000000000001" />
+			<osc2 type="sine" transpose="0" cents="0" />
+			<defaultParams
+				oscAVolume="0x7FFFFFFF"
+				oscBVolume="0x80000000"
+				noiseVolume="0x80000000"
+				volume="0xE6666654"
+				pan="0x20000000"
+				lpfFrequency="0x7FFFFFFF"
+				lpfResonance="0x80000000"
+				hpfFrequency="0x3851EB64"
+				hpfResonance="0x80000000"
+				delayRate="0x00000000"
+				delayFeedback="0x80000000"
+				reverbAmount="0x80000000"
+				modulator1Amount="0x49249249"
+				modulator2Amount="0x9C000000"
+				modulator1Feedback="0x00000000"
+				modulator2Feedback="0x71C71C71"
+				carrier1Feedback="0xD8000000"
+				carrier2Feedback="0x00000000"
+				mod1PitchAdjust="0x80000000"
+				mod2PitchAdjust="0x80000000"
+				oscAPulseWidth="0x00000000"
+				oscAWavetablePosition="0x38E38E38"
+				oscBWavetablePosition="0xC8000000">
+				<envelope1 attack="0x80000000" decay="0x1999997E" sustain="0x7FFFFFD2" release="0x6666663D" />
+				<envelope2 attack="0x80000000" decay="0x99999995" sustain="0x80000000" release="0x80000000" />
+				<patchCables>
+					<patchCable source="velocity" destination="volume" polarity="bipolar" amount="0x3FFFFFE8" />
+					<patchCable source="aftertouch" destination="volume" polarity="unipolar" amount="0x2A3D7094" />
+					<patchCable source="y" destination="lpfFrequency" polarity="bipolar" amount="0x19999990" />
+				</patchCables>
+			</defaultParams>
+		</sound>
+	</soundSources>
+</kit>
