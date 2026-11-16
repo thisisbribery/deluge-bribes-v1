@@ -1,0 +1,4 @@
+[submodule "source/DelugeFirmware"]
+	path = source/DelugeFirmware
+	url = https://github.com/thisisbribery/DelugeFirmware.git
+	branch = bribes

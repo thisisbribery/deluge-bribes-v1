@@ -32,6 +32,8 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
 27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers and a song view you can tap.
 
+**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.32), pinned to the exact commit the bin was built from, and as a full source download on the [v1.32 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.32). See [Source code](#source-code).
+
 **Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
 Names in **bold capitals** in brackets are what the 7-segment display shows.
@@ -1409,9 +1411,13 @@ Use it at your own risk, and please don't contact Making Sound Machines, Synthst
 
 The Deluge firmware is free software under the GNU General Public License v3, and so is this build.
 
-**Browse the full source:** [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware/tree/bribes), a fork of the community firmware. Branch `bribes` has every change since the first release as separate commits, so you can read each feature on its own or compare it with the community repo: [all Bribes changes against v1.3.0](https://github.com/SynthstromAudible/DelugeFirmware/compare/v1.3.0...thisisbribery:DelugeFirmware:bribes). Each release is tagged, starting with `bribes-v1.32`.
+The complete source of every release is published in three places:
 
-The same source as a single patch on the official firmware:
+- **In this repo:** [`source/DelugeFirmware`](source/DelugeFirmware) is a git submodule pinned to the exact commit each bin was built from. Clone with `git clone --recursive https://github.com/thisisbribery/deluge-bribes-v1.git` to get it all.
+- **Browsable:** [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware/tree/bribes), a fork of the community firmware. Branch `bribes` has every change since the first release as separate commits, and each release is tagged (`bribes-v1.32` onwards). Compare it with the community repo: [all Bribes changes against v1.3.0](https://github.com/SynthstromAudible/DelugeFirmware/compare/v1.3.0...thisisbribery:DelugeFirmware:bribes).
+- **Download:** the full source tree as a `.tar.gz`, next to the bin on each [release](https://github.com/thisisbribery/deluge-bribes-v1/releases).
+
+The same changes as a single patch on the official firmware:
 
 - **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at the `v1.3.0` tag (commit `156500e7c`, community firmware 1.3.0). Up to v1.22.2 the base was commit `a616dd8e`, the 1.3 beta.
 - **Changes:** [`source/stumble-swing.patch`](source/stumble-swing.patch)
