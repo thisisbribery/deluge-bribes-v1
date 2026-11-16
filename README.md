@@ -1407,18 +1407,20 @@ Use it at your own risk, and please don't contact Making Sound Machines, Synthst
 
 ## Source code
 
-The Deluge firmware is free software under the GNU General Public License v3, and so is this build. The full source is the official firmware plus one patch:
+The Deluge firmware is free software under the GNU General Public License v3, and so is this build.
+
+**Browse the full source:** [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware/tree/bribes), a fork of the community firmware. Branch `bribes` has every change since the first release as separate commits, so you can read each feature on its own or compare it with the community repo: [all Bribes changes against v1.3.0](https://github.com/SynthstromAudible/DelugeFirmware/compare/v1.3.0...thisisbribery:DelugeFirmware:bribes). Each release is tagged, starting with `bribes-v1.32`.
+
+The same source as a single patch on the official firmware:
 
 - **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at the `v1.3.0` tag (commit `156500e7c`, community firmware 1.3.0). Up to v1.22.2 the base was commit `a616dd8e`, the 1.3 beta.
 - **Changes:** [`source/stumble-swing.patch`](source/stumble-swing.patch)
 
-To build it yourself:
+To build it yourself (or check out `v1.3.0` from the official repo and `git apply` the patch):
 
 ```bash
-git clone https://github.com/SynthstromAudible/DelugeFirmware.git
+git clone -b bribes https://github.com/thisisbribery/DelugeFirmware.git
 cd DelugeFirmware
-git checkout v1.3.0
-git apply /path/to/stumble-swing.patch
 ./dbt configure
 ./dbt build release
 ```
