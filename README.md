@@ -36,6 +36,8 @@ Unofficial firmware for the Synthstrom Deluge, built on the community beta (1.3,
 
 **Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.32), pinned to the exact commit the bin was built from, and as a full source download on the [v1.32 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.32). See [Source code](#source-code).
 
+**On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
+
 **Start here:** [Download](#download) · [Install](#install) · **Reference:** [Quick reference](#quick-reference) · [About](#about) · [Changelog](#changelog) · [Design and credit](#design-and-credit) · [Source code](#source-code)
 
 Names in **bold capitals** in brackets are what the 7-segment display shows.
@@ -1203,7 +1205,7 @@ The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any t
 
 ## 27. BRIBELUGE COMPANION
 
-A second screen for the Deluge on a phone or tablet, over USB. It runs in the browser: **[thisisbribery.github.io/bribes-companion](https://thisisbribery.github.io/bribes-companion/)** (source: [thisisbribery/bribes-companion](https://github.com/thisisbribery/bribes-companion)).
+A second screen for the Deluge on a phone or tablet, over USB. It runs in the browser: **[thisisbribery.com/companion](https://www.thisisbribery.com/companion/)** (source: [thisisbribery/bribes-companion](https://github.com/thisisbribery/bribes-companion)).
 
 ### What it shows
 
@@ -1373,7 +1375,7 @@ Newest first: what changed in each release, why, and what it taught me.
 
 Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
 
-- **The swing styles** came out of a swing visualiser built to study and sketch shuffle timings ([stolperbeats_v2](https://thisisbribery.github.io/stolperbeats_v2/)). DEEP, SQEZ and FOLD are original designs. HOPP follows the well-known MPC and Linn swing ladder (around 54, 58, 62, 66 and 71%), placed on whole ticks the way a 96 PPQN drum machine would.
+- **The swing styles** came out of a swing visualiser built to study and sketch shuffle timings ([stolperbeats_v2](https://www.thisisbribery.com/stolperbeats/visualiser/)). DEEP, SQEZ and FOLD are original designs. HOPP follows the well-known MPC and Linn swing ladder (around 54, 58, 62, 66 and 71%), placed on whole ticks the way a 96 PPQN drum machine would.
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
 - **The Mono sequencer** is an original design for writing basslines on the Deluge.
 - **Endless Record** reuses the Deluge's own linear recording, started from the RECORD button while playing.
