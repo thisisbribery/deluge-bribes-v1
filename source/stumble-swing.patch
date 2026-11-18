@@ -16670,10 +16670,10 @@ index 000000000..9872e7267
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.cpp b/src/deluge/gui/context_menu/synth_instrument.cpp
 new file mode 100644
-index 000000000..f418649d0
+index 000000000..099f3b666
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.cpp
-@@ -0,0 +1,327 @@
+@@ -0,0 +1,522 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -16694,9 +16694,14 @@ index 000000000..f418649d0
 +#include "gui/context_menu/synth_instrument.h"
 +#include "definitions_cxx.hpp"
 +#include "dsp/drum_synth/drum_synth.h"
++#include "dsp/dx/dx7note.h"
 +#include "fatfs/ff.h"
 +#include "gui/l10n/l10n.h"
++#include "gui/menu_item/drum_synth/param.h"
++#include "gui/menu_item/synth_mode.h"
 +#include "gui/ui/load/load_instrument_preset_ui.h"
++#include "gui/ui/menus.h"
++#include "gui/ui/sound_editor.h"
 +#include "gui/views/instrument_clip_view.h"
 +#include "gui/views/view.h"
 +#include "hid/buttons.h"
@@ -16706,9 +16711,13 @@ index 000000000..f418649d0
 +#include "model/settings/runtime_feature_settings.h"
 +#include "model/song/song.h"
 +#include "processing/sound/sound_instrument.h"
++#include "storage/flash_storage.h"
++#include <array>
 +#include <cstdio>
 +#include <cstring>
 +#include <strings.h>
++
++extern deluge::gui::menu_item::SynthModeSelection synthModeMenu;
 +
 +namespace deluge::gui::context_menu {
 +
@@ -16791,28 +16800,127 @@ index 000000000..f418649d0
 +	return 0;
 +}
 +
-+/// A blank synth of the type, saving into its folder (the type has no presets yet)
-+void makeBlankSynth(const SynthInstrument& type) {
-+	if (instrumentClipView.createNewInstrument(OutputType::SYNTH, type.dx)
-+	    && getCurrentOutputType() == OutputType::SYNTH) {
-+		auto* synth = static_cast<SoundInstrument*>(getCurrentOutput());
-+		synth->dirPath.set(type.folder);
-+		if (type.mode != synth->getSynthMode()) {
-+			synth->setSynthMode(type.mode, currentSong);
++/// The picker's pads: the audition pads play what the clip plays now (the type's init synth once the picker has moved),
++/// as in the preset browser. Other pads do nothing, so a stray press doesn't throw the picker away.
++ActionResult pickerPadAction(int32_t x, int32_t y, int32_t velocity) {
++	if (x == kDisplayWidth + 1 && getRootUI() == &instrumentClipView) {
++		if (sdRoutineLock) {
++			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
 +		}
++		return instrumentClipView.padAction(x, y, velocity);
 +	}
++	return ActionResult::DEALT_WITH;
++}
++
++/// Grey out everything but the audition pads
++bool pickerGreyout(uint32_t* cols) {
++	*cols = (getRootUI() == &instrumentClipView) ? 0xFFFFFFFE : 0xFFFFFFFF;
++	return true;
 +}
 +
 +} // namespace
 +
-+bool openSynthPresetFolder(char const* folder, int32_t backTo) {
-+	InstrumentClip* clip = getCurrentInstrumentClip();
-+	if (clip == nullptr) {
-+		return false;
++/// The DX7 type's init: a plain two-operator FM voice (algorithm 1, operator 2 on operator 1 at the same ratio, its
++/// envelope settling so the attack is brighter, velocity on both), so the pads play something DX7-like from the start.
++/// The DX7's own blank voice is a bare sine.
++void setDx7InitVoice(Source& source) {
++	DxPatch* patch = source.ensureDxPatch();
++	if (patch == nullptr) {
++		return;
 +	}
-+	loadInstrumentPresetUI.setupLoadInstrument(OutputType::SYNTH, static_cast<Instrument*>(clip->output), clip);
-+	loadInstrumentPresetUI.setPickerFolder(folder, backTo);
-+	return openUI(&loadInstrumentPresetUI);
++	uint8_t* p = patch->params;
++	// Each operator is 21 bytes, operator 6 first: rates 1-4, levels 1-4, scaling (break point, depths, curves), rate
++	// scaling, amp mod sensitivity, velocity sensitivity, output level, mode, coarse, fine, detune
++	auto setOp = [p](int32_t op, std::array<uint8_t, 4> rates, std::array<uint8_t, 4> levels, uint8_t velocity,
++	                 uint8_t output) {
++		uint8_t* o = p + (6 - op) * 21;
++		for (int32_t i = 0; i < 4; i++) {
++			o[i] = rates[i];
++			o[4 + i] = levels[i];
++		}
++		o[13] = 2; // a little rate scaling: higher notes a touch quicker
++		o[15] = velocity;
++		o[16] = output;
++		o[17] = 0; // ratio
++		o[18] = 1; // coarse 1
++		o[19] = 0;
++		o[20] = 7; // detune centre
++	};
++	setOp(1, {99, 45, 30, 55}, {99, 90, 82, 0}, 2, 99);
++	setOp(2, {99, 50, 28, 55}, {99, 72, 58, 0}, 3, 80);
++	for (int32_t op = 3; op <= 6; op++) {
++		p[(6 - op) * 21 + 16] = 0;
++	}
++	p[134] = 0; // algorithm 1
++	p[135] = 0; // no feedback
++	p[155] = 0x3F;
++	patch->updateEngineMode();
++	source.dxPatchChanged = true;
++}
++
++bool previewSynthInit(size_t type) {
++	using PickerInit = LoadInstrumentPresetUI::PickerInit;
++	const PickerInit result = loadInstrumentPresetUI.pickerPreviewInit(type);
++	if (result != PickerInit::BUILT_IN) {
++		return result != PickerInit::FAILED;
++	}
++	// A blank synth: set up as the type plays
++	const SynthInstrument& synthType = kSynthInstruments[type];
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	if (clip == nullptr || clip->output->type != OutputType::SYNTH) {
++		return true;
++	}
++	auto* synth = static_cast<SoundInstrument*>(clip->output);
++	if (synthType.dx && synth->sources[0].oscType == OscType::DX7) {
++		setDx7InitVoice(synth->sources[0]);
++	}
++	if (synthType.mode == SynthMode::TB303) {
++		synth->setSynthMode(SynthMode::TB303, currentSong);
++		if (synth->isTb303()) {
++			synth->setupTb303Defaults(&clip->paramManager);
++			clip->ensureMonoScaleMode(currentSong);
++		}
++	}
++	else if (synthType.mode != synth->getSynthMode()) {
++		synth->setSynthMode(synthType.mode, currentSong);
++	}
++	if (synthType.rings || synthType.brophet || synthType.bruno106) {
++		using dsp::drum_synth::Engine;
++		const Engine engine = synthType.rings ? Engine::RINGS : synthType.brophet ? Engine::BROPHET : Engine::BRUNO106;
++		// The engine is set up as SYNTH MODE sets it, which goes through the sound editor's sound
++		if (soundEditor.setup(clip, &synthModeMenu, 0)) {
++			gui::menu_item::drum_synth::setDrumEngine(engine, 0, true);
++		}
++	}
++	// Still nobody's preset: it goes when something else takes its place
++	synth->editedByUser = false;
++	view.setKnobIndicatorLevels();
++	return true;
++}
++
++namespace {
++/// The type the track's own synth plays (-1: the track had no synth). The picker plays that synth on its type, and each
++/// other type's init synth.
++int32_t pickerHomeType = -1;
++
++/// What the audition pads play on type: the track's own synth on its type, else the type's init synth
++void showSynthType(size_t type) {
++	if (static_cast<int32_t>(type) == pickerHomeType && loadInstrumentPresetUI.pickerRestoreOriginal()) {
++		return;
++	}
++	previewSynthInit(type);
++}
++} // namespace
++
++void returnToSynthPicker(size_t type) {
++	showSynthType(type);
++	if (synthCategoryMenu.setupFor(type)) {
++		openUI(&synthCategoryMenu);
++	}
++	else {
++		synthInstrumentMenu.setupFor(type);
++		openUI(&synthInstrumentMenu);
++	}
 +}
 +
 +// ---- Types ----
@@ -16834,26 +16942,43 @@ index 000000000..f418649d0
 +}
 +
 +bool SynthInstrumentMenu::setupAndCheckAvailability() {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	if (clip == nullptr) {
++		return false;
++	}
++	pickerHomeType = -1;
++	// No synth on the track yet: start on the default synth type (Defaults > Synth instrument)
++	const size_t defaultType = (FlashStorage::defaultSynthInstrument < synth_instruments::kNumDefaultSynthInstruments)
++	                               ? FlashStorage::defaultSynthInstrument
++	                               : 0;
 +	switch (getCurrentOutputType()) {
 +	case OutputType::SYNTH:
 +		setupFor(typeOf(static_cast<SoundInstrument*>(getCurrentOutput())));
-+		return true;
++		pickerHomeType = currentOption;
++		break;
 +	case OutputType::KIT: {
 +		// As stock: a kit clip only turns into a synth clip while it has no notes or sounds
-+		InstrumentClip* clip = getCurrentInstrumentClip();
-+		if (clip == nullptr || !clip->isEmpty() || !clip->output->isEmpty()) {
++		if (!clip->isEmpty() || !clip->output->isEmpty()) {
 +			return false;
 +		}
-+		setupFor(0);
-+		return true;
++		setupFor(defaultType);
++		break;
 +	}
 +	case OutputType::MIDI_OUT:
 +	case OutputType::CV:
-+		setupFor(0);
-+		return true;
++		setupFor(defaultType);
++		break;
 +	default:
 +		return false;
 +	}
++	// The picker's session: from here on, BACK puts this track's instrument back
++	loadInstrumentPresetUI.pickerBegin(clip);
++	// A track with its own synth plays it until the picker moves; any other starts on an init synth straight away,
++	// so the audition pads have a synth to play
++	if (pickerHomeType < 0) {
++		previewSynthInit(currentOption);
++	}
++	return true;
 +}
 +
 +void SynthInstrumentMenu::setupFor(size_t type) {
@@ -16870,8 +16995,16 @@ index 000000000..f418649d0
 +			do {
 +				next = (next + 1) % numOptions;
 +			} while (next != currentOption && !typeAvailable(next));
++			if (inCardRoutine) {
++				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++			}
++			const bool moved = next != currentOption;
 +			currentOption = next;
 +			scrollPos = currentOption;
++			if (moved) {
++				showSynthType(currentOption);
++			}
++			// After the swap: a loading message mustn't leave the type's name covered
 +			if (display->haveOLED()) {
 +				renderUIsForOled();
 +			}
@@ -16881,7 +17014,41 @@ index 000000000..f418649d0
 +		}
 +		return ActionResult::DEALT_WITH;
 +	}
++	// BACK: the track's old instrument back, and out
++	if (b == deluge::hid::button::BACK) {
++		if (on) {
++			if (inCardRoutine) {
++				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++			}
++			loadInstrumentPresetUI.pickerCancel();
++			display->setNextTransitionDirection(-1);
++			close();
++		}
++		return ActionResult::DEALT_WITH;
++	}
 +	return ContextMenu::buttonAction(b, on, inCardRoutine);
++}
++
++void SynthInstrumentMenu::selectEncoderAction(int8_t offset) {
++	const int32_t before = currentOption;
++	ContextMenu::selectEncoderAction(offset);
++	if (currentOption != before) {
++		showSynthType(currentOption);
++		if (display->haveOLED()) {
++			renderUIsForOled();
++		}
++		else {
++			drawCurrentOption();
++		}
++	}
++}
++
++ActionResult SynthInstrumentMenu::padAction(int32_t x, int32_t y, int32_t velocity) {
++	return pickerPadAction(x, y, velocity);
++}
++
++bool SynthInstrumentMenu::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
++	return pickerGreyout(cols);
 +}
 +
 +bool SynthInstrumentMenu::acceptCurrentOption() {
@@ -16890,16 +17057,17 @@ index 000000000..f418649d0
 +	display->setNextTransitionDirection(-1);
 +	close();
 +
-+	// INIT: the stock blank synth
++	// INIT: the stock blank synth (or the card's SYNTHS/INIT/INIT.XML), as the audition pads have been playing
 +	if (type.init) {
-+		instrumentClipView.createNewInstrument(OutputType::SYNTH);
++		previewSynthInit(typeIndex);
++		loadInstrumentPresetUI.pickerKeepInit(getInstrumentFolder(OutputType::SYNTH));
 +		return true;
 +	}
 +
 +	// Make the folders if they're missing, ready to save presets into, as the Deluge can't make folders when saving
 +	f_mkdir("SYNTHS");
 +	f_mkdir(type.folder);
-+	if (!type.dx) {
++	{
 +		char folder[48];
 +		for (size_t c = 0; c < numCategories(typeIndex); c++) {
 +			categoryFolder(typeIndex, c, folder, sizeof(folder));
@@ -16907,16 +17075,26 @@ index 000000000..f418649d0
 +		}
 +	}
 +
-+	if (synthCategoryMenu.setupFor(typeIndex)) {
++	// From here on the audition pads play the type's init synth (the categories first look at where the track's synth
++	// came from)
++	const bool hasCategories = synthCategoryMenu.setupFor(typeIndex);
++	showSynthType(typeIndex);
++	if (hasCategories) {
 +		openUI(&synthCategoryMenu);
 +	}
 +	// No categories in use (DX7, or presets kept loose in the type's folder): its folder
 +	else if (folderHasPresets(type.folder)) {
-+		openSynthPresetFolder(type.folder, -1);
++		if (!loadInstrumentPresetUI.pickerOpenFolder(type.folder, typeIndex)) {
++			loadInstrumentPresetUI.pickerCancel();
++		}
 +	}
-+	// Nothing saved there yet: a blank synth of that type, which saves into the folder
++	// Nothing saved there yet: keep the init synth, which saves into the folder
 +	else {
-+		makeBlankSynth(type);
++		loadInstrumentPresetUI.pickerKeepInit(type.folder);
++		if (type.dx && getCurrentOutputType() == OutputType::SYNTH
++		    && soundEditor.setup(getCurrentInstrumentClip(), &dxMenu, 0)) {
++			openUI(&soundEditor);
++		}
 +	}
 +	return true;
 +}
@@ -16938,7 +17116,7 @@ index 000000000..f418649d0
 +
 +bool SynthCategoryMenu::setupFor(size_t type) {
 +	type_ = type;
-+	if (kSynthInstruments[type].dx || kSynthInstruments[type].init) {
++	if (kSynthInstruments[type].init) {
 +		return false;
 +	}
 +	char folder[48];
@@ -16963,6 +17141,11 @@ index 000000000..f418649d0
 +				current = static_cast<int32_t>(c);
 +			}
 +		}
++	}
++	// Back from a category's presets: on that category
++	if (current < 0 && lastType_ == static_cast<int32_t>(type) && lastCategory_ >= 0
++	    && lastCategory_ < static_cast<int32_t>(numCategories(type)) && hasPresets_[lastCategory_]) {
++		current = lastCategory_;
 +	}
 +	for (size_t c = 0; c < numCategories(type) && current < 0; c++) {
 +		if (hasPresets_[c]) {
@@ -16991,22 +17174,34 @@ index 000000000..f418649d0
 +	return ContextMenu::buttonAction(b, on, inCardRoutine);
 +}
 +
++ActionResult SynthCategoryMenu::padAction(int32_t x, int32_t y, int32_t velocity) {
++	return pickerPadAction(x, y, velocity);
++}
++
++bool SynthCategoryMenu::getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) {
++	return pickerGreyout(cols);
++}
++
 +bool SynthCategoryMenu::acceptCurrentOption() {
 +	char folder[48];
 +	categoryFolder(type_, currentOption, folder, sizeof(folder));
++	lastType_ = static_cast<int32_t>(type_);
++	lastCategory_ = currentOption;
 +	display->setNextTransitionDirection(1);
 +	close();
-+	openSynthPresetFolder(folder, static_cast<int32_t>(type_));
++	if (!loadInstrumentPresetUI.pickerOpenFolder(folder, type_)) {
++		loadInstrumentPresetUI.pickerCancel();
++	}
 +	return true;
 +}
 +
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.h b/src/deluge/gui/context_menu/synth_instrument.h
 new file mode 100644
-index 000000000..d667db434
+index 000000000..2ddbac357
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.h
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,96 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -17034,8 +17229,10 @@ index 000000000..d667db434
 +
 +/// Shown by SHIFT + SYNTH on any instrument track, as SHIFT + KIT shows the kit types: the synth types (see
 +/// model/instrument/synth_instruments.h), opening on the one the track plays. SHIFT + SYNTH again or turning SELECT
-+/// moves on. SELECT or SYNTH opens the type's categories (BASS, LEAD, PAD, MISC); INIT makes the stock blank synth.
-+/// BACK cancels. DX7 is only offered with the DX7 engine on.
++/// moves on. The audition pads always have a synth to play: on a synth track, its own synth on its own type and each
++/// other type's init synth; on any other track, the init synth of the type the cursor is on, from the moment the menu
++/// opens. SELECT or SYNTH opens the type's categories (LEAD, BASS, PAD, MISC; DX7 adds KEYS and BELL); INIT keeps the
++/// stock blank synth. BACK puts the track's old instrument back.
 +class SynthInstrumentMenu final : public ContextMenu {
 +public:
 +	SynthInstrumentMenu() = default;
@@ -17050,14 +17247,18 @@ index 000000000..d667db434
 +	bool isCurrentOptionAvailable() override;
 +	bool canSeeViewUnderneath() override { return true; }
 +	bool acceptCurrentOption() override;
++	void selectEncoderAction(int8_t offset) override;
 +	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
++	ActionResult padAction(int32_t x, int32_t y, int32_t velocity) override;
++	bool getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) override;
 +	deluge::hid::Button getAcceptButton() override { return deluge::hid::button::SYNTH; }
 +};
 +
 +/// The categories inside a synth type's folder (BASS, LEAD, PAD, MISC; BROPHET's are Pro-53's files, BNK1 to BNK8),
-+/// each one offered only if it holds presets. SELECT or SYNTH opens the preset browser in that folder playing its first
-+/// preset: turning SELECT previews the others, SELECT keeps one, BACK there puts the old synth back and returns here.
-+/// BACK here returns to the types.
++/// each one offered only if it holds presets. The audition pads play the type's init synth. SELECT or SYNTH opens the
++/// preset browser in that folder, still playing the init until another preset is highlighted (SELECT straight away
++/// loads the one shown): turning SELECT previews the presets, SELECT keeps one, BACK there returns here playing the
++/// init again. BACK here returns to the types.
 +class SynthCategoryMenu final : public ContextMenu {
 +public:
 +	SynthCategoryMenu() = default;
@@ -17073,18 +17274,26 @@ index 000000000..d667db434
 +	bool canSeeViewUnderneath() override { return true; }
 +	bool acceptCurrentOption() override;
 +	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
++	ActionResult padAction(int32_t x, int32_t y, int32_t velocity) override;
++	bool getGreyoutColsAndRows(uint32_t* cols, uint32_t* rows) override;
 +	deluge::hid::Button getAcceptButton() override { return deluge::hid::button::SYNTH; }
 +
 +	size_t type() const { return type_; }
 +
 +private:
 +	size_t type_ = 0;
++	// The category last opened, to come back onto it
++	int32_t lastType_ = -1;
++	int32_t lastCategory_ = -1;
 +	std::array<bool, synth_instruments::kMaxSynthCategories> hasPresets_{};
 +};
 +
-+/// Open the preset browser on folder for the current clip, playing its first preset. backTo is the category menu's
-+/// type to return to on BACK from that folder (-1: BACK leaves as usual). False if it couldn't open.
-+bool openSynthPresetFolder(char const* folder, int32_t backTo);
++/// Put type's init synth on the current clip for the SHIFT + SYNTH picker (its mode or engine set as the type plays).
++/// False if it couldn't.
++bool previewSynthInit(size_t type);
++/// Back from the picker's preset browser: type's init synth on the clip, its categories open (or the types, if it has
++/// none)
++void returnToSynthPicker(size_t type);
 +
 +extern SynthInstrumentMenu synthInstrumentMenu;
 +extern SynthCategoryMenu synthCategoryMenu;
@@ -20922,6 +21131,33 @@ index 000000000..a7de4fec1
 +};
 +
 +} // namespace deluge::gui::menu_item::drum_synth
+diff --git a/src/deluge/gui/menu_item/dx/cartridge.cpp b/src/deluge/gui/menu_item/dx/cartridge.cpp
+index e20718a91..717c1d666 100644
+--- a/src/deluge/gui/menu_item/dx/cartridge.cpp
++++ b/src/deluge/gui/menu_item/dx/cartridge.cpp
+@@ -102,6 +102,7 @@ void DxCartridge::loadPatch() {
+ 		return;
+ 	}
+ 	pd->unpackProgram(patch->params, currentValue);
++	patch->updateEngineMode(); // the core for this voice's algorithm and feedback
+ 	soundEditor.currentSound->killAllVoices();
+ 	Instrument* instrument = getCurrentInstrument();
+ 	if (instrument->type == OutputType::SYNTH && !instrument->mightExistOnCard) {
+diff --git a/src/deluge/gui/menu_item/dx/param.cpp b/src/deluge/gui/menu_item/dx/param.cpp
+index e484f187b..3456931f1 100644
+--- a/src/deluge/gui/menu_item/dx/param.cpp
++++ b/src/deluge/gui/menu_item/dx/param.cpp
+@@ -61,6 +61,10 @@ void DxParam::setValue(int val) {
+ 	}
+ 	if (param >= 0 && param <= MAX_PARAM_IDX) {
+ 		patch->params[param] = val;
++		// Algorithm 4 and 6 with feedback need the MkI core
++		if (param == 134 || param == 135) {
++			patch->updateEngineMode();
++		}
+ 	}
+ 	else if (param == -1) {
+ 		patch->random_detune = val;
 diff --git a/src/deluge/gui/menu_item/filter/mode.h b/src/deluge/gui/menu_item/filter/mode.h
 index 51b360b01..40c661abc 100644
 --- a/src/deluge/gui/menu_item/filter/mode.h
@@ -22443,18 +22679,19 @@ index 3b9089ec8..0679f9646 100644
  					exitScaleMode();
  				}
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
-index a2997fff5..7102d8325 100644
+index a2997fff5..ad4b328d2 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
-@@ -19,6 +19,7 @@
+@@ -19,6 +19,8 @@
  #include "definitions_cxx.hpp"
  #include "extern.h"
  #include "gui/context_menu/load_instrument_preset.h"
 +#include "gui/context_menu/synth_instrument.h"
++#include "gui/l10n/l10n.h"
  #include "gui/ui/keyboard/keyboard_screen.h"
  #include "gui/ui/root_ui.h"
  #include "gui/views/arranger_view.h"
-@@ -39,11 +40,13 @@
+@@ -39,11 +41,14 @@
  #include "model/song/clip_iterators.h"
  #include "model/song/song.h"
  #include "processing/engines/audio_engine.h"
@@ -22464,36 +22701,81 @@ index a2997fff5..7102d8325 100644
  #include "storage/storage_manager.h"
  #include "util/functions.h"
  #include "util/try.h"
++#include <cstring>
 +#include <strings.h>
  
  using namespace deluge;
  namespace encoders = deluge::hid::encoders;
-@@ -109,6 +112,12 @@ bool LoadInstrumentPresetUI::opened() {
- 	changedInstrumentForClip = false;
- 	replacedWholeInstrument = false;
+@@ -62,16 +67,7 @@ bool LoadInstrumentPresetUI::getGreyoutColsAndRows(uint32_t* cols, uint32_t* row
+ 	return true;
+ }
  
+-bool LoadInstrumentPresetUI::opened() {
+-
+-	// The QWERTY keyboard is always shown in this UI (qwertyAlwaysVisible stays true), so the favourites row should
+-	// be too. The static qwertyVisible flag can be left false by another browser (e.g. song load with the keyboard
+-	// toggled off); without resetting it here the favourites row would stay hidden until something else set it. #4674
+-	qwertyVisible = true;
+-
+-	if (getRootUI() == &keyboardScreen) {
+-		PadLEDs::skipGreyoutFade();
+-	}
++void LoadInstrumentPresetUI::captureInitialInstrument() {
+ 	if (instrumentToReplace) {
+ 		initialOutputType = instrumentToReplace->type;
+ 		initialName.set(&instrumentToReplace->name);
+@@ -105,11 +101,36 @@ bool LoadInstrumentPresetUI::opened() {
+ 	case OutputType::KIT:
+ 	case OutputType::NONE:;
+ 	}
++}
+ 
+-	changedInstrumentForClip = false;
+-	replacedWholeInstrument = false;
++bool LoadInstrumentPresetUI::opened() {
+ 
+-	if (instrumentClipToLoadFor) {
++	// The QWERTY keyboard is always shown in this UI (qwertyAlwaysVisible stays true), so the favourites row should
++	// be too. The static qwertyVisible flag can be left false by another browser (e.g. song load with the keyboard
++	// toggled off); without resetting it here the favourites row would stay hidden until something else set it. #4674
++	qwertyVisible = true;
++
++	if (getRootUI() == &keyboardScreen) {
++		PadLEDs::skipGreyoutFade();
++	}
++	// Opening on a SHIFT + SYNTH picker folder carries its session on: the instrument to go back to is the one the
++	// session started on, not the init synth playing now
++	const bool continuingPicker = pickerOpening_ && pickerSession_;
++	pickerOpening_ = false;
++	if (!continuingPicker) {
++		endPickerSession();
++		captureInitialInstrument();
++		changedInstrumentForClip = false;
++		replacedWholeInstrument = false;
++	}
++
 +	pickerStartDir.clear();
-+	if (pickerFolder != nullptr && !loadingSynthToKitRow && outputTypeToLoad == OutputType::SYNTH) {
++	if (continuingPicker && pickerFolder != nullptr && !loadingSynthToKitRow && outputTypeToLoad == OutputType::SYNTH) {
 +		pickerStartDir.set(pickerFolder);
 +	}
 +	pickerFolder = nullptr;
 +
- 	if (instrumentClipToLoadFor) {
++	if (instrumentClipToLoadFor && !continuingPicker) {
  		instrumentClipToLoadFor
  		    ->backupPresetSlot(); // Store this now cos we won't be storing it between each navigation we do
-@@ -131,6 +140,11 @@ gotError:
  	}
+@@ -123,7 +144,10 @@ gotError:
  
- 	focusRegained();
-+
-+	// From the SHIFT + SYNTH picker: play the folder's first preset straight away
-+	if (!pickerStartDir.isEmpty() && fileIndexSelected >= 0) {
-+		currentFileChanged(0);
-+	}
- 	return true;
- }
+ 	actionLogger.deleteAllLogs();
  
-@@ -200,8 +214,21 @@ Error LoadInstrumentPresetUI::setupForOutputType() {
++	// The picker's folder: show its first (or last browsed) preset without loading it, the init playing on
++	pickerHoldOnArrival_ = !pickerStartDir.isEmpty();
+ 	error = setupForOutputType(); // Sets currentDir.
++	pickerHoldOnArrival_ = false;
+ 	if (error != Error::NONE) {
+ 		renderingNeededRegardlessOfUI(); // Because unlike many UIs we've already gone and drawn the QWERTY interface on
+ 		                                 // the pads, in call to setupForOutputType().
+@@ -200,8 +224,21 @@ Error LoadInstrumentPresetUI::setupForOutputType() {
  	// I don't have this calling arrivedInNewFolder(), because as you can see below, we want to either just display the
  	// existing preset, or call confirmPresetOrNextUnlaunchedOne() to skip any which aren't "available".
  
@@ -22516,7 +22798,47 @@ index a2997fff5..7102d8325 100644
  
  		// Then we can start by just looking at the existing Instrument, cos they're the same type...
  		currentDir.set(&instrumentToReplace->dirPath);
-@@ -506,6 +533,7 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
+@@ -287,6 +324,10 @@ useDefaultFolder:
+ }
+ 
+ void LoadInstrumentPresetUI::folderContentsReady(int32_t entryDirection) {
++	if (pickerHoldOnArrival_) {
++		pickerNotLoaded_ = true;
++		return;
++	}
+ 	currentFileChanged(0);
+ }
+ 
+@@ -295,6 +336,7 @@ void LoadInstrumentPresetUI::currentFileChanged(int32_t movementDirection) {
+ 
+ 	// if (currentFileItem->instrument != instrumentToReplace) {
+ 
++	pickerNotLoaded_ = false;
+ 	currentUIMode = UI_MODE_LOADING_BUT_ABORT_IF_SELECT_ENCODER_TURNED;
+ 	if (loadingSynthToKitRow) {
+ 		currentInstrumentLoadError = performLoadSynthToKit();
+@@ -327,6 +369,12 @@ void LoadInstrumentPresetUI::enterKeyPress() {
+ 
+ 	else {
+ 
++		// From the SHIFT + SYNTH picker, the preset on screen may not be loaded yet: load it now
++		if (pickerNotLoaded_) {
++			pickerNotLoaded_ = false;
++			currentInstrumentLoadError = Error::UNSPECIFIED;
++		}
++
+ 		if (currentInstrumentLoadError != Error::NONE) {
+ 			if (loadingSynthToKitRow) {
+ 				currentInstrumentLoadError = performLoadSynthToKit();
+@@ -349,6 +397,7 @@ void LoadInstrumentPresetUI::enterKeyPress() {
+ 			instrumentClipView.recalculateColours();
+ 		}
+ 
++		endPickerSession();
+ 		close();
+ 	}
+ }
+@@ -506,6 +555,7 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
  
  	// Or, for normal synths, kits and midi
  	else {
@@ -22524,12 +22846,13 @@ index a2997fff5..7102d8325 100644
  		OutputType oldOutputType = outputTypeToLoad;
  		outputTypeToLoad = newOutputType;
  
-@@ -1153,10 +1181,41 @@ Error LoadInstrumentPresetUI::performLoadSynthToKit() {
+@@ -1153,10 +1203,260 @@ Error LoadInstrumentPresetUI::performLoadSynthToKit() {
  }
  // Previously called "exitAndResetInstrumentToInitial()". Does just that.
  void LoadInstrumentPresetUI::exitAction() {
 +	pickerStartDir.clear();
  	revertToInitialPreset();
++	endPickerSession();
  	LoadUI::exitAction();
  }
  
@@ -22544,8 +22867,9 @@ index a2997fff5..7102d8325 100644
 +	}
 +}
 +
-+// From the SHIFT + SYNTH picker, BACK in the folder it opened on puts the old synth back and returns to the categories.
-+// The preset it was on is remembered, so going into that category again picks up there.
++// From the SHIFT + SYNTH picker, BACK in the folder it opened on returns to the categories (or the types), playing the
++// type's init synth again; the session goes on, so BACK from the types still puts the old synth back. The preset it was
++// on is remembered, so going into that category again picks up there.
 +ActionResult LoadInstrumentPresetUI::backButtonAction() {
 +	if (!pickerStartDir.isEmpty() && !strcasecmp(currentDir.get(), pickerStartDir.get())) {
 +		if (sdRoutineLock) {
@@ -22553,20 +22877,237 @@ index a2997fff5..7102d8325 100644
 +		}
 +		rememberPickerPlace();
 +		const int32_t backTo = pickerBackToType;
-+		exitAction();
-+		if (backTo >= 0 && getCurrentUI() == getRootUI()
-+		    && deluge::gui::context_menu::synthCategoryMenu.setupFor(static_cast<size_t>(backTo))) {
-+			openUI(&deluge::gui::context_menu::synthCategoryMenu);
++		if (!pickerSession_ || backTo < 0) {
++			exitAction();
++			return ActionResult::DEALT_WITH;
++		}
++		pickerStartDir.clear();
++		pickerNotLoaded_ = false;
++		display->setNextTransitionDirection(-1);
++		close();
++		if (getCurrentUI() == getRootUI()) {
++			deluge::gui::context_menu::returnToSynthPicker(static_cast<size_t>(backTo));
++		}
++		else {
++			pickerCancel();
 +		}
 +		return ActionResult::DEALT_WITH;
 +	}
 +	return LoadUI::backButtonAction();
 +}
 +
++// ---- The SHIFT + SYNTH picker session ----
++
++void LoadInstrumentPresetUI::endPickerSession() {
++	pickerSession_ = false;
++	pickerInit_ = nullptr;
++	pickerInitType_ = -1;
++	pickerNotLoaded_ = false;
++	pickerStartDir.clear();
++}
++
++void LoadInstrumentPresetUI::pickerBegin(InstrumentClip* clip) {
++	endPickerSession();
++	setupLoadInstrument(OutputType::SYNTH, static_cast<Instrument*>(clip->output), clip);
++	captureInitialInstrument();
++	changedInstrumentForClip = false;
++	replacedWholeInstrument = false;
++	clip->backupPresetSlot();
++	pickerSession_ = true;
++}
++
++LoadInstrumentPresetUI::PickerInit LoadInstrumentPresetUI::pickerPreviewInit(size_t type) {
++	using deluge::synth_instruments::kSynthInstruments;
++	if (!pickerSession_ || instrumentClipToLoadFor == nullptr || type >= kSynthInstruments.size()
++	    || instrumentClipToLoadFor->output != instrumentToReplace) {
++		return PickerInit::FAILED;
++	}
++	if (pickerInit_ != nullptr && pickerInit_ == instrumentToReplace && pickerInitType_ == static_cast<int32_t>(type)) {
++		return PickerInit::ALREADY_ON;
++	}
++	const auto& synthType = kSynthInstruments[type];
++	// As stock, a kit clip only becomes a synth clip while it has no notes or sounds
++	if (instrumentToReplace->type == OutputType::KIT
++	    && (!instrumentClipToLoadFor->isEmpty() || !instrumentClipToLoadFor->output->isEmpty())) {
++		return PickerInit::FAILED;
++	}
++
++	// The card's own init for this type, if it has one: SYNTHS/INIT/<type>.XML (INIT.XML for INIT)
++	char const* leaf = synthType.init ? "INIT" : strrchr(synthType.folder, '/') + 1;
++	String filePath;
++	filePath.set("SYNTHS/INIT/");
++	filePath.concatenate(leaf);
++	filePath.concatenate(".XML");
++	String initName;
++	initName.set("INIT");
++	String initDir;
++	initDir.set(synthType.folder);
++
++	Instrument* init = nullptr;
++	ParamManagerForTimeline paramManager;
++	bool fromFile = false;
++	FilePointer filePointer;
++	if (StorageManager::fileExists(filePath.get(), &filePointer)) {
++		Error error = StorageManager::loadInstrumentFromFile(currentSong, instrumentClipToLoadFor, OutputType::SYNTH,
++		                                                     false, &init, &filePointer, &initName, &initDir);
++		if (error == Error::NONE && init != nullptr) {
++			display->displayLoadingAnimationText("Loading", false, true);
++			error = init->loadAllAudioFiles(true);
++			display->removeLoadingAnimation();
++			if (error != Error::NONE) {
++				currentSong->deleteOutput(init);
++				init = nullptr;
++			}
++			else {
++				fromFile = true;
++			}
++		}
++		else {
++			init = nullptr;
++		}
++	}
++	if (init == nullptr) {
++		init = StorageManager::createNewInstrument(OutputType::SYNTH, &paramManager);
++		if (init == nullptr) {
++			display->displayError(Error::INSUFFICIENT_RAM);
++			return PickerInit::FAILED;
++		}
++		static_cast<SoundInstrument*>(init)->setupAsBlankSynth(&paramManager, synthType.dx);
++		init->name.set(&initName);
++		init->dirPath.set(&initDir);
++	}
++	// Not a preset of anyone's yet: when something else takes its place, it's deleted rather than kept
++	init->editedByUser = false;
++	init->mightExistOnCard = false;
++
++	// Notes held on the old instrument would hang
++	if (getRootUI() == &instrumentClipView) {
++		instrumentClipView.cancelAllAuditioning();
++	}
++	actionLogger.deleteAllLogs();
++
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack =
++	    setupModelStackWithTimelineCounter(modelStackMemory, currentSong, instrumentClipToLoadFor);
++
++	if (currentSong->shouldOldOutputBeReplaced(instrumentClipToLoadFor)) {
++		if (!fromFile) {
++			currentSong->backUpParamManager((ModControllableAudio*)init->toModControllable(), nullptr, &paramManager,
++			                                true);
++		}
++		currentSong->replaceInstrument(instrumentToReplace, init);
++		replacedWholeInstrument = true;
++	}
++	else {
++		init->defaultVelocity = instrumentToReplace->defaultVelocity;
++		instrumentClipToLoadFor->changeInstrument(modelStack, init, fromFile ? nullptr : &paramManager,
++		                                          InstrumentRemoval::DELETE_OR_HIBERNATE_IF_UNUSED, nullptr, true);
++		currentSong->addOutput(init);
++		changedInstrumentForClip = true;
++	}
++
++	instrumentToReplace = init;
++	currentInstrument = init;
++	pickerInit_ = init;
++	pickerInitType_ = static_cast<int32_t>(type);
++	view.instrumentChanged(modelStack, init);
++	if (showingAuditionPads()) {
++		instrumentClipView.recalculateColours();
++	}
++	uiNeedsRendering(getRootUI());
++	return fromFile ? PickerInit::FROM_FILE : PickerInit::BUILT_IN;
++}
++
++void LoadInstrumentPresetUI::pickerCancel() {
++	if (!pickerSession_) {
++		return;
++	}
++	if (getRootUI() == &instrumentClipView) {
++		instrumentClipView.cancelAllAuditioning();
++	}
++	revertToInitialPreset();
++	endPickerSession();
++	if (instrumentClipToLoadFor != nullptr) {
++		char modelStackMemory[MODEL_STACK_MAX_SIZE];
++		ModelStackWithTimelineCounter* modelStack =
++		    setupModelStackWithTimelineCounter(modelStackMemory, currentSong, instrumentClipToLoadFor);
++		view.instrumentChanged(modelStack, static_cast<Instrument*>(instrumentClipToLoadFor->output));
++		if (showingAuditionPads()) {
++			instrumentClipView.recalculateColours();
++		}
++	}
++	uiNeedsRendering(getRootUI());
++}
++
++bool LoadInstrumentPresetUI::pickerRestoreOriginal() {
++	if (!pickerSession_ || instrumentClipToLoadFor == nullptr) {
++		return false;
++	}
++	// Nothing swapped yet: it's still on
++	if (!changedInstrumentForClip && !replacedWholeInstrument) {
++		return true;
++	}
++	if (getRootUI() == &instrumentClipView) {
++		instrumentClipView.cancelAllAuditioning();
++	}
++	revertToInitialPreset();
++	auto* now = static_cast<Instrument*>(instrumentClipToLoadFor->output);
++	if (now == instrumentToReplace || now->type != initialOutputType || strcmp(now->name.get(), initialName.get())
++	    || strcasecmp(now->dirPath.get(), initialDirPath.get())) {
++		return false;
++	}
++	// As at the start of the session: nothing swapped
++	instrumentToReplace = now;
++	currentInstrument = now;
++	changedInstrumentForClip = false;
++	replacedWholeInstrument = false;
++	pickerInit_ = nullptr;
++	pickerInitType_ = -1;
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithTimelineCounter* modelStack =
++	    setupModelStackWithTimelineCounter(modelStackMemory, currentSong, instrumentClipToLoadFor);
++	view.instrumentChanged(modelStack, now);
++	if (showingAuditionPads()) {
++		instrumentClipView.recalculateColours();
++	}
++	uiNeedsRendering(getRootUI());
++	return true;
++}
++
++void LoadInstrumentPresetUI::pickerKeepInit(char const* folder) {
++	Instrument* synth = pickerInit();
++	endPickerSession();
++	if (synth == nullptr) {
++		return;
++	}
++	// Named as SHIFT + SYNTH names a new synth, saving into folder
++	String newName;
++	if (currentDir.set(getInstrumentFolder(OutputType::SYNTH)) == Error::NONE
++	    && getUnusedSlot(OutputType::SYNTH, &newName, "SYNT") == Error::NONE && !newName.isEmpty()) {
++		synth->name.set(&newName);
++	}
++	synth->dirPath.set(folder);
++	synth->editedByUser = true;
++	synth->mightExistOnCard = false;
++	display->consoleText(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NEW_SYNTH_CREATED));
++}
++
++bool LoadInstrumentPresetUI::pickerOpenFolder(char const* folder, size_t type) {
++	if (!pickerSession_ || instrumentClipToLoadFor == nullptr) {
++		return false;
++	}
++	pickerFolder = folder;
++	pickerBackToType = static_cast<int32_t>(type);
++	pickerOpening_ = true;
++	const bool opened = openUI(this);
++	pickerOpening_ = false;
++	return opened;
++}
++
  ActionResult LoadInstrumentPresetUI::padAction(int32_t x, int32_t y, int32_t on) {
  
  	// Audition pad
-@@ -1237,6 +1296,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
+@@ -1237,6 +1537,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
  	}
  }
  
@@ -22582,7 +23123,7 @@ index a2997fff5..7102d8325 100644
  // Caller must set currentDir before calling this.
  // Caller must call emptyFileItems() at some point after calling this function.
  // song may be supplied as NULL, in which case it won't be searched for Instruments; sometimes this will get called when
-@@ -1298,7 +1366,7 @@ startDoingFolders:
+@@ -1298,7 +1607,7 @@ startDoingFolders:
  		// Look through our list of FileItems, for a preset.
  		for (int32_t i = 0; i < fileItems.getNumElements(); i++) {
  			auto* fileItem = (FileItem*)fileItems.getElementAddress(i);
@@ -22591,7 +23132,7 @@ index a2997fff5..7102d8325 100644
  				return fileItem; // We found a preset / file.
  			}
  		}
-@@ -1462,11 +1530,17 @@ needToGrabLeftmostButHaveToReadFirst:
+@@ -1462,11 +1771,17 @@ needToGrabLeftmostButHaveToReadFirst:
  /// Caller must call emptyFileItems() at some point after calling this function - unless an error is returned
  /// Caller must remove OLED working animation after calling this too.
  PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset, Instrument* oldInstrument,
@@ -22611,7 +23152,7 @@ index a2997fff5..7102d8325 100644
  	OutputType outputType = oldInstrument->type;
  
  	PresetNavigationResult toReturn;
-@@ -1474,10 +1548,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
+@@ -1474,10 +1789,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
  	String oldNameString; // We only might use this later for temporary storage
  	String newName;
  
@@ -22629,7 +23170,7 @@ index a2997fff5..7102d8325 100644
  	}
  
  readAgain:
-@@ -1603,6 +1680,17 @@ doneMoving:
+@@ -1603,6 +1921,17 @@ doneMoving:
  	if (availabilityRequirement == Availability::INSTRUMENT_UNUSED && isAlreadyInSong && wrapped < 2) {
  		goto moveAgain;
  	}
@@ -22648,7 +23189,7 @@ index a2997fff5..7102d8325 100644
  	toReturn.loadedFromFile = false;
  	bool isHibernating = toReturn.fileItem->instrument && !toReturn.fileItem->instrumentAlreadyInSong;
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.h b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
-index f4e341a9b..d4a1293a4 100644
+index f4e341a9b..918674f66 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 @@ -53,8 +53,10 @@ public:
@@ -22663,21 +23204,41 @@ index f4e341a9b..d4a1293a4 100644
  	void setupLoadInstrument(OutputType newOutputType, Instrument* instrumentToReplace_,
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
-@@ -65,6 +67,13 @@ public:
+@@ -65,6 +67,33 @@ public:
  		noteRowIndex = 255; // (not set value for note rows)
  		noteRow = nullptr;
  	}
-+	/// Call after setupLoadInstrument, before openUI (the SHIFT + SYNTH picker): start in folder and play its first
-+	/// preset. BACK in that folder puts the old instrument back and returns to the picker's categories for backToType
-+	/// (-1: BACK leaves as usual).
-+	void setPickerFolder(char const* folder, int32_t backToType) {
-+		pickerFolder = folder;
-+		pickerBackToType = backToType;
-+	}
++	// ---- The SHIFT + SYNTH picker ----
++	// One session runs from the type menu, through the category menu, to this browser on a category's folder. As the
++	// menus move, the clip plays each type's init synth, so the audition pads always have something to play; the
++	// browser keeps playing it until another preset is highlighted. BACK from the type menu (or leaving the browser any
++	// way but BACK in the folder it opened on) puts the clip's old instrument back.
++
++	/// What putting a type's init synth on the clip did
++	enum class PickerInit : uint8_t { FAILED, ALREADY_ON, FROM_FILE, BUILT_IN };
++	/// Start a session on clip's instrument, before the type menu opens
++	void pickerBegin(InstrumentClip* clip);
++	/// Put type's init synth on the clip: SYNTHS/INIT/<type>.XML if the card has one, else a blank synth (BUILT_IN:
++	/// the caller sets its mode or engine, see context_menu::previewSynthInit)
++	PickerInit pickerPreviewInit(size_t type);
++	/// Put the old instrument back and end the session
++	void pickerCancel();
++	/// Put the old instrument back on the clip and carry the session on (its own type in the picker). False if it
++	/// couldn't be put back.
++	bool pickerRestoreOriginal();
++	/// Keep the init synth on the clip (INIT, or a type with no presets yet): named as a new synth, saving into folder
++	void pickerKeepInit(char const* folder);
++	/// Open this browser on folder for type, the clip playing what it plays now until a preset is highlighted. BACK in
++	/// that folder returns to type's categories (or the types, if it has none), playing its init.
++	bool pickerOpenFolder(char const* folder, size_t type);
++	bool pickerActive() const { return pickerSession_; }
++	/// The init synth the session put on the clip, if it's still there
++	Instrument* pickerInit() const { return (pickerInit_ == instrumentToReplace) ? pickerInit_ : nullptr; }
++
  	void setupLoadSynthToKit(Instrument* kit, InstrumentClip* clip, SoundDrum* drum, NoteRow* row, int32_t rowIndex) {
  		Browser::outputTypeToLoad = OutputType::SYNTH;
  		instrumentToReplace = kit;
-@@ -90,6 +99,7 @@ private:
+@@ -90,6 +119,7 @@ private:
  	void changeOutputType(OutputType newOutputType);
  	void revertToInitialPreset();
  	void exitAction() override;
@@ -22685,7 +23246,7 @@ index f4e341a9b..d4a1293a4 100644
  	bool isInstrumentInList(Instrument* searchInstrument, Output* list);
  	bool findUnusedSlotVariation(String* oldName, String* newName);
  
-@@ -112,6 +122,15 @@ private:
+@@ -112,6 +142,23 @@ private:
  
  	String initialName;
  	String initialDirPath;
@@ -22694,6 +23255,14 @@ index f4e341a9b..d4a1293a4 100644
 +	char const* pickerFolder = nullptr;
 +	int32_t pickerBackToType = -1;
 +	String pickerStartDir;
++	bool pickerSession_ = false;
++	bool pickerOpening_ = false;       // opened() from pickerOpenFolder: the session's old instrument stays the one
++	bool pickerHoldOnArrival_ = false; // arriving in the picker's folder: don't load the highlighted preset
++	bool pickerNotLoaded_ = false;     // the highlighted preset isn't loaded: the clip plays the init (or the old one)
++	Instrument* pickerInit_ = nullptr; // the last init synth the session put on the clip
++	int32_t pickerInitType_ = -1;
++	void captureInitialInstrument();
++	void endPickerSession();
 +	// The preset last browsed from the picker and its folder, to pick up there next time
 +	String pickerLastDir;
 +	String pickerLastName;
@@ -27800,10 +28369,10 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..5073700e8 100644
+index 51a40bfd2..3397058aa 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
-@@ -1,15 +1,63 @@
+@@ -1,15 +1,66 @@
  #include "hid/hid_sysex.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include "extern.h"
@@ -27827,6 +28396,9 @@ index 51a40bfd2..5073700e8 100644
 +#include "gui/waveform/waveform_basic_navigator.h"
 +#include "gui/waveform/waveform_render_data.h"
 +#include "gui/waveform/waveform_renderer.h"
++#include "modulation/patch/patch_cable_set.h"
++#include "gui/views/view.h"
++#include "util/functions.h"
 +#include "hid/button.h"
 +#include "hid/buttons.h"
  #include "hid/display/oled.h"
@@ -27867,7 +28439,7 @@ index 51a40bfd2..5073700e8 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +65,1902 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +68,2083 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -28794,31 +29366,31 @@ index 51a40bfd2..5073700e8 100644
 +};
 +namespace P = deluge::modulation::params;
 +constexpr KnobDef kKnobs[] = {
-+    {2, 0, 0, false, P::LOCAL_OSC_A_VOLUME, "Osc 1 level", KnobRule::NOT_RINGMOD},
-+    {3, 0, 0, false, P::LOCAL_OSC_B_VOLUME, "Osc 2 level", KnobRule::NOT_RINGMOD},
-+    {2, 3, 0, false, P::LOCAL_OSC_A_START_OFFSET, "Osc 1 start offset", KnobRule::OFFSET_A},
-+    {3, 3, 0, false, P::LOCAL_OSC_B_START_OFFSET, "Osc 2 start offset", KnobRule::OFFSET_B},
++    {2, 0, 0, false, P::LOCAL_OSC_A_VOLUME, "Osc1 level", KnobRule::NOT_RINGMOD},
++    {3, 0, 0, false, P::LOCAL_OSC_B_VOLUME, "Osc2 level", KnobRule::NOT_RINGMOD},
++    {2, 3, 0, false, P::LOCAL_OSC_A_START_OFFSET, "Start offset", KnobRule::OFFSET_A},
++    {3, 3, 0, false, P::LOCAL_OSC_B_START_OFFSET, "Start offset", KnobRule::OFFSET_B},
 +    {2, 7, 0, false, P::LOCAL_NOISE_VOLUME, "Noise level", KnobRule::NOT_FM},
 +    {8, 7, 1, false, P::LOCAL_LPF_FREQ, "LPF frequency", KnobRule::LPF},
 +    {8, 6, 1, false, P::LOCAL_LPF_RESONANCE, "LPF resonance", KnobRule::LPF},
 +    {8, 4, 1, false, P::LOCAL_LPF_MORPH, "LPF morph", KnobRule::LPF},
 +    {9, 7, 1, false, P::LOCAL_HPF_FREQ, "HPF frequency", KnobRule::HPF},
 +    {9, 6, 1, false, P::LOCAL_HPF_RESONANCE, "HPF resonance", KnobRule::HPF},
-+    {9, 4, 1, false, P::LOCAL_HPF_MORPH, "HPF morph", KnobRule::HPF},
-+    {8, 3, 2, false, P::LOCAL_ENV_0_ATTACK, "Attack"},
-+    {8, 2, 2, false, P::LOCAL_ENV_0_DECAY, "Decay"},
-+    {8, 1, 2, false, P::LOCAL_ENV_0_SUSTAIN, "Sustain"},
-+    {8, 0, 2, false, P::LOCAL_ENV_0_RELEASE, "Release"},
-+    {9, 3, 3, false, P::LOCAL_ENV_1_ATTACK, "Attack"},
-+    {9, 2, 3, false, P::LOCAL_ENV_1_DECAY, "Decay"},
-+    {9, 1, 3, false, P::LOCAL_ENV_1_SUSTAIN, "Sustain"},
-+    {9, 0, 3, false, P::LOCAL_ENV_1_RELEASE, "Release"},
-+    {6, 0, 4, false, P::GLOBAL_VOLUME_POST_FX, "Level"},
++    {9, 4, 1, false, P::LOCAL_HPF_MORPH, "HPF Morph", KnobRule::HPF},
++    {8, 3, 2, false, P::LOCAL_ENV_0_ATTACK, "Env1 attack"},
++    {8, 2, 2, false, P::LOCAL_ENV_0_DECAY, "Env1 decay"},
++    {8, 1, 2, false, P::LOCAL_ENV_0_SUSTAIN, "Env1 sustain"},
++    {8, 0, 2, false, P::LOCAL_ENV_0_RELEASE, "Env1 release"},
++    {9, 3, 3, false, P::LOCAL_ENV_1_ATTACK, "Env2 attack"},
++    {9, 2, 3, false, P::LOCAL_ENV_1_DECAY, "Env2 decay"},
++    {9, 1, 3, false, P::LOCAL_ENV_1_SUSTAIN, "Env2 sustain"},
++    {9, 0, 3, false, P::LOCAL_ENV_1_RELEASE, "Env2 release"},
++    {6, 0, 4, false, P::GLOBAL_VOLUME_POST_FX, "Master level"},
 +    {6, 3, 4, false, P::LOCAL_PAN, "Pan"},
 +    {7, 0, 4, true, P::UNPATCHED_PORTAMENTO, "Portamento"},
-+    {12, 7, 5, false, P::GLOBAL_MOD_FX_RATE, "Mod FX rate", KnobRule::MOD_FX_RATE},
-+    {12, 6, 5, false, P::GLOBAL_MOD_FX_DEPTH, "Mod FX depth", KnobRule::MOD_FX_DEPTH},
-+    {12, 5, 5, true, P::UNPATCHED_MOD_FX_FEEDBACK, "Mod FX feedback", KnobRule::MOD_FX_FB},
++    {12, 7, 5, false, P::GLOBAL_MOD_FX_RATE, "MOD-FX rate", KnobRule::MOD_FX_RATE},
++    {12, 6, 5, false, P::GLOBAL_MOD_FX_DEPTH, "MOD-FX depth", KnobRule::MOD_FX_DEPTH},
++    {12, 5, 5, true, P::UNPATCHED_MOD_FX_FEEDBACK, "MOD-FX feedback", KnobRule::MOD_FX_FB},
 +    {13, 3, 5, false, P::GLOBAL_REVERB_AMOUNT, "Reverb amount"},
 +    {14, 0, 5, false, P::GLOBAL_DELAY_RATE, "Delay rate"},
 +    {14, 3, 5, false, P::GLOBAL_DELAY_FEEDBACK, "Delay amount"},
@@ -28826,8 +29398,8 @@ index 51a40bfd2..5073700e8 100644
 +    {6, 5, 5, true, P::UNPATCHED_SAMPLE_RATE_REDUCTION, "Decimation"},
 +    {10, 6, 5, true, P::UNPATCHED_BASS, "Bass"},
 +    {11, 6, 5, true, P::UNPATCHED_TREBLE, "Treble"},
-+    {12, 0, 6, false, P::GLOBAL_LFO_FREQ_1, "LFO 1 rate"},
-+    {13, 0, 6, false, P::LOCAL_LFO_LOCAL_FREQ_1, "LFO 2 rate"},
++    {12, 0, 6, false, P::GLOBAL_LFO_FREQ_1, "LFO1 rate"},
++    {13, 0, 6, false, P::LOCAL_LFO_LOCAL_FREQ_1, "LFO2 rate"},
 +};
 +constexpr int32_t kNumKnobs = sizeof(kKnobs) / sizeof(kKnobs[0]);
 +constexpr int32_t kKnobNameMax = 18;
@@ -28836,6 +29408,12 @@ index 51a40bfd2..5073700e8 100644
 +constexpr int32_t kParamsBodyMax = 4 + (kNumKnobs + kMaxEngineKnobs) * (8 + kKnobNameMax + kKnobTextMax);
 +
 +uint8_t paramsBody[kParamsBodyMax];
++struct EngineName {
++	uint32_t param;
++	char name[kKnobNameMax + 1];
++};
++EngineName engineNames[kMaxEngineKnobs]; ///< The engine controls sent in the last PARAMS, by param
++int32_t numEngineNames = 0;
 +int32_t paramsBodyLen = 0;
 +uint8_t lastParams[kParamsBodyMax];
 +int32_t lastParamsLen = 0;
@@ -28976,9 +29554,19 @@ index 51a40bfd2..5073700e8 100644
 +		                             : computeCurrentValueForStandardMenuItem(value);
 +		const bool open =
 +		    editing && soundEditor.currentParamShortcutX == knob.x && soundEditor.currentParamShortcutY == knob.y;
++		// The names are the Deluge's own English titles for these pads. MOD-FX depth and feedback are named by the
++		// Mod FX type, as on the Deluge.
++		std::string_view name = knob.name;
++		if (knob.rule == KnobRule::MOD_FX_DEPTH || knob.rule == KnobRule::MOD_FX_FB) {
++			const deluge::l10n::Language* language = deluge::l10n::chosenLanguage;
++			deluge::l10n::chosenLanguage = &deluge::l10n::built_in::english;
++			name = modfx::getParamName(sound->getModFXType(),
++			                           knob.rule == KnobRule::MOD_FX_DEPTH ? ModFXParam::DEPTH : ModFXParam::FEEDBACK);
++			deluge::l10n::chosenLanguage = language;
++		}
 +		i += putKnob(out + i, knob.x, knob.y, knob.group,
-+		             ((pan || offset) ? 1 : 0) | (open ? 2 : 0) | (available ? 0 : 4), (value >> 25) + 64, shown,
-+		             knob.name, {});
++		             ((pan || offset) ? 1 : 0) | (open ? 2 : 0) | (available ? 0 : 4), (value >> 25) + 64, shown, name,
++		             {});
 +		count++;
 +	}
 +
@@ -28987,6 +29575,7 @@ index 51a40bfd2..5073700e8 100644
 +		return editing && soundEditor.currentParamShortcutX == x && soundEditor.currentParamShortcutY == y;
 +	};
 +	int32_t engineCount = 0;
++	numEngineNames = 0;
 +	if (drumEngine && patched != nullptr) {
 +		// Drum and synth engines: every pad of the engine's layout that holds one of its controls
 +		const auto engine = sound->sources[0].drumPatch.engine();
@@ -29005,8 +29594,34 @@ index 51a40bfd2..5073700e8 100644
 +				const int32_t raw = patched->getValue(param);
 +				const int32_t knob = std::clamp<int32_t>(
 +				    (deluge::dsp::drum_synth::DrumControls::toKnob(raw) + 0x80) >> 8, 0, 127); // 0-127, as its menu
-+				i += putKnob(out + i, x, y, 7, (isOpen(x, y) ? 2 : 0) | 8, knob, knob,
-+				             englishOf(deluge::dsp::drum_synth::cycKnobName(engine, slot)), {});
++				// Its name as the Deluge gives it: the English title of the control on that pad (what the 7-seg
++				// scrolls when the pad is held). Only drum control items get here, whose titles read nothing but
++				// the sound being edited, so the editor is pointed at this one meanwhile.
++				char title[kKnobNameMax + 1];
++				std::string_view name = englishOf(deluge::dsp::drum_synth::cycKnobName(engine, slot));
++				if (isDrumLayoutPad(sound, x, y)) {
++					if (MenuItem* item = soundShortcutFor(sound, x, y); item != nullptr) {
++						const deluge::l10n::Language* language = deluge::l10n::chosenLanguage;
++						Sound* editorSound = soundEditor.currentSound;
++						deluge::l10n::chosenLanguage = &deluge::l10n::built_in::english;
++						soundEditor.currentSound = sound;
++						const std::string_view itemTitle = item->getTitle();
++						const size_t n = std::min<size_t>(itemTitle.size(), kKnobNameMax);
++						memcpy(title, itemTitle.data(), n);
++						title[n] = 0;
++						soundEditor.currentSound = editorSound;
++						deluge::l10n::chosenLanguage = language;
++						if (n > 0) {
++							name = std::string_view(title, n);
++						}
++					}
++				}
++				i += putKnob(out + i, x, y, 7, (isOpen(x, y) ? 2 : 0) | 8, knob, knob, name, {});
++				EngineName& kept = engineNames[numEngineNames++];
++				kept.param = param;
++				const size_t keptLen = std::min<size_t>(name.size(), kKnobNameMax);
++				memcpy(kept.name, name.data(), keptLen);
++				kept.name[keptLen] = 0;
 +				count++;
 +				engineCount++;
 +			}
@@ -29078,6 +29693,129 @@ index 51a40bfd2..5073700e8 100644
 +		count++;
 +	}
 +	out[countAt] = count;
++	return i;
++}
++
++// ---- Gold knobs: what each of the 8 mod buttons puts on the two gold knobs ----
++constexpr uint8_t kGoldHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x55};
++constexpr int32_t kGoldBodyMax = 4 + 16 * (6 + kStateNameMax);
++uint8_t lastGold[kGoldBodyMax];
++int32_t lastGoldLen = 0;
++
++/// A gold knob's name as the Deluge's OLED popup gives it, in English. Engine controls take the name of their pad.
++void goldKnobName(Sound* sound, ParamDescriptor descriptor, char* out, size_t size) {
++	out[0] = 0;
++	if (descriptor.isNull()) {
++		strncpy(out, englishOf(deluge::l10n::String::STRING_FOR_NONE).data(), size - 1);
++		out[size - 1] = 0;
++		return;
++	}
++	const deluge::l10n::Language* language = deluge::l10n::chosenLanguage;
++	deluge::l10n::chosenLanguage = &deluge::l10n::built_in::english;
++	if (descriptor.isJustAParam()) {
++		const int32_t p = descriptor.getJustTheParam();
++		char const* name = nullptr;
++		for (int32_t e = 0; e < numEngineNames; e++) {
++			if (engineNames[e].param == static_cast<uint32_t>(p)) {
++				name = engineNames[e].name;
++				break;
++			}
++		}
++		if (name == nullptr) {
++			name = p >= P::UNPATCHED_START
++			           ? deluge::modulation::params::getParamDisplayName(P::Kind::UNPATCHED_SOUND,
++			                                                             p - P::UNPATCHED_START, sound)
++			           : deluge::modulation::params::getParamDisplayName(P::Kind::PATCHED, p, sound);
++		}
++		snprintf(out, size, "%s", name != nullptr ? name : "");
++	}
++	else {
++		// As the OLED: the source, an arrow, and the param's short name
++		const PatchSource source1 = descriptor.getBottomLevelSource();
++		const int32_t p = descriptor.getJustTheParam();
++		char const* param = deluge::modulation::params::getPatchedParamShortName(p, sound);
++		if (descriptor.hasJustOneSource()) {
++			snprintf(out, size, "%s -> %s", getSourceDisplayNameForOLED(source1), param);
++		}
++		else {
++			snprintf(out, size, "%s -> %s -> %s", sourceToStringShort(source1),
++			         sourceToStringShort(descriptor.getTopLevelSource()), param);
++		}
++	}
++	deluge::l10n::chosenLanguage = language;
++}
++
++/// GOLD body: version, open, the mod button lit (127 if none), then for each mod button 0-7 its upper knob and its
++/// lower knob: flags (1 bipolar, 4 nothing assigned), position (0 to 127), the value the Deluge shows (2 bytes, plus
++/// 8192) and the English name
++int32_t buildGold(uint8_t* out) {
++	int32_t i = 0;
++	out[i++] = kStateVersion;
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (!currentSoundAndParams(sound, params)) {
++		out[i++] = 0;
++		return i;
++	}
++	out[i++] = 1;
++	uint8_t* modeAt = sound->getModKnobMode();
++	out[i++] = (modeAt != nullptr && *modeAt < kNumModButtons) ? *modeAt : 127;
++	PatchedParamSet* patched = params->getPatchedParamSet();
++	UnpatchedParamSet* unpatched = params->getUnpatchedParamSet();
++	auto* cables = static_cast<PatchCableSet*>(params->getPatchCableSetSummary()->paramCollection);
++	for (int32_t button = 0; button < kNumModButtons; button++) {
++		for (int32_t w = 1; w >= 0; w--) {
++			const ParamDescriptor descriptor = sound->modKnobs[button][w].paramDescriptor;
++			int32_t knobPos = 0;
++			bool found = false;
++			P::Kind kind = P::Kind::NONE;
++			int32_t paramId = 0;
++			if (descriptor.isNull()) {}
++			else if (descriptor.isJustAParam()) {
++				const int32_t p = descriptor.getJustTheParam();
++				if (p >= P::UNPATCHED_START) {
++					kind = P::Kind::UNPATCHED_SOUND;
++					paramId = p - P::UNPATCHED_START;
++					if (unpatched != nullptr && paramId < P::kMaxNumUnpatchedParams) {
++						const int32_t value = unpatched->getValue(paramId);
++						knobPos = value >= static_cast<int32_t>(0x80000000u - (1u << 24)) ? 64 : (value + (1 << 24)) >> 25;
++						found = true;
++					}
++				}
++				else if (patched != nullptr && p < P::kNumParams) {
++					kind = P::Kind::PATCHED;
++					paramId = p;
++					const int32_t value = patched->getValue(p);
++					if (p == P::LOCAL_OSC_A_PHASE_WIDTH || p == P::LOCAL_OSC_B_PHASE_WIDTH) {
++						knobPos = (value >> 24) - 64;
++					}
++					else {
++						knobPos = value >= static_cast<int32_t>(0x80000000u - (1u << 24)) ? 64 : (value + (1 << 24)) >> 25;
++					}
++					found = true;
++				}
++			}
++			else if (cables != nullptr) {
++				kind = P::Kind::PATCH_CABLE;
++				paramId = static_cast<int32_t>(descriptor.data);
++				const uint8_t c =
++				    cables->getPatchCableIndex(descriptor.getBottomLevelSource(), descriptor.getDestination());
++				knobPos = c == 255 ? 0 : (cables->patchCables[c].param.getCurrentValue() >> 23) - 64;
++				found = true;
++			}
++			knobPos = std::clamp<int32_t>(knobPos, -64, 64);
++			const int32_t shown = found ? view.calculateKnobPosForDisplay(kind, paramId, knobPos + 64) : 0;
++			const bool bipolar = found && view.calculateKnobPosForDisplay(kind, paramId, 0) < 0;
++			out[i++] = (bipolar ? 1 : 0) | (descriptor.isNull() ? 4 : 0);
++			out[i++] = static_cast<uint8_t>(std::clamp<int32_t>(knobPos + 64, 0, 127));
++			const int32_t v = std::clamp<int32_t>(shown + 8192, 0, 16383);
++			out[i++] = (v >> 7) & 0x7F;
++			out[i++] = v & 0x7F;
++			char name[kStateNameMax + 1];
++			goldKnobName(sound, descriptor, name, sizeof(name));
++			i += putName(out + i, name);
++		}
++	}
 +	return i;
 +}
 +
@@ -29454,6 +30192,12 @@ index 51a40bfd2..5073700e8 100644
 +
 +	paramsBodyLen = buildParams(paramsBody);
 +	sendIfChanged(kParamsHeader, paramsBody, paramsBodyLen, lastParams, lastParamsLen, force, 320);
++	if (force) {
++		lastGoldLen = 0;
++	}
++	uint8_t gold[kGoldBodyMax];
++	const int32_t goldLen = buildGold(gold);
++	sendIfChanged(kGoldHeader, gold, goldLen, lastGold, lastGoldLen, force, 0);
 +
 +	if (force) {
 +		lastKitSamplesLen = lastKitActiveLen = 0;
@@ -29524,6 +30268,7 @@ index 51a40bfd2..5073700e8 100644
 +bool pendingCommandDown = false;
 +int32_t pendingClip = -1;    ///< Session clip to launch or stop
 +int32_t pendingSection = -1; ///< Section to launch
++int32_t pendingModButton = -1; ///< Gold knob tap: the mod button to press
 +} // namespace
 +
 +void HIDSysex::requestState(MIDICable& cable, uint8_t* data, int32_t len) {
@@ -29545,6 +30290,14 @@ index 51a40bfd2..5073700e8 100644
 +		}
 +		pendingButtonDown = false;
 +		uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		return;
++	}
++	if (data[2] == 12) {
++		// 12 <button> = press that mod button, so the gold knobs turn its pair
++		if (len >= 4 && data[3] < kNumModButtons) {
++			pendingModButton = data[3];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
 +		return;
 +	}
 +	if (data[2] == 11) {
@@ -29770,7 +30523,7 @@ index 51a40bfd2..5073700e8 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +1979,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +2163,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -29781,7 +30534,7 @@ index 51a40bfd2..5073700e8 100644
  	default:
  		break;
  	}
-@@ -79,6 +2027,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +2211,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -29790,7 +30543,7 @@ index 51a40bfd2..5073700e8 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +2186,218 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +2370,223 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -29864,9 +30617,14 @@ index 51a40bfd2..5073700e8 100644
 +bool runPendingActions() {
 +	if (sdRoutineLock) {
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
-+		       || pendingSection >= 0 || pendingKitRow >= 0;
++		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0;
 +	}
 +	bool again = false;
++	if (pendingModButton >= 0) {
++		view.modButtonAction(pendingModButton, true);
++		view.modButtonAction(pendingModButton, false);
++		pendingModButton = -1;
++	}
 +	if (pendingMarkerType >= 0) {
 +		const int32_t type = pendingMarkerType;
 +		pendingMarkerType = -1;
@@ -32360,10 +33118,10 @@ index 000000000..b48b60583
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/synth_instruments.h b/src/deluge/model/instrument/synth_instruments.h
 new file mode 100644
-index 000000000..847bf9ef4
+index 000000000..52f3e7f40
 --- /dev/null
 +++ b/src/deluge/model/instrument/synth_instruments.h
-@@ -0,0 +1,114 @@
+@@ -0,0 +1,128 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -32466,13 +33224,27 @@ index 000000000..847bf9ef4
 +    {l10n::String::STRING_FOR_SYNTH_CATEGORY_MISC, "BRIB", "BRIB"},
 +}};
 +
++/// DX7's categories: the usual four, with its keys (pianos, organs, clavs) and bells (mallets, chimes) in their own
++inline constexpr std::array<SynthCategory, 6> kDx7Categories{{
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_LEAD, "LEAD"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_BASS, "BASS"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_PAD, "PAD"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_MISC, "KEYS", "KEYS"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_MISC, "BELL", "BELL"},
++    {l10n::String::STRING_FOR_SYNTH_CATEGORY_MISC, "MISC"},
++}};
++
 +/// The most categories any type has
 +inline constexpr size_t kMaxSynthCategories = kBrophetCategories.size();
++static_assert(kDx7Categories.size() <= kMaxSynthCategories);
 +
 +/// A type's categories
 +inline std::span<const SynthCategory> categoriesFor(const SynthInstrument& type) {
 +	if (type.brophet) {
 +		return kBrophetCategories;
++	}
++	if (type.dx) {
++		return kDx7Categories;
 +	}
 +	return kSynthCategories;
 +}
@@ -37054,7 +37826,7 @@ index 000000000..1ad5d88dc
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..c7cb8c6d5 100644
+index 5f4a82450..133aa338a 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -38054,7 +38826,15 @@ index 5f4a82450..c7cb8c6d5 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3411,6 +4102,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3401,6 +4092,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+ 				return Error::INSUFFICIENT_RAM;
+ 			}
+ 			int len = reader.readTagOrAttributeValueHexBytes(patch->params, 156);
++			patch->updateEngineMode(); // the core for this voice's algorithm and feedback
+ 			reader.exitTag("dx7patch");
+ 		}
+ 		else if (!strcmp(tagName, "dx7randomdetune")) {
+@@ -3411,6 +4103,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -38076,7 +38856,7 @@ index 5f4a82450..c7cb8c6d5 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4139,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4140,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -38087,7 +38867,7 @@ index 5f4a82450..c7cb8c6d5 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4353,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4354,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -38097,7 +38877,7 @@ index 5f4a82450..c7cb8c6d5 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4480,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4481,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -38109,7 +38889,7 @@ index 5f4a82450..c7cb8c6d5 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4574,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4575,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -38128,7 +38908,7 @@ index 5f4a82450..c7cb8c6d5 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4768,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4769,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -38149,7 +38929,7 @@ index 5f4a82450..c7cb8c6d5 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4861,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4862,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -38161,7 +38941,7 @@ index 5f4a82450..c7cb8c6d5 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4879,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4880,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -38172,7 +38952,7 @@ index 5f4a82450..c7cb8c6d5 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4932,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4933,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -38183,7 +38963,7 @@ index 5f4a82450..c7cb8c6d5 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4255,6 +5009,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4255,6 +5010,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	writer.writeAttribute("spread", unisonStereoSpread, false);
  	writer.closeTag();
  
@@ -38198,7 +38978,7 @@ index 5f4a82450..c7cb8c6d5 100644
  	if (paramManager) {
  		writer.writeOpeningTagBeginning("defaultParams", true);
  		Sound::writeParamsToFile(writer, paramManager, false);
-@@ -4441,6 +5203,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5204,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -38221,7 +39001,7 @@ index 5f4a82450..c7cb8c6d5 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4818,6 +5596,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+@@ -4818,6 +5597,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
  		return true;
  	}
  
@@ -38233,7 +39013,7 @@ index 5f4a82450..c7cb8c6d5 100644
  	if (unisonStereoSpread && numUnison > 1) {
  		return true;
  	}
-@@ -4948,6 +5731,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5732,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -38574,6 +39354,22 @@ index 20b6b2894..1974c207f 100644
 +	bool offsetWraps{true}; // When true, start offset wraps the playhead around the sample; when false, it clamps
  
  	int16_t defaultRangeI; // -1 means none yet
+ 
+diff --git a/src/deluge/storage/DX7Cartridge.cpp b/src/deluge/storage/DX7Cartridge.cpp
+index 08c47b666..e9582166a 100644
+--- a/src/deluge/storage/DX7Cartridge.cpp
++++ b/src/deluge/storage/DX7Cartridge.cpp
+@@ -164,8 +164,9 @@ void DX7Cartridge::unpackProgram(std::span<std::uint8_t> unpackPgm, size_t idx)
+ 		std::uint8_t* bulk_op = &bulk[op * 17];
+ 		std::uint8_t* unpack_op = &unpackPgm[op * 21];
+ 
+-		// eg rate and level, brk pt, depth, scaling
+-		for (size_t i = 0; i < 10; ++i) {
++		// eg rate and level, brk pt, left and right depth (11 bytes: the right depth used to be skipped, so it kept
++		// whatever the previous patch had there)
++		for (size_t i = 0; i < 11; ++i) {
+ 			unpack_op[i] = normparm(clearTopBit(bulk_op[i]), 99, i); // mask BIT7 (don't care per sysex spec)
+ 		}
  
 diff --git a/src/deluge/storage/flash_storage.cpp b/src/deluge/storage/flash_storage.cpp
 index 9b5e8d53f..26aed5d47 100644

@@ -1,0 +1,291 @@
+DX7 voices from the public domain DX7 patch collection on Dave Benson's DX7 page
+(homepages.abdn.ac.uk/d.j.benson/pages/html/dx7.html), first from Yamaha's factory ROM1A-4B.
+
+LEAD/BRASS 1.XML  <-  rom1a.syx voice 1
+LEAD/BRASS 2.XML  <-  rom1a.syx voice 2
+LEAD/BRASS 3.XML  <-  rom1a.syx voice 3
+PAD/STRINGS 1.XML  <-  rom1a.syx voice 4
+PAD/STRINGS 2.XML  <-  rom1a.syx voice 5
+PAD/STRINGS 3.XML  <-  rom1a.syx voice 6
+PAD/ORCHESTRA.XML  <-  rom1a.syx voice 7
+KEYS/PIANO 1.XML  <-  rom1a.syx voice 8
+KEYS/PIANO 2.XML  <-  rom1a.syx voice 9
+KEYS/PIANO 3.XML  <-  rom1a.syx voice 10
+KEYS/E-PIANO 1.XML  <-  rom1a.syx voice 11
+LEAD/GUITAR 1.XML  <-  rom1a.syx voice 12
+LEAD/GUITAR 2.XML  <-  rom1a.syx voice 13
+LEAD/SYN-LEAD 1.XML  <-  rom1a.syx voice 14
+BASS/BASS 1.XML  <-  rom1a.syx voice 15
+BASS/BASS 2.XML  <-  rom1a.syx voice 16
+KEYS/E-ORGAN 1.XML  <-  rom1a.syx voice 17
+KEYS/PIPES 1.XML  <-  rom1a.syx voice 18
+KEYS/HARPSICH 1.XML  <-  rom1a.syx voice 19
+KEYS/CLAV 1.XML  <-  rom1a.syx voice 20
+BELL/VIBE 1.XML  <-  rom1a.syx voice 21
+BELL/MARIMBA.XML  <-  rom1a.syx voice 22
+LEAD/KOTO.XML  <-  rom1a.syx voice 23
+LEAD/FLUTE 1.XML  <-  rom1a.syx voice 24
+BELL/ORCH-CHIME.XML  <-  rom1a.syx voice 25
+BELL/TUB BELLS.XML  <-  rom1a.syx voice 26
+BELL/STEEL DRUM.XML  <-  rom1a.syx voice 27
+MISC/TIMPANI.XML  <-  rom1a.syx voice 28
+MISC/REFS WHISL.XML  <-  rom1a.syx voice 29
+MISC/TRAIN.XML  <-  rom1a.syx voice 31
+MISC/TAKE OFF.XML  <-  rom1a.syx voice 32
+KEYS/PIANO 4.XML  <-  rom1b.syx voice 1
+KEYS/PIANO 5.XML  <-  rom1b.syx voice 2
+KEYS/E-PIANO 2.XML  <-  rom1b.syx voice 3
+KEYS/E-PIANO 3.XML  <-  rom1b.syx voice 4
+KEYS/E-PIANO 4.XML  <-  rom1b.syx voice 5
+KEYS/PIANO 5THS.XML  <-  rom1b.syx voice 6
+BELL/CELESTE.XML  <-  rom1b.syx voice 7
+KEYS/TOY PIANO.XML  <-  rom1b.syx voice 8
+KEYS/HARPSICH 2.XML  <-  rom1b.syx voice 9
+KEYS/HARPSICH 3.XML  <-  rom1b.syx voice 10
+KEYS/CLAV 2.XML  <-  rom1b.syx voice 11
+KEYS/CLAV 3.XML  <-  rom1b.syx voice 12
+KEYS/E-ORGAN 2.XML  <-  rom1b.syx voice 13
+KEYS/E-ORGAN 3.XML  <-  rom1b.syx voice 14
+KEYS/E-ORGAN 4.XML  <-  rom1b.syx voice 15
+KEYS/E-ORGAN 5.XML  <-  rom1b.syx voice 16
+KEYS/PIPES 2.XML  <-  rom1b.syx voice 17
+KEYS/PIPES 3.XML  <-  rom1b.syx voice 18
+KEYS/PIPES 4.XML  <-  rom1b.syx voice 19
+MISC/CALIOPE.XML  <-  rom1b.syx voice 20
+KEYS/ACCORDION.XML  <-  rom1b.syx voice 21
+LEAD/SITAR.XML  <-  rom1b.syx voice 22
+LEAD/GUITAR 3.XML  <-  rom1b.syx voice 23
+LEAD/GUITAR 4.XML  <-  rom1b.syx voice 24
+LEAD/GUITAR 5.XML  <-  rom1b.syx voice 25
+LEAD/GUITAR 6.XML  <-  rom1b.syx voice 26
+LEAD/LUTE.XML  <-  rom1b.syx voice 27
+LEAD/BANJO.XML  <-  rom1b.syx voice 28
+LEAD/HARP 1.XML  <-  rom1b.syx voice 29
+LEAD/HARP 2.XML  <-  rom1b.syx voice 30
+BASS/BASS 3.XML  <-  rom1b.syx voice 31
+BASS/BASS 4.XML  <-  rom1b.syx voice 32
+LEAD/PICCOLO.XML  <-  rom2a.syx voice 1
+LEAD/FLUTE 2.XML  <-  rom2a.syx voice 2
+LEAD/OBOE.XML  <-  rom2a.syx voice 3
+LEAD/CLARINET.XML  <-  rom2a.syx voice 4
+LEAD/SAX BC.XML  <-  rom2a.syx voice 5
+LEAD/BASSOON.XML  <-  rom2a.syx voice 6
+PAD/STRINGS 4.XML  <-  rom2a.syx voice 7
+PAD/STRINGS 5.XML  <-  rom2a.syx voice 8
+PAD/STRINGS 6.XML  <-  rom2a.syx voice 9
+PAD/STRINGS 7.XML  <-  rom2a.syx voice 10
+PAD/STRINGS 8.XML  <-  rom2a.syx voice 11
+LEAD/BRASS 4.XML  <-  rom2a.syx voice 12
+LEAD/BRASS 5.XML  <-  rom2a.syx voice 13
+LEAD/BRASS 6 BC.XML  <-  rom2a.syx voice 14
+LEAD/BRASS 7.XML  <-  rom2a.syx voice 15
+LEAD/BRASS 8.XML  <-  rom2a.syx voice 16
+LEAD/RECORDER.XML  <-  rom2a.syx voice 17
+LEAD/HARMONICA1.XML  <-  rom2a.syx voice 18
+LEAD/HRMNCA2 BC.XML  <-  rom2a.syx voice 19
+BELL/GLOKENSPL.XML  <-  rom2a.syx voice 22
+BELL/VIBE 2.XML  <-  rom2a.syx voice 23
+BELL/XYLOPHONE.XML  <-  rom2a.syx voice 24
+BELL/CHIMES.XML  <-  rom2a.syx voice 25
+BELL/GONG 1.XML  <-  rom2a.syx voice 26
+BELL/GONG 2.XML  <-  rom2a.syx voice 27
+BELL/BELLS.XML  <-  rom2a.syx voice 28
+BELL/COW BELL.XML  <-  rom2a.syx voice 29
+BELL/BLOCK.XML  <-  rom2a.syx voice 30
+MISC/FLEXATONE.XML  <-  rom2a.syx voice 31
+MISC/LOG DRUM.XML  <-  rom2a.syx voice 32
+LEAD/SYN-LEAD 2.XML  <-  rom2b.syx voice 1
+LEAD/SYN-LEAD 3.XML  <-  rom2b.syx voice 2
+LEAD/SYN-LEAD 4.XML  <-  rom2b.syx voice 3
+LEAD/SYN-LEAD 5.XML  <-  rom2b.syx voice 4
+KEYS/SYN-CLAV 1.XML  <-  rom2b.syx voice 5
+KEYS/SYN-CLAV 2.XML  <-  rom2b.syx voice 6
+KEYS/SYN-CLAV 3.XML  <-  rom2b.syx voice 7
+KEYS/SYN-PIANO.XML  <-  rom2b.syx voice 8
+LEAD/SYNBRASS 1.XML  <-  rom2b.syx voice 9
+LEAD/SYNBRASS 2.XML  <-  rom2b.syx voice 10
+KEYS/SYNORGAN 1.XML  <-  rom2b.syx voice 11
+KEYS/SYNORGAN 2.XML  <-  rom2b.syx voice 12
+PAD/SYN-VOX.XML  <-  rom2b.syx voice 13
+PAD/SYN-ORCH.XML  <-  rom2b.syx voice 14
+BASS/SYN-BASS 1.XML  <-  rom2b.syx voice 15
+BASS/SYN-BASS 2.XML  <-  rom2b.syx voice 16
+LEAD/HARP-FLUTE.XML  <-  rom2b.syx voice 17
+BELL/BELL-FLUTE.XML  <-  rom2b.syx voice 18
+LEAD/E-P-BRS BC.XML  <-  rom2b.syx voice 19
+MISC/T-BL-EXPA.XML  <-  rom2b.syx voice 20
+BELL/CHIME-STRG.XML  <-  rom2b.syx voice 21
+MISC/B-DRM-SNAR.XML  <-  rom2b.syx voice 22
+MISC/SHIMMER.XML  <-  rom2b.syx voice 23
+MISC/EVOLUTION.XML  <-  rom2b.syx voice 24
+MISC/WATER GDN.XML  <-  rom2b.syx voice 25
+MISC/WASP STING.XML  <-  rom2b.syx voice 26
+MISC/LASER GUN.XML  <-  rom2b.syx voice 27
+MISC/DESCENT.XML  <-  rom2b.syx voice 28
+MISC/OCTAVE WAR.XML  <-  rom2b.syx voice 29
+KEYS/GRAND PRIX.XML  <-  rom2b.syx voice 30
+MISC/ST-HELENS.XML  <-  rom2b.syx voice 31
+MISC/EXPLOSION.XML  <-  rom2b.syx voice 32
+PAD/STRG ENS 1.XML  <-  rom3a.syx voice 3
+MISC/BRIGHT BOW.XML  <-  rom3a.syx voice 4
+LEAD/BRASSHORNS.XML  <-  rom3a.syx voice 5
+LEAD/BR TRUMPET.XML  <-  rom3a.syx voice 6
+LEAD/JAZZ GUIT1.XML  <-  rom3a.syx voice 15
+LEAD/PRC SYNTH1.XML  <-  rom3a.syx voice 16
+BASS/FRETLESS 1.XML  <-  rom3a.syx voice 18
+MISC/HEAVYMETAL.XML  <-  rom3a.syx voice 21
+PAD/VOICES BC.XML  <-  rom3a.syx voice 24
+KEYS/CLAV ENS.XML  <-  rom3a.syx voice 25
+PAD/LASERSWEEP.XML  <-  rom3a.syx voice 26
+MISC/TUB ERUPT.XML  <-  rom3a.syx voice 27
+LEAD/BRASS S H.XML  <-  rom3a.syx voice 31
+KEYS/E-GRAND 1.XML  <-  rom3b.syx voice 2
+KEYS/E-GRAND 2.XML  <-  rom3b.syx voice 3
+KEYS/HONKY TONK.XML  <-  rom3b.syx voice 4
+KEYS/FUNK CLAV.XML  <-  rom3b.syx voice 9
+KEYS/CLAV ENS 2.XML  <-  rom3b.syx voice 10
+KEYS/PERC CLAV.XML  <-  rom3b.syx voice 11
+KEYS/60-S ORGAN.XML  <-  rom3b.syx voice 15
+LEAD/JAZZ GUIT2.XML  <-  rom3b.syx voice 23
+LEAD/SPANISHGTR.XML  <-  rom3b.syx voice 24
+LEAD/FOLK GUIT.XML  <-  rom3b.syx voice 25
+LEAD/CLAS-GUIT.XML  <-  rom3b.syx voice 28
+BASS/E-BASS 2.XML  <-  rom3b.syx voice 30
+BASS/FRETLESS 2.XML  <-  rom3b.syx voice 31
+BASS/PLUCK BASS.XML  <-  rom3b.syx voice 32
+PAD/STRG QRT 1.XML  <-  rom4a.syx voice 13
+PAD/STRG ENS 2.XML  <-  rom4a.syx voice 14
+PAD/VIOLA SECN.XML  <-  rom4a.syx voice 15
+PAD/STRGS LOW.XML  <-  rom4a.syx voice 16
+PAD/HIGH STRGS.XML  <-  rom4a.syx voice 17
+PAD/PIZZ STGS.XML  <-  rom4a.syx voice 18
+MISC/STG CRSNDO.XML  <-  rom4a.syx voice 19
+PAD/STGS 5THS.XML  <-  rom4a.syx voice 20
+PAD/VOICES.XML  <-  rom4a.syx voice 25
+BELL/VIBE.XML  <-  rom4a.syx voice 32
+KEYS/CLAV-E-PNO.XML  <-  rom4b.syx voice 1
+KEYS/HARPSI-STG.XML  <-  rom4b.syx voice 4
+BELL/STRG-CHIME.XML  <-  rom4b.syx voice 8
+PAD/STRG-MARIM.XML  <-  rom4b.syx voice 9
+PAD/STRG-PIZZT.XML  <-  rom4b.syx voice 10
+KEYS/PIANO-BRS.XML  <-  rom4b.syx voice 13
+BELL/BRS-CHIME.XML  <-  rom4b.syx voice 14
+KEYS/ORG-BRS BC.XML  <-  rom4b.syx voice 17
+MISC/FILTER SWP.XML  <-  rom4b.syx voice 20
+MISC/FUNKY RISE.XML  <-  rom4b.syx voice 21
+MISC/WILD BOAR.XML  <-  rom4b.syx voice 22
+MISC/MULTI NOTE.XML  <-  rom4b.syx voice 27
+MISC/GOTCHA.XML  <-  rom4b.syx voice 30
+MISC/SO-LOW! #1.XML  <-  analog1.syx voice 2
+MISC/MC-MM 5-3.XML  <-  analog1.syx voice 14
+MISC/LEMONADE 1.XML  <-  analog1.syx voice 16
+MISC/ANNA LOGUE.XML  <-  analog1.syx voice 21
+BASS/PIANO BASS.XML  <-  analog1.syx voice 23
+MISC/DIGILOG 2.XML  <-  analog3.syx voice 2
+MISC/ANALQG--OB.XML  <-  analog3.syx voice 12
+MISC/ANNA 3.XML  <-  analog3.syx voice 15
+MISC/ANNA FAT 1.XML  <-  analog3.syx voice 16
+MISC/ANNA FAT 2.XML  <-  analog3.syx voice 17
+MISC/ANNA FAT 3.XML  <-  analog3.syx voice 18
+MISC/ANNA HIT 1.XML  <-  analog3.syx voice 19
+MISC/ANNA HIT 2.XML  <-  analog3.syx voice 20
+MISC/ANNA HIT 3.XML  <-  analog3.syx voice 21
+MISC/ANNA HIT 4.XML  <-  analog3.syx voice 22
+MISC/ANNA HIT 5.XML  <-  analog3.syx voice 23
+BELL/ANNA XYLO.XML  <-  analog3.syx voice 24
+MISC/ANNAFATEST.XML  <-  analog3.syx voice 26
+MISC/ANNANASTY1.XML  <-  analog3.syx voice 27
+BASS/BS ANNA 3.XML  <-  analog3.syx voice 29
+BASS/BS ANNA 1A.XML  <-  analog3.syx voice 30
+BASS/BS ANNA 4A.XML  <-  analog3.syx voice 31
+MISC/JUMP 2.XML  <-  analog4.syx voice 1
+MISC/HERMAN.XML  <-  analog4.syx voice 5
+MISC/VOCODER LD.XML  <-  analog4.syx voice 20
+MISC/CARLOS 1.XML  <-  analog4.syx voice 23
+PAD/FLUTE-STRG.XML  <-  analog4.syx voice 29
+PAD/FLU-STRG-1.XML  <-  analog4.syx voice 30
+KEYS/DIGI-CLAV1.XML  <-  angelo.syx voice 5
+KEYS/DYNORHODE2.XML  <-  angelo.syx voice 6
+BASS/FLANGDBASS.XML  <-  angelo.syx voice 10
+PAD/ANLG STRNG.XML  <-  angelo.syx voice 24
+BASS/SUPER BASS.XML  <-  atsu_4.syx voice 12
+BASS/BASSDB3.XML  <-  atsu_4.syx voice 13
+BASS/BASSDB2.XML  <-  atsu_4.syx voice 14
+BASS/BASSDB1.XML  <-  atsu_4.syx voice 15
+BASS/HJONES BAS.XML  <-  atsu_4.syx voice 16
+PAD/SPACE TAK.XML  <-  atsu_4.syx voice 22
+BASS/DBBASS 3.XML  <-  atsu_5.syx voice 13
+BASS/DB BASS 2.XML  <-  atsu_5.syx voice 14
+BASS/DBBASS 1.XML  <-  atsu_5.syx voice 16
+PAD/SYNTH-ORCH.XML  <-  b1.syx voice 2
+PAD/GLASS.XML  <-  b1.syx voice 10
+PAD/GLASS 2.XML  <-  b1.syx voice 11
+PAD/MALE CHOIR.XML  <-  b1.syx voice 18
+BELL/ESTRNBLOCK.XML  <-  b1.syx voice 25
+BELL/A-MALLET B.XML  <-  b1.syx voice 28
+BELL/VIBES PD B.XML  <-  b1.syx voice 30
+BELL/TINE E-PN4.XML  <-  b2.syx voice 12
+BASS/E-BASS A.XML  <-  b2.syx voice 28
+BASS/SLAP-BASS.XML  <-  b2.syx voice 29
+BASS/EMM BASS.XML  <-  b2.syx voice 30
+BASS/BASSALATOM.XML  <-  b2.syx voice 31
+BASS/P-BASS PD.XML  <-  b2.syx voice 32
+PAD/E H STRING.XML  <-  b3.syx voice 1
+PAD/STRINGSPD2.XML  <-  b3.syx voice 2
+PAD/HI STRINGS.XML  <-  b3.syx voice 3
+PAD/VIOLINS A.XML  <-  b3.syx voice 4
+PAD/STRINGS-1.XML  <-  b3.syx voice 5
+PAD/STRING PD9.XML  <-  b3.syx voice 7
+PAD/STRING PD5.XML  <-  b3.syx voice 9
+PAD/STRING PD3.XML  <-  b3.syx voice 10
+PAD/STRINGS-3.XML  <-  b3.syx voice 11
+PAD/STRING PD7.XML  <-  b3.syx voice 12
+PAD/CELLOS A.XML  <-  b3.syx voice 13
+PAD/STRINGS-4.XML  <-  b3.syx voice 14
+PAD/STRING PD4.XML  <-  b3.syx voice 15
+PAD/ORCHESTRA1.XML  <-  b3.syx voice 32
+BELL/GLOCKEN.XML  <-  bank0000.syx voice 17
+PAD/TRIANGEL.XML  <-  bank0000.syx voice 24
+PAD/CORDOVOX.XML  <-  bank0006.syx voice 9
+BASS/BS-NYLGTR.XML  <-  bank0009.syx voice 3
+BELL/XYLOHRDWD.XML  <-  bank0009.syx voice 4
+BELL/B-BELL.XML  <-  bank0009.syx voice 5
+BELL/CELEST.XML  <-  bank0009.syx voice 6
+BASS/BS-CLRBEL.XML  <-  bank0009.syx voice 7
+BASS/BS-SQEZBX.XML  <-  bank0009.syx voice 8
+BASS/ELEC-BASS.XML  <-  bank0009.syx voice 15
+BELL/RODEBELL.XML  <-  bank0009.syx voice 21
+BASS/DIGI-BASS1.XML  <-  bank0023.syx voice 1
+BASS/OVRDRBASS1.XML  <-  bank0023.syx voice 2
+BASS/BASS-RESWP.XML  <-  bank0023.syx voice 3
+BELL/76 BELLS.XML  <-  bank0023.syx voice 11
+BASS/E-BASS.XML  <-  bank0024.syx voice 24
+BELL/MTL BLOCK.XML  <-  bank0024.syx voice 29
+BELL/SLEIGHBELL.XML  <-  bank0024.syx voice 30
+BASS/DIGI-BASS3.XML  <-  bank0042.syx voice 2
+BASS/SLAPCONGAS.XML  <-  bank0054.syx voice 28
+BASS/LLEB.XML  <-  bank0056.syx voice 21
+BELL/NOTONEBELL.XML  <-  bank0056.syx voice 22
+BELL/BELL TREE.XML  <-  bank0056.syx voice 23
+BELL/GONGED.XML  <-  bank0056.syx voice 25
+BASS/BASS GUITR.XML  <-  bank01.syx voice 1
+BASS/BASS-1.XML  <-  bank01.syx voice 2
+BASS/METABASS.XML  <-  bank01.syx voice 4
+BASS/METABASS 2.XML  <-  bank01.syx voice 5
+BASS/PICK BASS.XML  <-  bank01.syx voice 6
+BASS/E-BASS 1.XML  <-  bank01.syx voice 8
+BASS/D-BAS 24-7.XML  <-  bank01.syx voice 14
+BASS/H-BAS 25-7.XML  <-  bank01.syx voice 15
+BASS/F-BAS 26-7.XML  <-  bank01.syx voice 16
+BELL/TINE-RHODS.XML  <-  bank08.syx voice 8
+BELL/FULLTINES.XML  <-  bank08.syx voice 26
+BELL/GOOD-VIBES.XML  <-  bank08.syx voice 27
+BELL/PIANOBELLS.XML  <-  bank08.syx voice 29
+BELL/MARIMBONE.XML  <-  bank18.syx voice 3
+BELL/BELL 1.XML  <-  bells.syx voice 1
+BELL/BELL 2.XML  <-  bells.syx voice 2
+BELL/BELL 4.XML  <-  bells.syx voice 3
+BELL/BELL 5.XML  <-  bells.syx voice 4
+BELL/BELL 7.XML  <-  bells.syx voice 5
+BELL/BELL 8.XML  <-  bells.syx voice 6
+BELL/BELL 9.XML  <-  bells.syx voice 7
