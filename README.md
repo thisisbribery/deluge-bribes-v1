@@ -1220,7 +1220,9 @@ The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any t
 
 ## 27. BRIBELUGE COMPANION
 
-A second screen for the Deluge on a phone or tablet, over USB. It runs in the browser: **[thisisbribery.com/companion](https://www.thisisbribery.com/companion/)** (source: [thisisbribery/bribes-companion](https://github.com/thisisbribery/bribes-companion)).
+A second screen for the Deluge on a phone or tablet, over USB. It runs in the browser: **[thisisbribery.com/bribeluge/companion](https://www.thisisbribery.com/bribeluge/companion/)** (source: [thisisbribery/bribes-companion](https://github.com/thisisbribery/bribes-companion)).
+
+It talks plain USB MIDI. The display mirror is the Deluge Community firmware's screen-over-SysEx feature (started by bfredl), and STOCK mode's knobs are the community firmware's MIDI Follow; Bribeluge adds its own SysEx messages under the same header. Credits and the full message list are on the [companion page](https://www.thisisbribery.com/bribeluge/companion/#credits).
 
 ### What it shows
 
