@@ -13,8 +13,8 @@
 	maxVoices="8">
 	<osc1
 		type="drumSynth"
-		transpose="6"
-		cents="0"
+		transpose="7"
+		cents="-2"
 		retrigPhase="-1"
 		drumSynth="10002D3714001E004C4000044040007F007F00003C4000010001000000404066010000000040400000010500000000" />
 	<osc2

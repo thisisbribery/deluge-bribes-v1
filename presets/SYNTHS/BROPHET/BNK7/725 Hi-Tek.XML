@@ -14,7 +14,7 @@
 	<osc1
 		type="drumSynth"
 		transpose="4"
-		cents="0"
+		cents="-14"
 		retrigPhase="-1"
 		drumSynth="10002D3714001E004C4000044040007F007F00003C4000010001000000404066010000000040400000000000000000" />
 	<osc2

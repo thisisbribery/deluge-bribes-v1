@@ -12420,14 +12420,14 @@ index 000000000..14dd48640
 +} // namespace deluge::dsp::drum_synth::xia
 diff --git a/src/deluge/dsp/drum_synth/xia.h b/src/deluge/dsp/drum_synth/xia.h
 new file mode 100644
-index 000000000..c91c15fff
+index 000000000..d7398e820
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/xia.h
 @@ -0,0 +1,99 @@
 +/*
-+ * The TIA and IIA engines, shown on the Deluge as DXIA and DIIA. They come from the XIA engine set for the
-+ * Model:Cycles, whose author released them as open source; they are distributed here under the GPL-3.0 with the
-+ * rest of this firmware.
++ * The TIA and IIA engines, shown on the Deluge as DXIA and DIIA. They were written from scratch, from the manuals
++ * and published descriptions of Noise Engineering's BIA and IIA modules, first for the Model:Cycles (the XIA engine
++ * set) and then ported here; they are distributed under the GPL-3.0 with the rest of this firmware.
 + *
 + * SPDX-License-Identifier: GPL-3.0-or-later
 + *
@@ -28394,10 +28394,10 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..879293d57 100644
+index 51a40bfd2..37055dc62 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
-@@ -1,15 +1,67 @@
+@@ -1,15 +1,68 @@
  #include "hid/hid_sysex.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include "extern.h"
@@ -28456,6 +28456,7 @@ index 51a40bfd2..879293d57 100644
 +#include "storage/audio/audio_file_holder.h"
 +#include "storage/file_item.h"
 +#include "storage/multi_range/multisample_range.h"
++#include "storage/wave_table/wave_table.h"
 +#include "util/comparison.h"
 +#include "util/d_stringbuf.h"
 +#include "util/functions.h"
@@ -28465,7 +28466,7 @@ index 51a40bfd2..879293d57 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +69,2949 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3308 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -30080,6 +30081,10 @@ index 51a40bfd2..879293d57 100644
 +
 +void readBrophetPanel(Sound* sound, ParamManagerForTimeline* params, int32_t* v);
 +bool isBrophetSound(Sound* sound);
++void readWavePanel(Sound* sound, ParamManagerForTimeline* params, int32_t* v);
++bool isWaveSound(Sound* sound);
++void waveSendsForget();
++constexpr int32_t kNumWavePanel = 25;
 +
 +/// A different panel than last time (the same sound switched engine in place, say): its remembered switches go
 +void notePanelKind(uint8_t kind) {
@@ -30091,14 +30096,18 @@ index 51a40bfd2..879293d57 100644
 +}
 +constexpr int32_t kNumBrophetPanel = 43;
 +
-+/// PANEL body: version, which panel (0 none, 1 BRUNO106, 2 BROPHET), count, then each control's position (2 bytes)
++/// PANEL body: version, which panel (0 none, 1 BRUNO106, 2 BROPHET, 3 WAVE), count, then each control's position
++/// (2 bytes)
 +int32_t buildPanel(uint8_t* out) {
 +	out[0] = kStateVersion;
 +	Sound* sound = nullptr;
 +	ParamManagerForTimeline* params = nullptr;
 +	const bool found = currentSoundAndParams(sound, params) && params->getPatchedParamSet() != nullptr;
-+	const uint8_t kind = !found ? 0 : isBrunoSound(sound) ? 1 : isBrophetSound(sound) ? 2 : 0;
++	const uint8_t kind = !found ? 0 : isBrunoSound(sound) ? 1 : isBrophetSound(sound) ? 2 : isWaveSound(sound) ? 3 : 0;
 +	notePanelKind(kind);
++	if (kind != 3) {
++		waveSendsForget(); // Showing it again sends its tables again
++	}
 +	if (kind == 0) {
 +		panelForgetFlags();
 +		out[1] = 0;
@@ -30110,9 +30119,13 @@ index 51a40bfd2..879293d57 100644
 +		readPanel(sound, params, v);
 +		count = NUM_PANEL;
 +	}
-+	else {
++	else if (kind == 2) {
 +		readBrophetPanel(sound, params, v);
 +		count = kNumBrophetPanel;
++	}
++	else {
++		readWavePanel(sound, params, v);
++		count = kNumWavePanel;
 +	}
 +	out[1] = kind;
 +	out[2] = count;
@@ -30613,27 +30626,351 @@ index 51a40bfd2..879293d57 100644
 +	}
 +}
 +
++bool sendIfChanged(uint8_t const* header, uint8_t const* body, int32_t len, uint8_t* last, int32_t& lastLen, bool force,
++                   int32_t space);
++
++// ---- WAVE panel: the Deluge's own wavetable oscillators, as the tablet draws them (a 3D stack of the table's frames
++// with each voice's place in it) and the settings that move through them. The same PANEL message (panel 3) and the
++// tablet's 03 0F <id> <hi> <lo>. WTABLE (0x57) sends each loaded table's frames once, a chunk per panel poll; WTPOS
++// (0x58) sends where the knob and every sounding voice are, while the panel shows.
++enum class WKind : uint8_t {
++	STANDARD,  ///< A patched param on the Deluge's standard 0-50 scale
++	UNPATCHED, ///< An unpatched one
++	CABLE_BI,  ///< A patch cable's amount, -max at the bottom, none in the middle, +max at the top
++	TRANSPOSE, ///< An oscillator's transpose, -24 to +24 semitones (param: which oscillator)
++};
++struct WaveControl {
++	WKind kind;
++	int32_t param;
++	PatchSource source = PatchSource::NONE;
++};
++constexpr int32_t kWavePosCableMax = 1 << 30; ///< A cable's 100%: the whole table
++constexpr WaveControl kWave[kNumWavePanel] = {
++    {WKind::STANDARD, P::LOCAL_OSC_A_WAVE_INDEX},                            // 0 osc A position
++    {WKind::CABLE_BI, P::LOCAL_OSC_A_WAVE_INDEX, PatchSource::ENVELOPE_1},   // 1 envelope 2 to it
++    {WKind::CABLE_BI, P::LOCAL_OSC_A_WAVE_INDEX, PatchSource::LFO_GLOBAL_1}, // 2 LFO 1 to it
++    {WKind::STANDARD, P::LOCAL_OSC_A_VOLUME},                                // 3 osc A level
++    {WKind::TRANSPOSE, 0},                                                   // 4 osc A transpose
++    {WKind::STANDARD, P::LOCAL_OSC_B_WAVE_INDEX},                            // 5-9 the same for osc B
++    {WKind::CABLE_BI, P::LOCAL_OSC_B_WAVE_INDEX, PatchSource::ENVELOPE_1},
++    {WKind::CABLE_BI, P::LOCAL_OSC_B_WAVE_INDEX, PatchSource::LFO_GLOBAL_1},
++    {WKind::STANDARD, P::LOCAL_OSC_B_VOLUME},
++    {WKind::TRANSPOSE, 1},
++    {WKind::STANDARD, P::GLOBAL_LFO_FREQ_1},  // 10 LFO 1 rate
++    {WKind::STANDARD, P::LOCAL_ENV_1_ATTACK}, // 11-14 envelope 2, the one that sweeps the position
++    {WKind::STANDARD, P::LOCAL_ENV_1_DECAY},
++    {WKind::STANDARD, P::LOCAL_ENV_1_SUSTAIN},
++    {WKind::STANDARD, P::LOCAL_ENV_1_RELEASE},
++    {WKind::STANDARD, P::LOCAL_LPF_FREQ},      // 15 cutoff
++    {WKind::STANDARD, P::LOCAL_LPF_RESONANCE}, // 16 resonance
++    {WKind::STANDARD, P::LOCAL_ENV_0_ATTACK},  // 17-20 amp envelope
++    {WKind::STANDARD, P::LOCAL_ENV_0_DECAY},
++    {WKind::STANDARD, P::LOCAL_ENV_0_SUSTAIN},
++    {WKind::STANDARD, P::LOCAL_ENV_0_RELEASE},
++    {WKind::STANDARD, P::LOCAL_FOLD},            // 21 wavefolder
++    {WKind::STANDARD, P::LOCAL_VOICE_FEEDBACK},  // 22 feedback
++    {WKind::STANDARD, P::GLOBAL_VOLUME_POST_FX}, // 23 volume
++    {WKind::STANDARD, P::GLOBAL_REVERB_AMOUNT},  // 24 reverb
++};
++static_assert(kNumWavePanel <= kMaxPanelControls && kNumWavePanel <= 64);
++uint16_t pendingWave[kNumWavePanel];
++uint64_t pendingWaveMask = 0;
++
++/// The wavetable an oscillator plays, or null
++WaveTable* waveTableOf(Sound* sound, int32_t s) {
++	if (sound->getSynthMode() == SynthMode::FM) {
++		return nullptr;
++	}
++	Source& source = sound->sources[s];
++	if (source.oscType != OscType::WAVETABLE || source.ranges.getNumElements() == 0) {
++		return nullptr;
++	}
++	AudioFile* file = source.ranges.getElement(0)->getAudioFileHolder()->audioFile;
++	return (file != nullptr && file->type == AudioFileType::WAVETABLE) ? static_cast<WaveTable*>(file) : nullptr;
++}
++
++bool isWaveSound(Sound* sound) {
++	return waveTableOf(sound, 0) != nullptr || waveTableOf(sound, 1) != nullptr;
++}
++
++int32_t panelFromBipolarAmount(int32_t amount, int32_t max) {
++	const int64_t p = 8192 + static_cast<int64_t>(amount) * 8191 / max;
++	return static_cast<int32_t>(std::clamp<int64_t>(p, 0, kPanelMax));
++}
++int32_t bipolarAmountFromPanel(int32_t pos, int32_t max) {
++	if (pos >= 8190 && pos <= 8194) {
++		return 0; // A detent round the middle, so the cable can be let go of
++	}
++	return static_cast<int32_t>(std::clamp<int64_t>((static_cast<int64_t>(pos) - 8192) * max / 8191, -max, max));
++}
++
++void readWavePanel(Sound* sound, ParamManagerForTimeline* params, int32_t* v) {
++	PatchedParamSet* patched = params->getPatchedParamSet();
++	UnpatchedParamSet* unpatched = params->getUnpatchedParamSet();
++	PatchCableSet* cables = cablesOf(params);
++	for (int32_t id = 0; id < kNumWavePanel; id++) {
++		const WaveControl& c = kWave[id];
++		int32_t pos = 0;
++		switch (c.kind) {
++		case WKind::STANDARD:
++			pos = panelFromStandard(patched->getValue(c.param));
++			break;
++		case WKind::UNPATCHED:
++			pos = unpatched != nullptr ? panelFromStandard(unpatched->getValue(c.param)) : 0;
++			break;
++		case WKind::CABLE_BI:
++			pos = panelFromBipolarAmount(cableAmount(cables, c.source, c.param), kWavePosCableMax);
++			break;
++		case WKind::TRANSPOSE:
++			pos = ((std::clamp<int32_t>(sound->sources[c.param].transpose, -24, 24) + 24) * kPanelMax + 24) / 48;
++			break;
++		}
++		v[id] = pos;
++	}
++}
++
++void applyWave(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params, int32_t id,
++               int32_t pos) {
++	const WaveControl& c = kWave[id];
++	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
++	switch (c.kind) {
++	case WKind::STANDARD:
++		setPatched(modelStack, c.param, standardFromPanel(pos));
++		break;
++	case WKind::UNPATCHED:
++		setUnpatched(modelStack, c.param, standardFromPanel(pos));
++		break;
++	case WKind::CABLE_BI:
++		setCable(modelStack, c.source, c.param, bipolarAmountFromPanel(pos, kWavePosCableMax));
++		break;
++	case WKind::TRANSPOSE: {
++		Source& source = sound->sources[c.param];
++		const int32_t transpose = (pos * 48 + kPanelMax / 2) / kPanelMax - 24;
++		if (source.transpose != transpose) {
++			source.transpose = transpose;
++			char memory[MODEL_STACK_MAX_SIZE];
++			sound->recalculateAllVoicePhaseIncrements(panelModelStack(memory, sound, params)->addSoundFlags());
++		}
++		break;
++	}
++	}
++}
++
++// WTABLE body: version, oscillator (0 A, 1 B), table id (changes with the table), total cycles (2 bytes), frames sent
++// in all (0 = no table), points per frame (2 bytes), first frame in this chunk, frames in this chunk, name length,
++// name, then each frame's points (one byte each, 64 = zero), frames evenly spread over the table's cycles.
++constexpr uint8_t kWaveTableHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x57};
++constexpr uint8_t kWavePosHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x58};
++constexpr int32_t kWaveFrames = 64;
++constexpr int32_t kWavePoints = 128;
++constexpr int32_t kWaveChunkFrames = 8;
++constexpr int32_t kWaveNameMax = 32;
++constexpr int32_t kWaveTableDuplicates = 7; ///< wave_table.cpp's WAVETABLE_NUM_DUPLICATE_SAMPLES_AT_END_OF_CYCLE
++struct WaveTableSend {
++	WaveTable* table = nullptr; ///< The one being or last sent
++	int32_t numCycles = 0;
++	uint8_t id = 0;
++	int32_t frames = 0; ///< To send in all
++	int32_t next = -1;  ///< Next frame to send; frames = all sent, -1 = the "no table" message still to send
++	int32_t peak = 1;   ///< The loudest point among the frames sent, so quiet tables fill the height
++	char name[kWaveNameMax + 1] = {};
++};
++WaveTableSend waveSends[2];
++void waveSendsForget() {
++	for (auto& w : waveSends) {
++		w.table = nullptr;
++		w.numCycles = 0;
++		w.frames = 0;
++		w.next = -1; // A "no table" message first, so the tablet drops what it had
++	}
++}
++uint8_t waveTableIds = 0;
++uint8_t lastWavePos[1 + 2 * (1 + 2 + 1 + 2 * 8)]; ///< Version, then per oscillator: has, knob, count, 8 voices
++int32_t lastWavePosLen = 0;
++
++int32_t waveCycleOf(const WaveTableSend& w, int32_t frame) {
++	return (w.frames <= 1) ? 0 : (frame * (w.numCycles - 1) + (w.frames - 1) / 2) / (w.frames - 1);
++}
++
++/// A point of a cycle, from the band holding it with the most samples per cycle
++int32_t wavePoint(WaveTable* table, int32_t cycle, int32_t point) {
++	for (int32_t b = 0; b < table->bands.getNumElements(); b++) {
++		auto* band = static_cast<WaveTableBand*>(table->bands.getElementAddress(b));
++		if (band->dataAccessAddress == nullptr || cycle < band->fromCycleNumber || cycle >= band->toCycleNumber) {
++			continue;
++		}
++		const int32_t size = band->cycleSizeNoDuplicates;
++		return band->dataAccessAddress[cycle * (size + kWaveTableDuplicates) + point * size / kWavePoints];
++	}
++	return 0;
++}
++
++/// Start sending an oscillator's table again if it isn't the one sent (or force)
++void waveTableCheck(Sound* sound, int32_t s, bool force) {
++	WaveTableSend& w = waveSends[s];
++	WaveTable* table = sound != nullptr ? waveTableOf(sound, s) : nullptr;
++	const int32_t numCycles = table != nullptr ? table->numCycles : 0;
++	if (!force && table == w.table && numCycles == w.numCycles) {
++		return;
++	}
++	w.table = table;
++	w.numCycles = numCycles;
++	w.id = waveTableIds = (waveTableIds + 1) & 0x7F;
++	w.name[0] = 0;
++	if (table == nullptr || numCycles < 1) {
++		w.frames = 0;
++		w.next = -1;
++		return;
++	}
++	w.frames = std::min<int32_t>(kWaveFrames, numCycles);
++	w.next = 0;
++	// The file's name without its folders or extension
++	const char* path = table->filePath.get();
++	const char* slash = strrchr(path, '/');
++	const char* start = slash != nullptr ? slash + 1 : path;
++	int32_t n = 0;
++	while (start[n] != 0 && start[n] != '.' && n < kWaveNameMax) {
++		w.name[n] = start[n];
++		n++;
++	}
++	w.name[n] = 0;
++	int32_t peak = 1;
++	for (int32_t f = 0; f < w.frames; f++) {
++		const int32_t cycle = waveCycleOf(w, f);
++		for (int32_t p = 0; p < kWavePoints; p++) {
++			peak = std::max<int32_t>(peak, std::abs(wavePoint(table, cycle, p)));
++		}
++	}
++	w.peak = peak;
++}
++
++/// Send the next chunk of whichever table still has some. Returns true if anything is left to send.
++bool waveTableSendChunk() {
++	for (int32_t s = 0; s < 2; s++) {
++		WaveTableSend& w = waveSends[s];
++		if (w.next >= w.frames && w.frames != 0) {
++			continue;
++		}
++		if (w.frames == 0 && w.next != -1) {
++			continue;
++		}
++		if (w.table == nullptr && w.frames != 0) {
++			continue; // Can't be, but never read through a null table
++		}
++		static uint8_t body[13 + kWaveNameMax + kWaveChunkFrames * kWavePoints];
++		const int32_t first = std::max<int32_t>(w.next, 0);
++		const int32_t count = std::min<int32_t>(kWaveChunkFrames, w.frames - first);
++		int32_t i = 0;
++		body[i++] = kStateVersion;
++		body[i++] = s;
++		body[i++] = w.id;
++		const int32_t cycles = std::min<int32_t>(w.numCycles, 16383);
++		body[i++] = (cycles >> 7) & 0x7F;
++		body[i++] = cycles & 0x7F;
++		body[i++] = w.frames;
++		body[i++] = (kWavePoints >> 7) & 0x7F; // 128 doesn't fit in a SysEx data byte
++		body[i++] = kWavePoints & 0x7F;
++		body[i++] = first;
++		body[i++] = std::max<int32_t>(count, 0);
++		const int32_t nameLen = strlen(w.name);
++		body[i++] = nameLen;
++		for (int32_t c = 0; c < nameLen; c++) {
++			body[i++] = w.name[c] & 0x7F;
++		}
++		for (int32_t f = first; f < first + count; f++) {
++			const int32_t cycle = waveCycleOf(w, f);
++			for (int32_t p = 0; p < kWavePoints; p++) {
++				const int32_t v = 64 + wavePoint(w.table, cycle, p) * 63 / w.peak;
++				body[i++] = std::clamp<int32_t>(v, 0, 127);
++			}
++		}
++		if (!sendFramed(*midiStateCable, kWaveTableHeader, false, body, i)) {
++			return true; // No room: next poll
++		}
++		w.next = (w.frames == 0) ? 0 : first + count;
++		return true;
++	}
++	return false;
++}
++
++/// WTPOS body: version, then for each oscillator: has a table, its knob's place (2 bytes, 14-bit through the table),
++/// voice count, each sounding voice's place (2 bytes). Places include everything patched to them.
++int32_t buildWavePos(Sound* sound, ParamManagerForTimeline* params, uint8_t* out) {
++	int32_t i = 0;
++	out[i++] = kStateVersion;
++	for (int32_t s = 0; s < 2; s++) {
++		const bool has = waveTableOf(sound, s) != nullptr;
++		out[i++] = has;
++		const int32_t knob = params->getPatchedParamSet()->getValue(P::LOCAL_OSC_A_WAVE_INDEX + s);
++		const int32_t base = static_cast<int32_t>((static_cast<int64_t>(knob) + 2147483648LL) >> 18);
++		out[i++] = (base >> 7) & 0x7F;
++		out[i++] = base & 0x7F;
++		const int32_t countAt = i++;
++		int32_t n = 0;
++		if (has) {
++			for (const auto& voice : sound->voices()) {
++				if (n >= 8) {
++					break;
++				}
++				// The oscillator reads paramFinalValues + 2^30 as a 31-bit place through the table
++				const int64_t place =
++				    static_cast<int64_t>(voice->paramFinalValues[P::LOCAL_OSC_A_WAVE_INDEX + s]) + 1073741824LL;
++				const int32_t pos = static_cast<int32_t>(std::clamp<int64_t>(place >> 17, 0, kPanelMax));
++				out[i++] = (pos >> 7) & 0x7F;
++				out[i++] = pos & 0x7F;
++				n++;
++			}
++		}
++		out[countAt] = n;
++	}
++	return i;
++}
++
++/// The wave panel's extras, from the panel poll: positions when they move, and the tables a chunk at a time
++void sendWaveExtras(bool force) {
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (!currentSoundAndParams(sound, params) || params->getPatchedParamSet() == nullptr || !isWaveSound(sound)) {
++		return;
++	}
++	if (force) {
++		lastWavePosLen = 0;
++	}
++	waveTableCheck(sound, 0, force);
++	waveTableCheck(sound, 1, force);
++	uint8_t pos[sizeof(lastWavePos)];
++	const int32_t posLen = buildWavePos(sound, params, pos);
++	sendIfChanged(kWavePosHeader, pos, posLen, lastWavePos, lastWavePosLen, false, 0);
++	if (midiStateCable->sendBufferSpace() >= 1300) {
++		waveTableSendChunk();
++	}
++}
++
 +/// Apply the tablet's waiting moves to the sound being played, if it's still the engine they were for
 +void runPendingPanel() {
 +	Sound* sound = nullptr;
 +	ParamManagerForTimeline* params = nullptr;
 +	// Not while a browser is open: loading a preset swaps the sound over several steps
 +	if (browserIsOpen() || !currentSoundAndParams(sound, params) || params->getPatchedParamSet() == nullptr) {
-+		pendingPanelMask = pendingBrophetMask = 0;
++		pendingPanelMask = pendingBrophetMask = pendingWaveMask = 0;
 +		return;
 +	}
 +	const bool bruno = isBrunoSound(sound);
 +	const bool brophet = isBrophetSound(sound);
++	const bool wave = !bruno && !brophet && isWaveSound(sound);
 +	if (!bruno) {
 +		pendingPanelMask = 0; // Moves for a panel that isn't this sound's
 +	}
 +	if (!brophet) {
 +		pendingBrophetMask = 0;
 +	}
-+	if (pendingPanelMask == 0 && pendingBrophetMask == 0) {
++	if (!wave) {
++		pendingWaveMask = 0;
++	}
++	if (pendingPanelMask == 0 && pendingBrophetMask == 0 && pendingWaveMask == 0) {
 +		return;
 +	}
-+	notePanelKind(bruno ? 1 : 2);
++	notePanelKind(bruno ? 1 : brophet ? 2 : 3);
 +	panelFlagsFor(sound);
 +	char memory[MODEL_STACK_MAX_SIZE];
 +	ModelStackWithThreeMainThings* modelStack = panelModelStack(memory, sound, params);
@@ -30652,6 +30989,14 @@ index 51a40bfd2..879293d57 100644
 +		}
 +		pendingBrophetMask &= ~(uint64_t{1} << c);
 +		applyBrophet(modelStack, sound, params, c, pendingBrophet[c]);
++		any = true;
++	}
++	for (int32_t c = 0; c < kNumWavePanel; c++) {
++		if (!(pendingWaveMask & (uint64_t{1} << c))) {
++			continue;
++		}
++		pendingWaveMask &= ~(uint64_t{1} << c);
++		applyWave(modelStack, sound, params, c, pendingWave[c]);
 +		any = true;
 +	}
 +	if (any) {
@@ -31050,6 +31395,9 @@ index 51a40bfd2..879293d57 100644
 +	uint8_t panel[sizeof(lastPanel)];
 +	const int32_t panelLen = buildPanel(panel);
 +	sendIfChanged(kPanelHeader, panel, panelLen, lastPanel, lastPanelLen, force, 0);
++	if (panel[1] == 3) {
++		sendWaveExtras(force);
++	}
 +	// An engine panel is showing: watch it on its own fast timer, so a knob turned on the Deluge moves it right away
 +	if (panel[1] != 0 && !uiTimerManager.isTimerSet(TimerName::COMPANION_PANEL)) {
 +		uiTimerManager.setTimer(TimerName::COMPANION_PANEL, kPanelPollMs);
@@ -31166,6 +31514,15 @@ index 51a40bfd2..879293d57 100644
 +		}
 +		return;
 +	}
++	if (data[2] == 15) {
++		// 15 <control> <hi> <lo> = move a WAVE panel control there
++		if (len >= 6 && data[3] < kNumWavePanel) {
++			pendingWave[data[3]] = (data[4] << 7) | data[5];
++			pendingWaveMask |= uint64_t{1} << data[3];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
 +	if (data[2] == 12) {
 +		// 12 <button> = press that mod button, so the gold knobs turn its pair
 +		if (len >= 4 && data[3] < kNumModButtons) {
@@ -31253,6 +31610,9 @@ index 51a40bfd2..879293d57 100644
 +		sendIfChanged(kPanelHeader, panel, panelLen, lastPanel, lastPanelLen, false, 0);
 +		if (panel[1] == 0) {
 +			return; // Closed
++		}
++		if (panel[1] == 3) {
++			sendWaveExtras(false);
 +		}
 +	}
 +	uiTimerManager.setTimer(TimerName::COMPANION_PANEL, kPanelPollMs);
@@ -31415,7 +31775,7 @@ index 51a40bfd2..879293d57 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3030,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +3390,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -31426,7 +31786,7 @@ index 51a40bfd2..879293d57 100644
  	default:
  		break;
  	}
-@@ -79,6 +3078,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +3438,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -31435,7 +31795,7 @@ index 51a40bfd2..879293d57 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +3237,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +3597,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }

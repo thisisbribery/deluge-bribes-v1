@@ -180,7 +180,7 @@
 		<modKnob controlsParam="lfo1Rate" />
 		<modKnob controlsParam="portamento" />
 		<modKnob controlsParam="stutterRate" />
-		<modKnob controlsParam="voiceFeedback" />
+		<modKnob controlsParam="oscAWavetablePosition" patchAmountFromSource="lfo1" />
 		<modKnob controlsParam="oscAWavetablePosition" />
 	</modKnobs>
 	<midiOutput
