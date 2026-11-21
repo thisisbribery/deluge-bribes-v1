@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.34
+# BRIBELUGE: Deluge Bribes FW v1.35
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though!
 
@@ -32,9 +32,9 @@ Unofficial firmware for the Synthstrom Deluge, rebased on the latest official co
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
-27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers, a song view you can tap, and a Juno-style slider panel for BRUNO106 that works both ways.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers, a song view you can tap, and panels for BRUNO106 (Juno-style sliders) and BROPHET (Prophet-style knobs) that work both ways.
 
-**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.34), pinned to the exact commit the bin was built from, and as a full source download on the [v1.34 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.34). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.35), pinned to the exact commit the bin was built from, and as a full source download on the [v1.35 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.35). See [Source code](#source-code).
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -46,9 +46,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.34.bin`](firmware/deluge-bribes-v1.34.bin)
+[`firmware/deluge-bribes-v1.35.bin`](firmware/deluge-bribes-v1.35.bin)
 
-SHA-256: `cab70e967e00d5e1ced9322d1868a0f2a8b9575339ad702c71beeb811f011bfb`
+SHA-256: `d95548a784aea92f43ed33553bc7cf9d2f5f116682902296a89dbd9c2a5127f5`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -64,7 +64,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.34.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.35.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1106,11 +1106,13 @@ The Attack and Release gold knobs stay on envelope 1, and Mod rate and Mod depth
   - **Glide** is only set on unison programs: Pro-53 glides in unison only, so a poly program's glide was never heard.
   - **Delay** is the Deluge's own, at Pro-53's time (23 ms at the shortest), wet level as the amount and feedback as the feedback.
   - **Velocity** is off, as on a Prophet-5, unless the program turns it on.
+- **v1.35:** the 85 presets with vibrato (LFO to pitch) now have it at the original's depth (before, they had almost none). Copy them over the old ones.
 
 ### Good to know
 
 - **CPU:** about 5.8% of the Deluge a voice (around 1300 ns on LOAD's **VNS**), about twice a stock voice. An 8-note chord fits with room for the rest of a song; two busy BROPHET tracks plus a full song will start cutting voices.
 - On a kit row it plays at the row's note.
+- The companion shows BROPHET as a panel of knobs, both ways (see [BROPHET panel](#brophet-panel)).
 - Songs and presets save every setting. Bribes firmware from before v1.28 doesn't know BROPHET.
 
 [Back to top](#readme-top)
@@ -1228,7 +1230,7 @@ It talks plain USB MIDI. The display mirror is the Deluge Community firmware's s
 
 - **Top bar:** Play, Record, the tempo, the Deluge's display mirrored (7SEG or OLED, switchable), Back, the select knob left and right, and a big SELECT button.
 - **Readout:** whatever the display shows, spelled out in full English (no four letter abbreviations), with a menu item's name and value side by side.
-- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. Tap a knob and it opens on the Deluge. BRUNO106 gets its own slider panel (below).
+- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. Tap a knob and it opens on the Deluge. BRUNO106 and BROPHET get their own panels (below).
 - **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
 - **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
 - **Waveforms:** audio clips, sample markers and Start offset, full width with every playing note's playhead. Drag the start, loop and end markers, or the offset.
@@ -1243,6 +1245,17 @@ With a BRUNO106 synth or kit row selected, the companion shows a panel of slider
 - Sliders move with your finger from where they sit, so touching one doesn't make it jump. Several fingers can move several sliders at once.
 - PWM on LFO works as on the original: the LFO sweeps the pulse width between square and the slider. GATE sets envelope 1 to an organ gate; ENV gives it envelope 2's shape back.
 - On a phone or a narrow tablet the columns narrow so each row fits; on a short screen the sliders get shorter.
+
+### BROPHET panel
+
+With a BROPHET synth or kit row selected, the companion shows a panel of knobs and LED buttons in the order of the synth BROPHET comes from, left to right. It works both ways like the BRUNO106 panel: drag a knob up or down and the Deluge follows as if you'd turned its knob; turn a knob on the Deluge and the panel's knob moves.
+
+- **First row:** **Poly-mod** filter envelope and osc B amounts, to Freq A and / or PW A. **LFO** rate, saw / triangle / square, amount to Freq and to Filter. **Osc A** frequency (semitones), saw and pulse, pulse width, Sync.
+- **Second row:** **Osc B** frequency, fine, saw / triangle / pulse, pulse width, LO and KBD. **Mixer** osc A, osc B and noise. **Filter** cutoff, resonance, envelope amount, keyboard follow and drive.
+- **Third row:** **Filter env** and **Amp env** (A, D, S, R). **Master** glide, analog and volume.
+- **Fourth row:** **Dirt** (crush, deci, sat), **Delay** (amount, rate, feedback) and **Reverb**.
+- Buttons follow the synth's rules: an oscillator keeps at least one wave on, and the LFO shapes pick one. Osc B's frequency reads two octaves each way on the keyboard and four with KBD off.
+- Two looks, from the faint **P5 | P8** switch in the panel's header: **P8** (black panel, red LEDs, silver-capped knobs) or **P5** (wood cheeks, cream lettering and buttons). The tablet remembers which.
 
 ### Using it
 
@@ -1351,6 +1364,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.35: BROPHET panel.** With a BROPHET track selected, the companion shows a knob panel laid out like the Prophet: poly-mod, LFO, both oscillators, mixer, filter, both envelopes, master, then crush, deci, saturation, delay and reverb (see [BROPHET panel](#brophet-panel)), in a P8 or a P5 look. It works both ways, like the BRUNO106 panel. Turning a knob on the Deluge now shows on either panel right away: an open panel is checked on its own every 15 ms, and knob updates no longer wait behind a busy USB buffer for the preset browser when it isn't open. *Fixed:* the 85 BROPHET presets with vibrato had almost none, the same squared pitch cable as the KR-106 presets in v1.34. *Why:* the second engine on the panel pattern, so the next ones are mostly a table. *Learned:* the lag wasn't the tablet: the Deluge held every knob update back 100 ms whenever its send buffer was more than half full, waiting for room for a browser window that wasn't there.
 
 - **v1.34: BRUNO106 panel.** With a BRUNO106 track selected, the companion shows a slider panel laid out like the Juno: LFO, DCO, HPF, VCF, VCA and envelope 1, then envelope 2, the chorus, drive, crush, decimation, saturation, delay and reverb on a second row (see [BRUNO106 panel](#bruno106-panel)). It works both ways: drag a slider and the Deluge moves as if you'd turned its knob, turn a knob and the slider follows. BRUNO CHORUS gets a Rate and a Depth, centred on each mode's own. *Fixed:* the 34 KR-106 presets with DCO vibrato had almost none; copying a BRUNO106 track reset its chorus mode to I. *Why:* a synth this hands-on wants faders, not one menu per setting. *Learned:* the Deluge squares any patch cable that goes to pitch, so small amounts stay small. Converted like a filter cable, KR-106's 4 semitones of vibrato came out at about 0.06 of a semitone; the cable needs the square root of the linear amount. The Deluge also deletes a patch cable when it reaches zero, so the panel remembers PWM's LFO / MAN switch and the envelope's polarity itself while their slider sits at the bottom.
 

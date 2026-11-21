@@ -122,7 +122,7 @@
 				source="lfo1"
 				destination="pitch"
 				polarity="bipolar"
-				amount="0x00498676" />
+				amount="0x0735DE3F" />
 			<patchCable
 				source="lfo1"
 				destination="lpfFrequency"

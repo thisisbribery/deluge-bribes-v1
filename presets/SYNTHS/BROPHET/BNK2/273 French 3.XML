@@ -117,7 +117,7 @@
 				source="lfo1"
 				destination="pitch"
 				polarity="bipolar"
-				amount="0x007F7E1E" />
+				amount="0x097EAA21" />
 		</patchCables>
 		<equalizer
 			bass="0x00000000"
