@@ -126,7 +126,7 @@
 				source="lfo1"
 				destination="pitch"
 				polarity="bipolar"
-				amount="0x00080808" />
+				amount="0x02621110" />
 			<patchCable
 				source="lfo1"
 				destination="modulator1Volume"

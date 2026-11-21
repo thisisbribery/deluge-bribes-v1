@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.33
+# BRIBELUGE: Deluge Bribes FW v1.34
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though!
 
@@ -32,9 +32,9 @@ Unofficial firmware for the Synthstrom Deluge, rebased on the latest official co
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
-27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers and a song view you can tap.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers, a song view you can tap, and a Juno-style slider panel for BRUNO106 that works both ways.
 
-**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.33), pinned to the exact commit the bin was built from, and as a full source download on the [v1.33 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.33). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.34), pinned to the exact commit the bin was built from, and as a full source download on the [v1.34 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.34). See [Source code](#source-code).
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -46,9 +46,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.33.bin`](firmware/deluge-bribes-v1.33.bin)
+[`firmware/deluge-bribes-v1.34.bin`](firmware/deluge-bribes-v1.34.bin)
 
-SHA-256: `6c5a366731dcb08f2fc2c67237d5c091faf4ea05be0f9fa25846b95240e47f49`
+SHA-256: `cab70e967e00d5e1ced9322d1868a0f2a8b9575339ad702c71beeb811f011bfb`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -64,7 +64,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.33.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.34.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1197,7 +1197,8 @@ The Juno-106's high pass slider, once per track on all its voices together, befo
 The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any track: synths, kit rows, kits and the song. Pick it in the MOD FX menu, or with the chorus pad on BRUNO106.
 
 - With it picked, **Chorus mode** (**CMOD**) appears in the MOD FX menu: **I**, a slow wide sweep; **II**, faster and a little shallower; **I-II**, a fast shallow vibrato. Rates and depths are KR-106's, measured on hardware.
-- Changing mode fades out and back in over 5 ms. Rate, depth, feedback and offset aren't used: as on the Juno, the mode sets them.
+- Changing mode fades out and back in over 5 ms. The Deluge's MOD FX rate, depth, feedback and offset aren't used: as on the Juno, the mode sets them.
+- From v1.34 the [companion's BRUNO106 panel](#bruno106-panel) adds a chorus **Rate** (a quarter to four times the mode's own) and **Depth** (none to twice the mode's). The middle of each is the mode's own, so older sounds play exactly as before. Songs and presets save them (`brunoChorusRate`, `brunoChorusDepth`) only once moved.
 - It keeps a stereo track stereo: each delay line takes its own side.
 - It runs once per track, not per voice. Songs and presets save the mode (`brunoChorusMode`).
 
@@ -1207,6 +1208,7 @@ The Juno's two-line BBD chorus, as a **Mod FX** type (**BRUNO CHORUS**) on any t
 
 - **13 made for this build:** basses with the bass boost, PWM leads, chorused strings and pads, brass, organ and a couple of effects.
 - **199 converted from KR-106's preset data** (GPL-3.0): the factory bank and David Churcher's patch library, which KR-106 ships. They use KR-106's own curves for cutoff, envelopes, LFO, pulse width, sub and noise. Bank numbers are dropped from the names. Each plays with BRUNO CHORUS as the original's chorus switches set it, no velocity, and six voices. LFO delay has no equivalent here, so delayed vibrato starts straight away, and the longest releases stop at about 4.9 seconds. A few effects patches play only the filter ringing at full resonance. Credits in [`presets/SYNTHS/BRUNO106/CREDITS.txt`](presets/SYNTHS/BRUNO106/CREDITS.txt).
+- **v1.34:** the 34 converted presets with DCO vibrato now have it at the original's depth (before, they had almost none). Copy them over the old ones.
 
 ### Good to know
 
@@ -1224,11 +1226,21 @@ A second screen for the Deluge on a phone or tablet, over USB. It runs in the br
 
 - **Top bar:** Play, Record, the tempo, the Deluge's display mirrored (7SEG or OLED, switchable), Back, the select knob left and right, and a big SELECT button.
 - **Readout:** whatever the display shows, spelled out in full English (no four letter abbreviations), with a menu item's name and value side by side.
-- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, BRUNO106's saw, pulse, HPF and chorus, the 303's knobs and filter. Tap a knob and it opens on the Deluge.
+- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. Tap a knob and it opens on the Deluge. BRUNO106 gets its own slider panel (below).
 - **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
 - **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
 - **Waveforms:** audio clips, sample markers and Start offset, full width with every playing note's playhead. Drag the start, loop and end markers, or the offset.
 - **Song:** rows view and grid view in the pads' order, each clip with its steps, playhead, the pads' colours and the section pads' glow by track type. Tap a clip or a section to launch it. The arranger shows the same stretch of the song as the pads, with the playhead.
+
+### BRUNO106 panel
+
+With a BRUNO106 synth or kit row selected, the companion shows a panel of sliders, switches and buttons laid out left to right like the synth BRUNO106 comes from. It works both ways: drag a slider and the Deluge follows, as if you'd turned its knob (automation recording, an open menu and the gold knob lights follow too); turn a knob on the Deluge and the slider moves.
+
+- **First row:** **LFO** rate. **DCO** range (16', 8', 4'), LFO (vibrato, up to 4 semitones), PWM with its LFO / MAN switch, pulse and saw, sub, noise and Slop. **HPF** (bass boost, flat, 236 Hz, 754 Hz). **VCF** frequency, resonance, envelope polarity, envelope amount, LFO and keyboard follow. **VCA** ENV / GATE and level. **ENV 1**, the amp envelope.
+- **Second row:** **ENV 2**, the filter envelope. **Chorus** I and II (both for I+II), Rate and Depth. **Drive** (the Bruno106 filter's drive), Crush, Deci and Sat. **Delay** amount, rate and feedback. **Reverb** amount.
+- Sliders move with your finger from where they sit, so touching one doesn't make it jump. Several fingers can move several sliders at once.
+- PWM on LFO works as on the original: the LFO sweeps the pulse width between square and the slider. GATE sets envelope 1 to an organ gate; ENV gives it envelope 2's shape back.
+- On a phone or a narrow tablet the columns narrow so each row fits; on a short screen the sliders get shorter.
 
 ### Using it
 
@@ -1337,6 +1349,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.34: BRUNO106 panel.** With a BRUNO106 track selected, the companion shows a slider panel laid out like the Juno: LFO, DCO, HPF, VCF, VCA and envelope 1, then envelope 2, the chorus, drive, crush, decimation, saturation, delay and reverb on a second row (see [BRUNO106 panel](#bruno106-panel)). It works both ways: drag a slider and the Deluge moves as if you'd turned its knob, turn a knob and the slider follows. BRUNO CHORUS gets a Rate and a Depth, centred on each mode's own. *Fixed:* the 34 KR-106 presets with DCO vibrato had almost none; copying a BRUNO106 track reset its chorus mode to I. *Why:* a synth this hands-on wants faders, not one menu per setting. *Learned:* the Deluge squares any patch cable that goes to pitch, so small amounts stay small. Converted like a filter cable, KR-106's 4 semitones of vibrato came out at about 0.06 of a semitone; the cable needs the square root of the linear amount. The Deluge also deletes a patch cable when it reaches zero, so the panel remembers PWM's LFO / MAN switch and the envelope's polarity itself while their slider sits at the bottom.
 
 - **v1.33: Synth browser inits and DX7 presets.** SHIFT + SYNTH now always has something on the audition pads: each type plays its init synth through the type list, the categories and the folder, a synth track plays its own patch on its own type, and BACK from the types puts the track back as it was. Your own inits go in `SYNTHS/INIT`. DX7 is now a type like the others, with six categories, 288 presets and a two-operator FM init. The 99 WAVE presets are rebuilt. The companion names each engine knob by its own control. *Fixed:* loading a DX7 voice from a cartridge copied 10 of each operator's 11 scaling settings, so its right-hand keyboard scaling kept the previous voice's; DX7 algorithms 4 and 6 with feedback now use the core that plays their feedback loop after a voice loads. *Why:* audition pads in the first two layers cancelled the picker, and some found it crashed there. *Learned:* the old WAVE presets all sat in the first 40% of their wavetables, where the Distorted tables are close to a sine and the PWM ones are dull, and every pad came from one family of tables. Measuring each table's brightness along its length and starting where it has body fixed them. If you had presets loose in `SYNTHS/DX7`, move them into a category.
 
