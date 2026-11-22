@@ -30440,7 +30440,7 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..d109bb346 100644
+index 51a40bfd2..e2b5f64ad 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -33932,10 +33932,10 @@ index 51a40bfd2..d109bb346 100644
 +	if (sdRoutineLock) {
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
 +		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0 || pendingPanelMask != 0
-+		       || pendingBrophetMask != 0;
++		       || pendingBrophetMask != 0 || pendingWaveMask != 0;
 +	}
 +	bool again = false;
-+	if (pendingPanelMask != 0 || pendingBrophetMask != 0) {
++	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0) {
 +		runPendingPanel();
 +	}
 +	if (pendingModButton >= 0) {

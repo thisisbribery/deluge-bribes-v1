@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.38
+# BRIBELUGE: Deluge Bribes FW v1.38.1
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though!
 
@@ -36,7 +36,7 @@ Unofficial firmware for the Synthstrom Deluge, rebased on the latest official co
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 
-**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.38), pinned to the exact commit the bin was built from, and as a full source download on the [v1.38 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.38). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.38.1), pinned to the exact commit the bin was built from, and as a full source download on the [v1.38.1 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.38.1). See [Source code](#source-code).
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -48,9 +48,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.38.bin`](firmware/deluge-bribes-v1.38.bin)
+[`firmware/deluge-bribes-v1.38.1.bin`](firmware/deluge-bribes-v1.38.1.bin)
 
-SHA-256: `c317d149723e185ca156854b9ed6dcea50b99362b5fc27f5ae365f7a1f19138b`
+SHA-256: `831bc5b29911e879d69282768ef4f1dc391ab83b97a1c31322bd2ecfae5d309d`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -66,7 +66,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.38.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.38.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1438,6 +1438,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.38.1: WAVE panel fix.** *Fixed:* moves made on the companion's WAVE panel never reached the Deluge. Dragging the table or turning a control showed the new place while your finger was on it, then sprang back to where it was. Every control on the panel was affected, position, sweeps, envelopes, filter and the rest; the BRUNO106 and BROPHET panels were fine. *Why:* the Deluge only applied the tablet's panel moves when a BRUNO106 or BROPHET move was waiting, and the WAVE panel was never added to that check. *Learned:* the tablet holds a moved control for a moment, then shows what the Deluge says, so a move the Deluge ignores looks like a spring back, not like nothing happening.
 
 - **v1.38: Stability.** No new features: this one is about older songs and staying up. It takes in the community's 18 fixes since 1.3.0, among them the freeze when a menu refuses to open, the undo crash in the note editor, crashes around deleted clips and stuck MIDI notes. It's now built as a release candidate, not a developer build, so the extra internal checks that stopped the Deluge with an error code on some older songs are left out, as on the official release. Older songs' delays work as they did: feedback follows the amount, automation included, until you set the feedback, and the delay stays on its single, lighter path. Older songs that use Bitcrush or Decimation always load as Classic. *Fixed:* switching from BRUNO CHORUS to another chorus, flanger, warble or dimension could burst; a modulated sample start offset stuttered on looping samples; deleting a kit clip during an Autofill could crash; the companion rebuilt everything it shows on every screen redraw, which could take longer than an audio buffer, and now does it at most 40 times a second. *Why:* reports of crashes, clicks and older songs sounding different. *Learned:* a developer build halts on checks the official release skips, so some of the crashes were the Deluge stopping itself.
 
