@@ -1,5 +1,5 @@
 diff --git a/src/definitions_cxx.hpp b/src/definitions_cxx.hpp
-index 0c5a8e055..dbb1b3faf 100644
+index 0c5a8e055..63e3141ba 100644
 --- a/src/definitions_cxx.hpp
 +++ b/src/definitions_cxx.hpp
 @@ -365,6 +365,7 @@ enum class OscType : uint8_t {
@@ -10,16 +10,17 @@ index 0c5a8e055..dbb1b3faf 100644
  	INPUT_L,
  	INPUT_R,
  	INPUT_STEREO,
-@@ -414,16 +415,18 @@ enum class ModFXType : uint8_t {
+@@ -414,16 +415,19 @@ enum class ModFXType : uint8_t {
  	CHORUS_STEREO,
  	WARBLE,
  	DIMENSION,
 -	GRAIN, // Look below if you want to add another one
 +	GRAIN,        // Look below if you want to add another one
 +	BRUNO_CHORUS, // The Juno's BBD chorus, after KR-106 (see dsp/drum_synth/bruno106_chorus.h)
++	SHIFT,        // Three-band frequency shifter, from KALI SMASH (see dsp/freq_shift.h)
  };
 -constexpr int32_t kNumModFXTypes = util::to_underlying(ModFXType::GRAIN) + 1;
-+constexpr int32_t kNumModFXTypes = util::to_underlying(ModFXType::BRUNO_CHORUS) + 1;
++constexpr int32_t kNumModFXTypes = util::to_underlying(ModFXType::SHIFT) + 1;
  
  enum class SynthMode : uint8_t {
  	SUBTRACTIVE,
@@ -60,10 +61,10 @@ index 1cbefef8a..b093a6ead 100644
    ${SHARED_INCLUDE}
 diff --git a/src/deluge/dsp/crusher.h b/src/deluge/dsp/crusher.h
 new file mode 100644
-index 000000000..168891c8f
+index 000000000..71df91af7
 --- /dev/null
 +++ b/src/deluge/dsp/crusher.h
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,556 @@
 +/*
 + * Copyright © 2026 thisisbribery
 + *
@@ -102,10 +103,12 @@ index 000000000..168891c8f
 +	VINTAGE, // old sampler: soft input, 12-bit floor, 26 kHz-ish clock, one soft pole after the hold
 +	ULAW,    // companded (mu-law style segments, after Mutable Instruments Clouds/Beads): quiet tails stay grainy
 +	JITTER,  // unstable clock and a dithered threshold: noisy, crackly, sputtering
++	DECAY,   // a dying BBD chip: dark clock, level-riding grit, sputters, stutters and sags (from Seal Eggs)
++	DATA,    // corrupted 16-bit words: bit rot, stalls, flipped bits, lost signs, swapped bytes
 +	NUM_TYPES,
 +};
 +
-+inline constexpr const char* kCrushTypeNames[] = {"classic", "hard", "vintage", "ulaw", "jitter"};
++inline constexpr const char* kCrushTypeNames[] = {"classic", "hard", "vintage", "ulaw", "jitter", "decay", "data"};
 +static_assert(std::size(kCrushTypeNames) == static_cast<size_t>(CrushType::NUM_TYPES));
 +
 +inline const char* crushTypeToString(CrushType type) {
@@ -134,6 +137,20 @@ index 000000000..168891c8f
 +		float lpL = 0.f, lpR = 0.f;
 +		uint32_t rng = 0x9E3779B9u;
 +		bool active = false;
++		// DECAY and DATA: the event generator (dropouts / corruption bursts)
++		uint32_t eventCountdown = 0;
++		uint8_t eventState = 0; // DECAY: 0 idle, 1 on, 2 off between chops. DATA: the burst kind, 0 = none
++		bool sag = false;
++		uint8_t chops = 0;
++		uint32_t flicker = 0;
++		float sagDepth = 0.f, target = 0.f, env = 0.f;
++		// DECAY: the tone path's filter and peak followers, and the clock's smoothing poles
++		float svf1[2] = {}, svf2[2] = {}, peak[2] = {};
++		float lp2L = 0.f, lp2R = 0.f;
++		// DATA: words while stalled, the rot mask
++		int32_t stallL = 0, stallR = 0;
++		uint32_t rotMask = 0;
++		uint32_t rotCountdown = 0;
 +	};
 +
 +	struct Config {
@@ -148,7 +165,8 @@ index 000000000..168891c8f
 +		float period = 1.f;   // samples per held sample
 +		float jitter = 0.f;   // +- fraction of the period
 +		float dither = 0.f;   // +- fraction of a step added before rounding
-+		float lpCoef = 1.f;   // VINTAGE output filter
++		float lpCoef = 1.f;   // VINTAGE output filter, DECAY clock smoothing
++		float amount = 0.f;   // DECAY / DATA: the bitcrush knob
 +		float inScale = 0.f;  // q31 -> 1 = normal peak
 +		float outScale = 0.f; // back to q31
 +	};
@@ -207,6 +225,16 @@ index 000000000..168891c8f
 +			c.jitter = 0.5f;
 +			c.dither = 0.4f;
 +		}
++		if (type == CrushType::DECAY || type == CrushType::DATA) {
++			c.amount = crush ? crushKnob : 0.f;
++		}
++		if (type == CrushType::DECAY) {
++			// A BBD clock rather than a sampler: 1x down to 32x (1.4 kHz), and two smoothing poles at 0.35 of it, so
++			// it goes dark and woolly with only a little aliasing left
++			c.period = std::exp2(5.f * std::pow(rateKnob, 1.4f));
++			float fc = std::min(0.35f * 44100.f / c.period, 16000.f);
++			c.lpCoef = 1.f - std::exp(-6.2831853f * fc / 44100.f);
++		}
 +		return c;
 +	}
 +
@@ -222,6 +250,10 @@ index 000000000..168891c8f
 +			return run<CrushType::ULAW>(c, interleaved, numFrames, s);
 +		case CrushType::JITTER:
 +			return run<CrushType::JITTER>(c, interleaved, numFrames, s);
++		case CrushType::DECAY:
++			return runDecay(c, interleaved, numFrames, s);
++		case CrushType::DATA:
++			return runData(c, interleaved, numFrames, s);
 +		default:
 +			return run<CrushType::HARD>(c, interleaved, numFrames, s);
 +		}
@@ -275,6 +307,265 @@ index 000000000..168891c8f
 +			return 2.f * (x - x * x * x * (1.f / 3.f));
 +		}
 +		return x;
++	}
++
++	static float u01(uint32_t& r) {
++		r ^= r << 13;
++		r ^= r >> 17;
++		r ^= r << 5;
++		return static_cast<float>(r >> 8) * (1.f / 16777216.f);
++	}
++	static constexpr float kSamplesPerMs = 44.1f;
++
++	/// DECAY's dropout generator, once per sample: irregular sputters, stutter bursts and flickering sags, not synced
++	/// to anything, getting denser with the amount. Returns how far the level is dipped (0 = none). After the dying
++	/// chip in Seal Eggs' BBD character (also by thisisbribery).
++	static float decayDropouts(float amt, State& s) {
++		if (s.eventCountdown != 0) {
++			s.eventCountdown--;
++		}
++		else {
++			const float meanGap = 700.f * kSamplesPerMs / (1.f + 14.f * amt * amt);
++			if (s.eventState == 1) { // end of an "on" segment
++				if (s.chops > 1) {   // burst: a short ragged gap, then the next chop
++					s.chops--;
++					s.eventState = 2;
++					s.target = 0.f;
++					s.eventCountdown = static_cast<uint32_t>((1.5f + 7.f * u01(s.rng)) * kSamplesPerMs);
++				}
++				else { // event over: a random gap
++					s.chops = 0;
++					s.eventState = 0;
++					s.target = 0.f;
++					s.sag = false;
++					s.flicker = 0;
++					const float u = u01(s.rng);
++					s.eventCountdown = static_cast<uint32_t>(meanGap * (0.08f + 1.84f * u * u));
++				}
++			}
++			else if (s.eventState == 2) { // the next chop of a burst
++				s.eventState = 1;
++				s.target = 0.7f + 0.3f * u01(s.rng);
++				s.eventCountdown = static_cast<uint32_t>((1.5f + 4.5f * u01(s.rng)) * kSamplesPerMs);
++			}
++			else { // a new event
++				const float kind = u01(s.rng);
++				s.eventState = 1;
++				if (kind < 0.45f) { // sputter: one short dropout
++					s.chops = 1;
++					s.sag = false;
++					s.target = 0.6f + 0.4f * u01(s.rng);
++					s.eventCountdown = static_cast<uint32_t>((2.f + 18.f * u01(s.rng)) * kSamplesPerMs);
++				}
++				else if (kind < 0.8f) { // stutter burst: 2-6 chops
++					s.chops = 2 + static_cast<uint8_t>(u01(s.rng) * 4.99f);
++					s.sag = false;
++					s.target = 0.7f + 0.3f * u01(s.rng);
++					s.eventCountdown = static_cast<uint32_t>((1.5f + 4.5f * u01(s.rng)) * kSamplesPerMs);
++				}
++				else { // sag with flicker
++					s.chops = 1;
++					s.sag = true;
++					s.sagDepth = 0.3f + 0.3f * u01(s.rng);
++					s.target = s.sagDepth;
++					s.eventCountdown = static_cast<uint32_t>((30.f + 90.f * u01(s.rng)) * kSamplesPerMs);
++					s.flicker = static_cast<uint32_t>((2.f + 4.f * u01(s.rng)) * kSamplesPerMs);
++				}
++			}
++		}
++		if (s.flicker != 0 && --s.flicker == 0 && s.eventState == 1 && s.sag) {
++			const float u = u01(s.rng);
++			s.target = std::min(s.sagDepth * (0.3f + 0.7f * u) + (u01(s.rng) < 0.25f ? 0.35f : 0.f), 1.f);
++			s.flicker = static_cast<uint32_t>((2.f + 4.f * u01(s.rng)) * kSamplesPerMs);
++		}
++		s.env += (s.target - s.env) * (s.sag ? 0.0128f : 0.042f);
++		return s.env;
++	}
++
++	/// DECAY: BBD clock (decimation knob), then the failing chip (bitcrush knob): a level-riding quantiser that the
++	/// signal's own 1 kHz band pushes around, and the dropouts.
++	static void runDecay(const Config& c, int32_t* buf, size_t numFrames, State& s) {
++		const float amt = c.amount;
++		const float s2 = amt * (2.f - amt);
++		const float wmix = s2;
++		const float depth = s2 * 0.999f;
++		const float drive = amt * 2.2f;
++		const float stepk = 0.002f + 0.12f * amt * amt * amt;
++		const float clampk = 1.8f - amt * 0.2f;
++		// 2-pole state variable filter around 1 kHz (k = 1.25), for the band that drives the quantiser
++		constexpr float g = 0.0715f;
++		constexpr float kG = -(1.25f + g);
++		constexpr float kH = 1.f / (1.f + g * (g + 1.25f));
++		constexpr float kPeakFall = 0.99894f; // about 21 ms
++		for (size_t i = 0; i < numFrames; i++) {
++			float x[2] = {static_cast<float>(buf[2 * i]) * c.inScale, static_cast<float>(buf[2 * i + 1]) * c.inScale};
++
++			if (c.decimate) {
++				s.countdown -= 1.f;
++				if (s.countdown <= 0.f) {
++					s.countdown += c.period;
++					if (s.countdown < 0.f) {
++						s.countdown = c.period;
++					}
++					s.heldL = x[0];
++					s.heldR = x[1];
++				}
++				s.lpL += (s.heldL - s.lpL) * c.lpCoef;
++				s.lpR += (s.heldR - s.lpR) * c.lpCoef;
++				s.lp2L += (s.lpL - s.lp2L) * c.lpCoef;
++				s.lp2R += (s.lpR - s.lp2R) * c.lpCoef;
++				x[0] = s.lp2L;
++				x[1] = s.lp2R;
++			}
++
++			if (amt > 0.f) {
++				const float gain = 1.f - depth * decayDropouts(amt, s);
++				for (int32_t ch = 0; ch < 2; ch++) {
++					const float in = x[ch];
++					const float hp = (in + s.svf1[ch] * kG - s.svf2[ch]) * kH;
++					const float bp = s.svf1[ch] + hp * g;
++					const float lp = s.svf2[ch] + bp * g;
++					s.svf1[ch] = 2.f * bp - s.svf1[ch];
++					s.svf2[ch] = 2.f * lp - s.svf2[ch];
++					float pk = std::max(std::fabs(in), s.peak[ch] * kPeakFall);
++					s.peak[ch] = pk;
++					float o = 0.f;
++					if (pk > 1e-6f) {
++						const float lim = clampk * pk;
++						const float cl = std::clamp(in + drive * bp, -lim, lim);
++						const float stp = stepk * pk;
++						o = stp * static_cast<float>(static_cast<int32_t>(cl / stp));
++					}
++					x[ch] = gain * (in + wmix * (o - in));
++				}
++			}
++
++			buf[2 * i] = toQ31(x[0] * c.outScale);
++			buf[2 * i + 1] = toQ31(x[1] * c.outScale);
++		}
++	}
++
++	/// DATA: the signal as 16-bit words (normal peak = half scale), read at the decimation clock and damaged by
++	/// the bitcrush knob: low bits rot (in proportion to the level, so silence stays silent), and bursts of stalled
++	/// words, flipped high bits, lost signs and byte-swapped words get more frequent and longer.
++	enum DataBurst : uint8_t { NONE, STALL, FLIP, RECTIFY, SWAP };
++
++	/// rot: how many low bits rot; top: the highest bit the signal's level reaches
++	static int32_t dataCorrupt(int32_t w, int32_t rot, int32_t top, uint8_t burst, State& s) {
++		// rot: XOR the low bits with a mask that changes every few ms
++		if (rot > 0) {
++			w ^= static_cast<int32_t>(s.rotMask & ((1u << rot) - 1u));
++		}
++		switch (burst) {
++		case FLIP: // flips one of the four bits just under the level's top bit (so silence stays silent)
++			if (top >= 4 && u01(s.rng) < 0.3f) {
++				const int32_t bit = std::min<int32_t>(top - 3 + static_cast<int32_t>(u01(s.rng) * 3.99f), 14);
++				w ^= 1 << bit;
++			}
++			break;
++		case RECTIFY:
++			w = std::abs(w);
++			break;
++		case SWAP: {
++			const uint16_t u = static_cast<uint16_t>(w);
++			w = static_cast<int16_t>(static_cast<uint16_t>((u << 8) | (u >> 8)));
++			break;
++		}
++		default:
++			break;
++		}
++		return std::clamp<int32_t>(w, -32768, 32767);
++	}
++
++	static void runData(const Config& c, int32_t* buf, size_t numFrames, State& s) {
++		const float amt = c.amount;
++		for (size_t i = 0; i < numFrames; i++) {
++			const float l = static_cast<float>(buf[2 * i]) * c.inScale;
++			const float r = static_cast<float>(buf[2 * i + 1]) * c.inScale;
++
++			bool grab = true;
++			if (c.decimate) {
++				s.countdown -= 1.f;
++				grab = s.countdown <= 0.f;
++				if (grab) {
++					s.countdown += c.period;
++					if (s.countdown < 0.f) {
++						s.countdown = c.period;
++					}
++				}
++			}
++
++			// the burst generator runs in real time, whatever the clock
++			uint8_t burst = NONE;
++			if (amt > 0.f) {
++				if (s.eventCountdown != 0) {
++					s.eventCountdown--;
++					burst = s.eventState;
++				}
++				else if (s.eventState != NONE) { // burst over: a random gap
++					s.eventState = NONE;
++					const float u = u01(s.rng);
++					s.eventCountdown = static_cast<uint32_t>(700.f * kSamplesPerMs / (1.f + 14.f * amt * amt)
++					                                         * (0.08f + 1.84f * u * u));
++				}
++				else { // a new burst, longer with the amount
++					const float kind = u01(s.rng);
++					const float len = 0.3f + 0.7f * amt;
++					if (kind < 0.35f) {
++						s.eventState = STALL;
++						s.eventCountdown = static_cast<uint32_t>((1.f + 39.f * u01(s.rng)) * len * kSamplesPerMs);
++						s.stallL = s.stallR = INT32_MIN; // take the next word
++					}
++					else if (kind < 0.65f || amt < 0.4f) {
++						s.eventState = FLIP;
++						s.eventCountdown = static_cast<uint32_t>((2.f + 28.f * u01(s.rng)) * len * kSamplesPerMs);
++					}
++					else if (kind < 0.85f) {
++						s.eventState = RECTIFY;
++						s.eventCountdown = static_cast<uint32_t>((5.f + 55.f * u01(s.rng)) * len * kSamplesPerMs);
++					}
++					else {
++						s.eventState = SWAP;
++						s.eventCountdown = static_cast<uint32_t>((0.5f + 3.5f * u01(s.rng)) * len * kSamplesPerMs);
++					}
++					burst = s.eventState;
++				}
++				if (s.rotCountdown == 0) {
++					s.rotMask = static_cast<uint32_t>(u01(s.rng) * 65535.f);
++					s.rotCountdown = static_cast<uint32_t>((2.f + 6.f * u01(s.rng)) * kSamplesPerMs);
++				}
++				s.rotCountdown--;
++			}
++
++			if (grab) {
++				int32_t w[2] = {static_cast<int32_t>(std::clamp(l * 16384.f, -32768.f, 32767.f)),
++				                static_cast<int32_t>(std::clamp(r * 16384.f, -32768.f, 32767.f))};
++				if (amt > 0.f) {
++					// how many low bits rot: from 1/32 of the level up to 1/4 of it
++					const float pk = std::max(std::fabs(l), std::fabs(r)) * 16384.f;
++					s.env = std::max(pk, s.env * 0.9995f);
++					const int32_t level = static_cast<int32_t>(s.env);
++					const int32_t top = level > 0 ? 31 - std::countl_zero(static_cast<uint32_t>(level)) : -1;
++					const int32_t rot = top - 6 + static_cast<int32_t>(4.f * amt);
++					for (int32_t ch = 0; ch < 2; ch++) {
++						if (burst == STALL) {
++							int32_t& held = ch == 0 ? s.stallL : s.stallR;
++							if (held == INT32_MIN) {
++								held = w[ch];
++							}
++							w[ch] = held;
++						}
++						else {
++							w[ch] = dataCorrupt(w[ch], rot, top, burst, s);
++						}
++					}
++				}
++				s.heldL = static_cast<float>(w[0]) * (1.f / 16384.f);
++				s.heldR = static_cast<float>(w[1]) * (1.f / 16384.f);
++			}
++			buf[2 * i] = toQ31(s.heldL * c.outScale);
++			buf[2 * i + 1] = toQ31(s.heldR * c.outScale);
++		}
 +	}
 +
 +	template <CrushType T>
@@ -14504,6 +14795,640 @@ index 000000000..7e2abfb84
 +}
 +
 +} // namespace deluge::dsp::filter
+diff --git a/src/deluge/dsp/freq_shift.h b/src/deluge/dsp/freq_shift.h
+new file mode 100644
+index 000000000..54c4e27da
+--- /dev/null
++++ b/src/deluge/dsp/freq_shift.h
+@@ -0,0 +1,253 @@
++/*
++ * Copyright (c) 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++// SHIFT mod FX: a three-band frequency shifter, ported from the SHIFT motion type in KALI SMASH (also by
++// thisisbribery).
++//
++// Per side: DC blocker -> Hilbert allpass pair (the analytic signal, re + j im) -> two crossovers applied to re and im
++// alike (250 Hz and 2.5 kHz; low = LP, high = HP of the rest, mid = what's left, so the bands sum back exactly) ->
++// each band multiplied by its own complex oscillator -> real part. A positive offset moves every frequency in the band
++// up by that many Hz, so harmonics stop lining up; a negative one moves them down, and past 0 Hz they fold back.
++//
++// Controls (all from the normal mod FX knobs):
++//  DEPTH    the amount: 0 = dry, the shift grows over the whole travel, the wet comes in over the first quarter
++//  RATE     glide time towards a new amount, 30 ms .. 2.4 s
++//  FEEDBACK runs the output back in through 30 ms, so each pass shifts again; comes in with DEPTH
++//  OFFSET   morphs between two sets of band offsets: A = +90 / -300 / -1500 Hz, B = -190 / +900 / +2500 Hz
++// In stereo, R's oscillators run 90 degrees ahead of L's.
++//
++// It lives in its own heap block (about 17 kB), allocated only while a sound or clip has SHIFT selected.
++
++#pragma once
++
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <span>
++
++#include "dsp/stereo_sample.h"
++
++namespace deluge::dsp {
++
++class FreqShift {
++public:
++	struct Controls {
++		float amount;   // 0..1
++		float glide;    // 0..1
++		float feedback; // 0..1
++		float morph;    // 0..1
++	};
++
++	FreqShift() { reset(); }
++
++	void reset() {
++		for (int32_t c = 0; c < 2; c++) {
++			hil_[c] = Hilbert{};
++			dcX_[c] = dcY_[c] = 0.f;
++			for (int32_t k = 0; k < 2; k++) {
++				xoLo_[c][k] = Svf2{};
++				xoHi_[c][k] = Svf2{};
++			}
++			std::fill(std::begin(buf_[c]), std::end(buf_[c]), 0.f);
++		}
++		for (int32_t b = 0; b < 3; b++) {
++			oscC_[b] = 1.f;
++			oscS_[b] = 0.f;
++			shiftCur_[b] = 0.f;
++		}
++		w_ = 0;
++		wet_ = fb_ = 0.f;
++		started = true;
++	}
++
++	/// unit: the buffer's level that counts as a full-scale signal (only the soft clip in the feedback path cares)
++	void process(std::span<StereoSample> buffer, const Controls& k, bool stereo, float unit) {
++		const float a = std::clamp(k.amount, 0.f, 1.f);
++		const float wetTarget = a < 0.01f ? 0.f : std::clamp((a - 0.01f) * 4.f, 0.f, 1.f);
++		const float fbTarget = std::clamp(k.feedback, 0.f, 1.f) * 0.9f * std::clamp(a * 2.f, 0.f, 1.f);
++		const float morph = std::clamp(k.morph, 0.f, 1.f);
++		float shiftTgt[3];
++		for (int32_t b = 0; b < 3; b++) {
++			shiftTgt[b] = a * (kShiftA[b] + (kShiftB[b] - kShiftA[b]) * morph);
++		}
++		const float glideSec = 0.03f * std::exp(std::clamp(k.glide, 0.f, 1.f) * 4.38202663f); // 30 ms * 80^g
++		const float glideCoef = 1.f - std::exp(-1.f / (glideSec * kSampleRate));
++		// R's oscillators turned 90 degrees
++		constexpr float rotC = 0.f;
++		constexpr float rotS = 1.f;
++
++		const float toF = 1.f / unit;
++		const float invToF = unit;
++		const float wInc = 2.f * 3.14159265f / kSampleRate;
++		const int32_t channels = stereo ? 2 : 1;
++
++		// wet and feedback glide per block (about 50 ms to settle); their level corrections follow them
++		wet_ += (wetTarget - wet_) * blockGlide(buffer.size());
++		fb_ += (fbTarget - fb_) * blockGlide(buffer.size());
++		// shifted copies don't cancel like a comb does, so feedback piles up power: take it back out
++		const float fbQ = std::sqrt(1.f - fb_ * fb_);
++		const float fbComp = fbQ * std::sqrt(fbQ); // (1 - fb^2)^0.75
++		// dry and shifted are unrelated, so a straight crossfade dips 3 dB halfway: hold the power instead
++		const float blendG = 1.f / std::sqrt(1.f - 2.f * wet_ + 2.f * wet_ * wet_);
++
++		for (StereoSample& s : buffer) {
++			// glide each band towards its offset, then step its oscillator (sin/cos of the step by series,
++			// renormalised every sample so it never drifts)
++			for (int32_t b = 0; b < 3; b++) {
++				shiftCur_[b] += (shiftTgt[b] - shiftCur_[b]) * glideCoef;
++				const float d = shiftCur_[b] * wInc;
++				const float d2 = d * d;
++				const float cd = 1.f - d2 * (0.5f - d2 * 0.0416667f);
++				const float sd = d * (1.f - d2 * (0.1666667f - d2 * 0.0083333f));
++				const float c = oscC_[b] * cd - oscS_[b] * sd;
++				const float sn = oscC_[b] * sd + oscS_[b] * cd;
++				const float g = 1.5f - 0.5f * (c * c + sn * sn);
++				oscC_[b] = c * g;
++				oscS_[b] = sn * g;
++			}
++			const int32_t rd = (w_ - kFeedbackDelay) & (kLen - 1);
++
++			float x[2] = {static_cast<float>(s.l) * toF, static_cast<float>(s.r) * toF};
++			float out[2];
++			for (int32_t c = 0; c < channels; c++) {
++				// DC blocker (~10 Hz): DC would otherwise come out as a steady tone at the low band's offset
++				const float xd = x[c] - dcX_[c] + 0.9987f * dcY_[c];
++				dcX_[c] = x[c];
++				dcY_[c] = xd;
++				const float u = xd + fb_ * fastTanh(buf_[c][rd]);
++				float re, im;
++				hil_[c].process(u, re, im);
++				float lr, li, hr, hi, dummy;
++				xoLo_[c][0].process(re, lo_, lr, dummy);
++				xoLo_[c][1].process(im, lo_, li, dummy);
++				const float rr = re - lr;
++				const float ri = im - li;
++				xoHi_[c][0].process(rr, hi_, dummy, hr);
++				xoHi_[c][1].process(ri, hi_, dummy, hi);
++				const float br[3] = {lr, rr - hr, hr};
++				const float bi[3] = {li, ri - hi, hi};
++				float y = 0.f;
++				for (int32_t b = 0; b < 3; b++) {
++					float oc = oscC_[b];
++					float os = oscS_[b];
++					if (c != 0) {
++						const float t = oc * rotC - os * rotS;
++						os = oc * rotS + os * rotC;
++						oc = t;
++					}
++					y += br[b] * oc + bi[b] * os;
++				}
++				buf_[c][w_] = y;
++				y *= fbComp;
++				out[c] = (x[c] + wet_ * (y - x[c])) * blendG;
++			}
++			if (!stereo) {
++				out[1] = out[0];
++			}
++			s.l = toQ31(out[0] * invToF);
++			s.r = toQ31(out[1] * invToF);
++			w_ = (w_ + 1) & (kLen - 1);
++		}
++	}
++
++	bool started = false;
++
++private:
++	static constexpr float kSampleRate = 44100.f;
++	static constexpr int32_t kLen = 2048;
++	static constexpr int32_t kFeedbackDelay = 1323; // 30 ms
++	static constexpr float kShiftA[3] = {90.f, -300.f, -1500.f};
++	static constexpr float kShiftB[3] = {-190.f, 900.f, 2500.f};
++
++	static float fastTanh(float x) {
++		if (x > 3.f) {
++			return 1.f;
++		}
++		if (x < -3.f) {
++			return -1.f;
++		}
++		const float x2 = x * x;
++		return x * (27.f + x2) / (27.f + 9.f * x2);
++	}
++
++	/// the per-block step of a one-pole that settles in about 50 ms
++	static float blockGlide(size_t n) { return std::min(static_cast<float>(n) * (1.f / 2205.f), 1.f); }
++
++	static int32_t toQ31(float v) { return static_cast<int32_t>(std::clamp(v, -2147483520.f, 2147483520.f)); }
++
++	struct Hilbert {
++		// Olli Niemitalo's 4+4 allpass 90-degree pair, coefficients squared. Path A carries a 1-sample delay.
++		float ax1[4] = {}, ax2[4] = {}, ay1[4] = {}, ay2[4] = {};
++		float bx1[4] = {}, bx2[4] = {}, by1[4] = {}, by2[4] = {};
++		float aDel = 0.f;
++		void process(float x, float& re, float& im) {
++			static constexpr float ca[4] = {0.4794009f, 0.8762185f, 0.9765976f, 0.9974993f};
++			static constexpr float cb[4] = {0.1617585f, 0.7330289f, 0.9453497f, 0.9905992f};
++			float a = x;
++			float b = x;
++			for (int32_t k = 0; k < 4; k++) {
++				const float ya = ca[k] * (a + ay2[k]) - ax2[k];
++				ax2[k] = ax1[k];
++				ax1[k] = a;
++				ay2[k] = ay1[k];
++				ay1[k] = ya;
++				a = ya;
++				const float yb = cb[k] * (b + by2[k]) - bx2[k];
++				bx2[k] = bx1[k];
++				bx1[k] = b;
++				by2[k] = by1[k];
++				by1[k] = yb;
++				b = yb;
++			}
++			re = aDel;
++			aDel = a;
++			im = b;
++		}
++	};
++
++	struct SvfCoefs {
++		float a1, a2, a3; // a1 = 1 / (1 + g (g + sqrt 2)), a2 = g a1, a3 = g a2, with g = tan(pi f / 44100)
++	};
++
++	// 2-pole TPT state variable filter (Butterworth), lowpass and highpass outputs
++	struct Svf2 {
++		float ic1 = 0.f, ic2 = 0.f;
++		void process(float x, const SvfCoefs& k, float& lp, float& hp) {
++			const float v3 = x - ic2;
++			const float v1 = k.a1 * ic1 + k.a2 * v3;
++			const float v2 = ic2 + k.a2 * ic1 + k.a3 * v3;
++			ic1 = 2.f * v1 - ic1;
++			ic2 = 2.f * v2 - ic2;
++			lp = v2;
++			hp = x - 1.4142136f * v1 - v2;
++		}
++	};
++
++	// the crossovers
++	static constexpr SvfCoefs lo_ = {0.975128072f, 0.0173683623f, 0.000309354247f}; // 250 Hz
++	static constexpr SvfCoefs hi_ = {0.777023785f, 0.139865792f, 0.0251761146f};    // 2.5 kHz
++
++	Hilbert hil_[2];
++	Svf2 xoLo_[2][2], xoHi_[2][2];
++	float dcX_[2], dcY_[2];
++	float oscC_[3], oscS_[3], shiftCur_[3];
++	float buf_[2][kLen];
++	int32_t w_ = 0;
++	float wet_ = 0.f, fb_ = 0.f;
++};
++
++} // namespace deluge::dsp
+diff --git a/src/deluge/dsp/master_clip.h b/src/deluge/dsp/master_clip.h
+new file mode 100644
+index 000000000..cb166593c
+--- /dev/null
++++ b/src/deluge/dsp/master_clip.h
+@@ -0,0 +1,369 @@
++/*
++ * Copyright (c) 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++// Master clipper / limiter at the very end of the song chain, after the master compressor and before the codec.
++// The clip curves come from the SQUASH section of KALI SMASH (also by thisisbribery). Without it, anything over
++// full scale hits the plain integer clip on the way to the codec.
++//
++// DRIVE pushes 0..+24 dB in, CEILING sets where the output stops (-12..0 dBFS). The curves run at 2x (linear-phase
++// halfband up and down) so the clipping harmonics don't fold back down. LIMIT is a peak limiter with 0.7 ms lookahead
++// instead of a curve, with a hard clip at the ceiling after it for the little it lets through. Every type has the same
++// latency (51 samples, 1.2 ms), so changing type mid-song is seamless; turning it on or off crossfades over 12 ms from
++// filters already primed with the last few samples, so that doesn't click either. OFF touches nothing, so old songs
++// sound exactly as before.
++
++#pragma once
++
++#include <algorithm>
++#include <cmath>
++#include <cstdint>
++#include <cstring>
++#include <span>
++
++#include "dsp/stereo_sample.h"
++
++namespace deluge::dsp {
++
++enum class MasterClipType : uint8_t { OFF, SOFT, TANH, HARD, TAPE, FOLD, LIMIT };
++constexpr int32_t kNumMasterClipTypes = 7;
++
++class MasterClip {
++public:
++	static constexpr int32_t kMinCeilingDb = -12;
++	static constexpr int32_t kMaxDriveDb = 24;
++	/// Full scale in the song's rendering buffer: the output stage halves it and shifts left 8 into the codec's 32 bits
++	static constexpr float kUnit = 16777216.f;
++
++	MasterClipType type = MasterClipType::OFF;
++	int32_t driveDb = 0;    // 0..24
++	int32_t ceilingDb = -1; // -12..0
++
++	static const char* getName(MasterClipType t) {
++		static const char* const names[] = {"off", "soft", "tanh", "hard", "tape", "fold", "limit"};
++		return names[static_cast<int32_t>(t)];
++	}
++	static MasterClipType fromName(const char* s) {
++		for (int32_t i = 0; i < kNumMasterClipTypes; i++) {
++			if (!strcmp(s, getName(static_cast<MasterClipType>(i)))) {
++				return static_cast<MasterClipType>(i);
++			}
++		}
++		return MasterClipType::OFF;
++	}
++
++	void process(std::span<StereoSample> buffer) {
++		const bool active = type != MasterClipType::OFF;
++		if (!active && fade_ <= 0.f) {
++			running_ = false;
++			remember(buffer);
++			return;
++		}
++		if (active) {
++			activeType_ = type;
++		}
++		const MasterClipType t = activeType_;
++
++		const float driveTarget = dbToGain(static_cast<float>(std::clamp<int32_t>(driveDb, 0, kMaxDriveDb)));
++		const float ceilTarget =
++		    dbToGain(static_cast<float>(std::clamp<int32_t>(ceilingDb, kMinCeilingDb, 0))) * 0.999f;
++		if (!running_) {
++			// coming on from OFF: start the drive and ceiling where they're set, and prime the lookahead and filters
++			// with the last samples that went past, so the processed path is already up to speed for the crossfade
++			drive_ = driveTarget;
++			ceil_ = ceilTarget;
++			reset();
++			float pl[kHistory], pr[kHistory], ol[kHistory], orr[kHistory];
++			for (int32_t i = 0; i < kHistory; i++) {
++				const int32_t j = (histPos_ + i) % kHistory;
++				pl[i] = histL_[j] * drive_;
++				pr[i] = histR_[j] * drive_;
++			}
++			for (int32_t i = 0; i < kHistory; i += kMaxBlock) {
++				chain(t, pl + i, pr + i, ol + i, orr + i, kMaxBlock, ceil_);
++			}
++			running_ = true;
++		}
++
++		const float fadeStep = active ? kFadeStep : -kFadeStep;
++		size_t done = 0;
++		while (done < buffer.size()) {
++			const int32_t n = static_cast<int32_t>(std::min<size_t>(kMaxBlock, buffer.size() - done));
++			StereoSample* s = &buffer[done];
++
++			// drive glides per sample, the ceiling per block (it only moves in 1 dB menu steps)
++			const float dStep = (driveTarget - drive_) / static_cast<float>(n);
++			ceil_ += (ceilTarget - ceil_) * 0.25f;
++			if (std::fabs(ceilTarget - ceil_) < 1e-6f) {
++				ceil_ = ceilTarget;
++			}
++
++			float inL[kMaxBlock], inR[kMaxBlock];
++			constexpr float kIn = 1.f / kUnit;
++			for (int32_t i = 0; i < n; i++) {
++				drive_ += dStep;
++				inL[i] = static_cast<float>(s[i].l) * kIn * drive_;
++				inR[i] = static_cast<float>(s[i].r) * kIn * drive_;
++			}
++
++			float outL[kMaxBlock], outR[kMaxBlock];
++			chain(t, inL, inR, outL, outR, n, ceil_);
++
++			// the filters ring a hair over the ceiling on hard edges, so a last plain clamp
++			const float lim = ceil_ * kUnit;
++			if (fade_ >= 1.f && active) {
++				for (int32_t i = 0; i < n; i++) {
++					s[i].l = static_cast<int32_t>(std::clamp(outL[i] * kUnit, -lim, lim));
++					s[i].r = static_cast<int32_t>(std::clamp(outR[i] * kUnit, -lim, lim));
++				}
++			}
++			else { // crossfading with the untouched signal, on the way in or out
++				for (int32_t i = 0; i < n; i++) {
++					fade_ = std::clamp(fade_ + fadeStep, 0.f, 1.f);
++					const float wet = fade_ * fade_ * (3.f - 2.f * fade_);
++					const float pl = std::clamp(outL[i] * kUnit, -lim, lim);
++					const float pr = std::clamp(outR[i] * kUnit, -lim, lim);
++					s[i].l = static_cast<int32_t>(static_cast<float>(s[i].l) + wet * (pl - static_cast<float>(s[i].l)));
++					s[i].r = static_cast<int32_t>(static_cast<float>(s[i].r) + wet * (pr - static_cast<float>(s[i].r)));
++				}
++			}
++			done += n;
++		}
++	}
++
++private:
++	static constexpr int32_t kMaxBlock = 32;        // keeps the stack buffers under 1.3 kB
++	static constexpr int32_t kLookahead = 32;       // 0.73 ms
++	static constexpr int32_t kHistory = 64;         // more than the lookahead plus the filters' 19 samples
++	static constexpr float kFadeStep = 1.f / 512.f; // 12 ms
++
++	/// lookahead (and the limiter, for LIMIT), 2x up, the curve, 2x down
++	void chain(MasterClipType t, float* inL, float* inR, float* outL, float* outR, int32_t n, float c) {
++		const float invC = 1.f / c;
++		limit(inL, inR, n, c, t == MasterClipType::LIMIT);
++
++		float upL[2 * kMaxBlock], upR[2 * kMaxBlock];
++		up_.process(inL, inR, upL, upR, n);
++		switch (t) {
++		case MasterClipType::SOFT:
++			shapeBlock<MasterClipType::SOFT>(upL, upR, 2 * n, c, invC);
++			break;
++		case MasterClipType::TANH:
++			shapeBlock<MasterClipType::TANH>(upL, upR, 2 * n, c, invC);
++			break;
++		case MasterClipType::TAPE:
++			shapeBlock<MasterClipType::TAPE>(upL, upR, 2 * n, c, invC);
++			break;
++		case MasterClipType::FOLD:
++			shapeBlock<MasterClipType::FOLD>(upL, upR, 2 * n, c, invC);
++			break;
++		default: // HARD, and the safety clip after LIMIT
++			shapeBlock<MasterClipType::HARD>(upL, upR, 2 * n, c, invC);
++			break;
++		}
++		down_.process(upL, upR, outL, outR, n);
++	}
++
++	/// While OFF: keep the last kHistory samples (at no gain) to prime the filters with when it comes back on
++	void remember(std::span<StereoSample> buffer) {
++		constexpr float kIn = 1.f / kUnit;
++		const size_t start = buffer.size() > kHistory ? buffer.size() - kHistory : 0;
++		for (size_t i = start; i < buffer.size(); i++) {
++			histL_[histPos_] = static_cast<float>(buffer[i].l) * kIn;
++			histR_[histPos_] = static_cast<float>(buffer[i].r) * kIn;
++			histPos_ = (histPos_ + 1) % kHistory;
++		}
++	}
++
++	static float dbToGain(float db) { return std::exp(db * 0.11512925465f); }
++
++	static float fastTanh(float x) {
++		if (x > 3.f) {
++			return 1.f;
++		}
++		if (x < -3.f) {
++			return -1.f;
++		}
++		const float x2 = x * x;
++		return x * (27.f + x2) / (27.f + 9.f * x2);
++	}
++
++	// (15z - 10z^3 + 3z^5) / 8 on [-1, 1]
++	static float quinticClip(float x) {
++		const float z = x * (8.f / 15.f);
++		if (z >= 1.f) {
++			return 1.f;
++		}
++		if (z <= -1.f) {
++			return -1.f;
++		}
++		const float z2 = z * z;
++		return z * (1.875f + z2 * (-1.25f + 0.375f * z2));
++	}
++
++	static float cubic(float z) { return z * (1.5f - 0.5f * z * z); }
++
++	template <MasterClipType T>
++	static void shapeBlock(float* l, float* r, int32_t n, float c, float invC) {
++		for (int32_t i = 0; i < n; i++) {
++			l[i] = shape<T>(l[i] * invC) * c;
++			r[i] = shape<T>(r[i] * invC) * c;
++		}
++	}
++
++	/// u is the signal in units of the ceiling; returns the same units, never past 1
++	template <MasterClipType T>
++	static float shape(float u) {
++		const float au = std::fabs(u);
++		float y;
++		switch (T) {
++		case MasterClipType::SOFT: // linear to 0.8, cubic knee into the ceiling
++			y = au < 0.8f ? au : (au < 1.1f ? 0.8f + 0.2f * cubic((au - 0.8f) / 0.3f) : 1.f);
++			break;
++		case MasterClipType::TANH: // linear to 0.7, tanh shoulder
++			y = au < 0.7f ? au : 0.7f + 0.3f * fastTanh((au - 0.7f) / 0.3f);
++			break;
++		case MasterClipType::TAPE: // earlier, rounder bend
++			y = au < 0.5f ? au : 0.5f + 0.5f * quinticClip((au - 0.5f) * 2.f);
++			break;
++		case MasterClipType::FOLD: { // folds back down from the ceiling (triangle of period 4, au >= 0)
++			if (au < 1.f) {
++				y = au;
++				break;
++			}
++			float v = au + 1.f;
++			v -= 4.f * static_cast<float>(static_cast<int32_t>(v * 0.25f));
++			y = std::fabs(v < 2.f ? v - 1.f : 3.f - v);
++			break;
++		}
++		default: // HARD
++			y = au < 1.f ? au : 1.f;
++			break;
++		}
++		return u < 0.f ? -y : y;
++	}
++
++	/// Lookahead delay, and the peak limiter for LIMIT: gain needed for each incoming sample, held for the lookahead,
++	/// reached by the time that sample comes out of the delay; 80 ms release.
++	void limit(float* l, float* r, int32_t n, float ceil, bool limiting) {
++		constexpr float kAttack = 0.145f;    // 1 - e^(-5/32): 99% of the way within the lookahead
++		constexpr float kRelease = 0.00026f; // ~80 ms
++		for (int32_t i = 0; i < n; i++) {
++			const float pk = std::max(std::fabs(l[i]), std::fabs(r[i]));
++			// the only divide, and only while over; the other types just get the delay (the gain eases back to 1)
++			const float need = (limiting && pk > ceil) ? ceil / pk : 1.f;
++			if (need <= held_) {
++				held_ = need;
++				holdLeft_ = kLookahead;
++			}
++			else if (holdLeft_ > 0) {
++				holdLeft_--;
++			}
++			else {
++				held_ = need;
++			}
++			gain_ += (held_ - gain_) * (held_ < gain_ ? kAttack : kRelease);
++
++			const float dl = delayL_[delayPos_];
++			const float dr = delayR_[delayPos_];
++			delayL_[delayPos_] = l[i];
++			delayR_[delayPos_] = r[i];
++			delayPos_ = (delayPos_ + 1) % kLookahead;
++			l[i] = dl * gain_;
++			r[i] = dr * gain_;
++		}
++	}
++
++	void reset() {
++		up_ = {};
++		down_ = {};
++		std::fill(std::begin(delayL_), std::end(delayL_), 0.f);
++		std::fill(std::begin(delayR_), std::end(delayR_), 0.f);
++		delayPos_ = 0;
++		held_ = gain_ = 1.f;
++		holdLeft_ = 0;
++	}
++
++	// Kaiser halfband, 39 taps (beta 6.5) at 96 kHz: -0.16 dB at 20 kHz, -67 dB stopband. Even-index taps, doubled
++	// for the interpolator's gain; the centre tap is 0.5.
++	static constexpr int32_t kHbLen = 39;
++	static constexpr int32_t kHbTaps = (kHbLen + 1) / 2; // 20
++	static constexpr int32_t kHbHalf = kHbTaps / 2;      // 10
++	static constexpr int32_t kHbK = (kHbLen - 3) / 4;    // 9
++	static constexpr float kHb[kHbHalf] = {-0.000315222069f, 0.00158999396f, -0.00447230511f, 0.0099596253f,
++	                                       -0.0194072471f,   0.0348199745f,  -0.0598166679f,  0.103173537f,
++	                                       -0.196884858f,    0.631359872f};
++
++	struct Up2 {
++		float hl[2 * kHbTaps] = {}, hr[2 * kHbTaps] = {};
++		int32_t pos = 0;
++		void process(const float* inL, const float* inR, float* outL, float* outR, int32_t n) {
++			for (int32_t i = 0; i < n; i++) {
++				pos = pos == 0 ? kHbTaps - 1 : pos - 1;
++				hl[pos] = hl[pos + kHbTaps] = inL[i];
++				hr[pos] = hr[pos + kHbTaps] = inR[i];
++				const float* wl = &hl[pos];
++				const float* wr = &hr[pos];
++				float al = 0.f, ar = 0.f;
++				for (int32_t j = 0; j < kHbHalf; j++) {
++					al += kHb[j] * (wl[j] + wl[kHbTaps - 1 - j]);
++					ar += kHb[j] * (wr[j] + wr[kHbTaps - 1 - j]);
++				}
++				outL[2 * i] = al;
++				outR[2 * i] = ar;
++				outL[2 * i + 1] = wl[kHbK];
++				outR[2 * i + 1] = wr[kHbK];
++			}
++		}
++	};
++
++	struct Down2 {
++		float el[2 * kHbTaps] = {}, er[2 * kHbTaps] = {}, ol[2 * kHbTaps] = {}, orr[2 * kHbTaps] = {};
++		int32_t pos = 0;
++		void process(const float* inL, const float* inR, float* outL, float* outR, int32_t n) {
++			for (int32_t i = 0; i < n; i++) {
++				pos = pos == 0 ? kHbTaps - 1 : pos - 1;
++				el[pos] = el[pos + kHbTaps] = inL[2 * i];
++				er[pos] = er[pos + kHbTaps] = inR[2 * i];
++				ol[pos] = ol[pos + kHbTaps] = inL[2 * i + 1];
++				orr[pos] = orr[pos + kHbTaps] = inR[2 * i + 1];
++				const float* wl = &el[pos];
++				const float* wr = &er[pos];
++				float al = 0.f, ar = 0.f;
++				for (int32_t j = 0; j < kHbHalf; j++) {
++					al += kHb[j] * (wl[j] + wl[kHbTaps - 1 - j]);
++					ar += kHb[j] * (wr[j] + wr[kHbTaps - 1 - j]);
++				}
++				outL[i] = 0.5f * (al + ol[pos + kHbK + 1]);
++				outR[i] = 0.5f * (ar + orr[pos + kHbK + 1]);
++			}
++		}
++	};
++
++	MasterClipType activeType_ = MasterClipType::TANH;
++	bool running_ = false;
++	float fade_ = 0.f;
++	float histL_[kHistory] = {}, histR_[kHistory] = {};
++	int32_t histPos_ = 0;
++	float drive_ = 1.f, ceil_ = 0.89f * 0.999f;
++	Up2 up_;
++	Down2 down_;
++	float delayL_[kLookahead] = {}, delayR_[kLookahead] = {};
++	int32_t delayPos_ = 0, holdLeft_ = 0;
++	float held_ = 1.f, gain_ = 1.f;
++};
++
++} // namespace deluge::dsp
 diff --git a/src/deluge/dsp/saturator.h b/src/deluge/dsp/saturator.h
 new file mode 100644
 index 000000000..ce8acd265
@@ -17319,7 +18244,7 @@ index 000000000..2ddbac357
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..ea3712dc1 100644
+index 683a26648..b71250f62 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -17605,7 +18530,7 @@ index 683a26648..ea3712dc1 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1217,100 @@
+@@ -997,9 +1217,116 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -17704,11 +18629,27 @@ index 683a26648..ea3712dc1 100644
 +    "STRING_FOR_VOICE_SPREAD_MODE": "Spread mode",
 +    "STRING_FOR_VOICE_SPREAD_MODE_SHORT": "SMOD",
 +    "STRING_FOR_VOICE_SPREAD_KEY": "Key",
-+    "STRING_FOR_VOICE_SPREAD_PING_PONG": "Ping pong"
++    "STRING_FOR_VOICE_SPREAD_PING_PONG": "Ping pong",
++    "STRING_FOR_MODFX_SHIFT": "Shift",
++    "STRING_FOR_SHIFT_AMOUNT": "Shift amount",
++    "STRING_FOR_SHIFT_AMOUNT_SHORT": "Shift",
++    "STRING_FOR_SHIFT_MORPH": "Shift morph",
++    "STRING_FOR_SHIFT_MORPH_SHORT": "Morph",
++    "STRING_FOR_MASTER_CLIP": "Master clip",
++    "STRING_FOR_MASTER_CLIP_SHORT": "Clip",
++    "STRING_FOR_MASTER_CLIP_DRIVE": "Clip drive",
++    "STRING_FOR_MASTER_CLIP_DRIVE_SHORT": "Drive",
++    "STRING_FOR_MASTER_CLIP_CEILING": "Ceiling",
++    "STRING_FOR_MASTER_CLIP_CEILING_SHORT": "Ceil",
++    "STRING_FOR_CLIP_SOFT": "Soft",
++    "STRING_FOR_CLIP_TANH": "Tanh",
++    "STRING_FOR_CLIP_LIMIT": "Limit",
++    "STRING_FOR_CRUSH_DECAY": "Decay",
++    "STRING_FOR_CRUSH_DATA": "Data"
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..9154b2169 100644
+index 0032e81ac..f084d9065 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -17994,7 +18935,7 @@ index 0032e81ac..9154b2169 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1230,101 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1230,117 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -18093,11 +19034,27 @@ index 0032e81ac..9154b2169 100644
 +        {STRING_FOR_VOICE_SPREAD_MODE_SHORT, "SMOD"},
 +        {STRING_FOR_VOICE_SPREAD_KEY, "Key"},
 +        {STRING_FOR_VOICE_SPREAD_PING_PONG, "Ping pong"},
++        {STRING_FOR_MODFX_SHIFT, "Shift"},
++        {STRING_FOR_SHIFT_AMOUNT, "Shift amount"},
++        {STRING_FOR_SHIFT_AMOUNT_SHORT, "Shift"},
++        {STRING_FOR_SHIFT_MORPH, "Shift morph"},
++        {STRING_FOR_SHIFT_MORPH_SHORT, "Morph"},
++        {STRING_FOR_MASTER_CLIP, "Master clip"},
++        {STRING_FOR_MASTER_CLIP_SHORT, "Clip"},
++        {STRING_FOR_MASTER_CLIP_DRIVE, "Clip drive"},
++        {STRING_FOR_MASTER_CLIP_DRIVE_SHORT, "Drive"},
++        {STRING_FOR_MASTER_CLIP_CEILING, "Ceiling"},
++        {STRING_FOR_MASTER_CLIP_CEILING_SHORT, "Ceil"},
++        {STRING_FOR_CLIP_SOFT, "Soft"},
++        {STRING_FOR_CLIP_TANH, "Tanh"},
++        {STRING_FOR_CLIP_LIMIT, "Limit"},
++        {STRING_FOR_CRUSH_DECAY, "Decay"},
++        {STRING_FOR_CRUSH_DATA, "Data"},
      },
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..ee6878e5c 100644
+index 2024bd2f7..bedc8c1b7 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -18341,7 +19298,7 @@ index 2024bd2f7..ee6878e5c 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +776,99 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +776,115 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -18438,6 +19395,22 @@ index 2024bd2f7..ee6878e5c 100644
 +        {STRING_FOR_VOICE_SPREAD_MODE_SHORT, "SMOD"},
 +        {STRING_FOR_VOICE_SPREAD_KEY, "KEY"},
 +        {STRING_FOR_VOICE_SPREAD_PING_PONG, "PING"},
++        {STRING_FOR_MODFX_SHIFT, "SHIFT"},
++        {STRING_FOR_SHIFT_AMOUNT, "SHIFT AMOUNT"},
++        {STRING_FOR_SHIFT_AMOUNT_SHORT, "SHFT"},
++        {STRING_FOR_SHIFT_MORPH, "SHIFT MORPH"},
++        {STRING_FOR_SHIFT_MORPH_SHORT, "MRPH"},
++        {STRING_FOR_MASTER_CLIP, "MASTER CLIP"},
++        {STRING_FOR_MASTER_CLIP_SHORT, "MCLP"},
++        {STRING_FOR_MASTER_CLIP_DRIVE, "CLIP DRIVE"},
++        {STRING_FOR_MASTER_CLIP_DRIVE_SHORT, "CDRV"},
++        {STRING_FOR_MASTER_CLIP_CEILING, "CEILING"},
++        {STRING_FOR_MASTER_CLIP_CEILING_SHORT, "CEIL"},
++        {STRING_FOR_CLIP_SOFT, "SOFT"},
++        {STRING_FOR_CLIP_TANH, "TANH"},
++        {STRING_FOR_CLIP_LIMIT, "LIMT"},
++        {STRING_FOR_CRUSH_DECAY, "DECY"},
++        {STRING_FOR_CRUSH_DATA, "DATA"},
      },
      &built_in::english,
  };
@@ -18537,7 +19510,7 @@ index 63586cdc2..9963afd88 100644
 +int32_t recentLookupByContent(std::string_view text, size_t depth = 16);
  } // namespace deluge::l10n
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..d3757d05a 100644
+index bc5dd6c8c..6e6e1eb6b 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,43 @@
@@ -18794,7 +19767,7 @@ index bc5dd6c8c..d3757d05a 100644
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +831,100 @@
+@@ -605,9 +831,116 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -18893,11 +19866,27 @@ index bc5dd6c8c..d3757d05a 100644
 +        "STRING_FOR_VOICE_SPREAD_MODE": "SPREAD MODE",
 +        "STRING_FOR_VOICE_SPREAD_MODE_SHORT": "SMOD",
 +        "STRING_FOR_VOICE_SPREAD_KEY": "KEY",
-+        "STRING_FOR_VOICE_SPREAD_PING_PONG": "PING"
++        "STRING_FOR_VOICE_SPREAD_PING_PONG": "PING",
++        "STRING_FOR_MODFX_SHIFT": "SHIFT",
++        "STRING_FOR_SHIFT_AMOUNT": "SHIFT AMOUNT",
++        "STRING_FOR_SHIFT_AMOUNT_SHORT": "SHFT",
++        "STRING_FOR_SHIFT_MORPH": "SHIFT MORPH",
++        "STRING_FOR_SHIFT_MORPH_SHORT": "MRPH",
++        "STRING_FOR_MASTER_CLIP": "MASTER CLIP",
++        "STRING_FOR_MASTER_CLIP_SHORT": "MCLP",
++        "STRING_FOR_MASTER_CLIP_DRIVE": "CLIP DRIVE",
++        "STRING_FOR_MASTER_CLIP_DRIVE_SHORT": "CDRV",
++        "STRING_FOR_MASTER_CLIP_CEILING": "CEILING",
++        "STRING_FOR_MASTER_CLIP_CEILING_SHORT": "CEIL",
++        "STRING_FOR_CLIP_SOFT": "SOFT",
++        "STRING_FOR_CLIP_TANH": "TANH",
++        "STRING_FOR_CLIP_LIMIT": "LIMT",
++        "STRING_FOR_CRUSH_DECAY": "DECY",
++        "STRING_FOR_CRUSH_DATA": "DATA"
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..910b83b16 100644
+index 2039f041f..c504d76d0 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -19192,7 +20181,7 @@ index 2039f041f..910b83b16 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1367,96 @@ enum class String : size_t {
+@@ -1145,6 +1367,113 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -19286,6 +20275,23 @@ index 2039f041f..910b83b16 100644
 +	STRING_FOR_ULTRAKIK_KIT,
 +	STRING_FOR_XIA_KIT,
 +	STRING_FOR_SYNTH_TYPE_303,
++
++	STRING_FOR_MODFX_SHIFT,
++	STRING_FOR_SHIFT_AMOUNT,
++	STRING_FOR_SHIFT_AMOUNT_SHORT,
++	STRING_FOR_SHIFT_MORPH,
++	STRING_FOR_SHIFT_MORPH_SHORT,
++	STRING_FOR_MASTER_CLIP,
++	STRING_FOR_MASTER_CLIP_SHORT,
++	STRING_FOR_MASTER_CLIP_DRIVE,
++	STRING_FOR_MASTER_CLIP_DRIVE_SHORT,
++	STRING_FOR_MASTER_CLIP_CEILING,
++	STRING_FOR_MASTER_CLIP_CEILING_SHORT,
++	STRING_FOR_CLIP_SOFT,
++	STRING_FOR_CLIP_TANH,
++	STRING_FOR_CLIP_LIMIT,
++	STRING_FOR_CRUSH_DECAY,
++	STRING_FOR_CRUSH_DATA,
  
  	STRING_LAST
  };
@@ -21247,10 +22253,10 @@ index 51b360b01..40c661abc 100644
  };
  
 diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/crush_type.h
-similarity index 61%
+similarity index 59%
 rename from src/deluge/gui/menu_item/fx/clipping.h
 rename to src/deluge/gui/menu_item/fx/crush_type.h
-index 500789c93..b2513dbb9 100644
+index 500789c93..4d6c4f176 100644
 --- a/src/deluge/gui/menu_item/fx/clipping.h
 +++ b/src/deluge/gui/menu_item/fx/crush_type.h
 @@ -1,5 +1,5 @@
@@ -21260,7 +22266,7 @@ index 500789c93..b2513dbb9 100644
   *
   * This file is part of The Synthstrom Audible Deluge Firmware.
   *
-@@ -15,45 +15,46 @@
+@@ -15,45 +15,47 @@
   * If not, see <https://www.gnu.org/licenses/>.
   */
  #pragma once
@@ -21318,7 +22324,8 @@ index 500789c93..b2513dbb9 100644
 +		using enum l10n::String;
 +		return {l10n::getView(STRING_FOR_CRUSH_CLASSIC), l10n::getView(STRING_FOR_CRUSH_HARD),
 +		        l10n::getView(STRING_FOR_CRUSH_VINTAGE), l10n::getView(STRING_FOR_CRUSH_ULAW),
-+		        l10n::getView(STRING_FOR_CRUSH_JITTER)};
++		        l10n::getView(STRING_FOR_CRUSH_JITTER),  l10n::getView(STRING_FOR_CRUSH_DECAY),
++		        l10n::getView(STRING_FOR_CRUSH_DATA)};
 +	}
  };
  
@@ -21781,6 +22788,64 @@ index 000000000..5e2a1a870
 +};
 +
 +} // namespace deluge::gui::menu_item::mod_fx
+diff --git a/src/deluge/gui/menu_item/mod_fx/depth_patched.h b/src/deluge/gui/menu_item/mod_fx/depth_patched.h
+index 7586f57c6..65fb690e4 100644
+--- a/src/deluge/gui/menu_item/mod_fx/depth_patched.h
++++ b/src/deluge/gui/menu_item/mod_fx/depth_patched.h
+@@ -29,7 +29,7 @@ public:
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const {
+ 		return util::one_of(modControllable->getModFXType(),
+ 		                    {ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::GRAIN, ModFXType::PHASER,
+-		                     ModFXType::WARBLE, ModFXType::DIMENSION});
++		                     ModFXType::WARBLE, ModFXType::DIMENSION, ModFXType::SHIFT});
+ 	}
+ 	[[nodiscard]] std::string_view getName() const override {
+ 		return modfx::getParamName(soundEditor.currentModControllable->getModFXType(), ModFXParam::DEPTH);
+diff --git a/src/deluge/gui/menu_item/mod_fx/depth_unpatched.h b/src/deluge/gui/menu_item/mod_fx/depth_unpatched.h
+index 0a667eca2..b0249de49 100644
+--- a/src/deluge/gui/menu_item/mod_fx/depth_unpatched.h
++++ b/src/deluge/gui/menu_item/mod_fx/depth_unpatched.h
+@@ -28,7 +28,7 @@ public:
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const {
+ 		return util::one_of(modControllable->getModFXType(),
+ 		                    {ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::GRAIN, ModFXType::PHASER,
+-		                     ModFXType::WARBLE, ModFXType::DIMENSION});
++		                     ModFXType::WARBLE, ModFXType::DIMENSION, ModFXType::SHIFT});
+ 	}
+ 	[[nodiscard]] std::string_view getName() const override {
+ 		return modfx::getParamName(soundEditor.currentModControllable->getModFXType(), ModFXParam::DEPTH);
+diff --git a/src/deluge/gui/menu_item/mod_fx/feedback.h b/src/deluge/gui/menu_item/mod_fx/feedback.h
+index cbfae526a..af8f433fd 100644
+--- a/src/deluge/gui/menu_item/mod_fx/feedback.h
++++ b/src/deluge/gui/menu_item/mod_fx/feedback.h
+@@ -26,8 +26,8 @@ public:
+ 	using UnpatchedParam::UnpatchedParam;
+ 
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const {
+-		return (util::one_of(modControllable->getModFXType(),
+-		                     {ModFXType::FLANGER, ModFXType::PHASER, ModFXType::GRAIN, ModFXType::WARBLE}));
++		return (util::one_of(modControllable->getModFXType(), {ModFXType::FLANGER, ModFXType::PHASER, ModFXType::GRAIN,
++		                                                       ModFXType::WARBLE, ModFXType::SHIFT}));
+ 	}
+ 	[[nodiscard]] std::string_view getName() const override {
+ 		return modfx::getParamName(soundEditor.currentModControllable->getModFXType(), ModFXParam::FEEDBACK);
+diff --git a/src/deluge/gui/menu_item/mod_fx/offset.h b/src/deluge/gui/menu_item/mod_fx/offset.h
+index 57bf83ddd..0cfcc9201 100644
+--- a/src/deluge/gui/menu_item/mod_fx/offset.h
++++ b/src/deluge/gui/menu_item/mod_fx/offset.h
+@@ -27,9 +27,9 @@ public:
+ 	using UnpatchedParam::UnpatchedParam;
+ 
+ 	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const {
+-		return (
+-		    util::one_of(modControllable->getModFXType(), {ModFXType::CHORUS, ModFXType::CHORUS_STEREO,
+-		                                                   ModFXType::GRAIN, ModFXType::WARBLE, ModFXType::DIMENSION}));
++		return (util::one_of(modControllable->getModFXType(),
++		                     {ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::GRAIN, ModFXType::WARBLE,
++		                      ModFXType::DIMENSION, ModFXType::SHIFT}));
+ 	}
+ 	[[nodiscard]] std::string_view getName() const override {
+ 		return modfx::getParamName(soundEditor.currentModControllable->getModFXType(), ModFXParam::OFFSET);
 diff --git a/src/deluge/gui/menu_item/mod_fx/rate.h b/src/deluge/gui/menu_item/mod_fx/rate.h
 index 5170b4832..7ea6663b8 100644
 --- a/src/deluge/gui/menu_item/mod_fx/rate.h
@@ -22110,6 +23175,96 @@ index 000000000..abf8a6d4c
 +	uint8_t source_id_;
 +};
 +} // namespace deluge::gui::menu_item::sample
+diff --git a/src/deluge/gui/menu_item/song/master_clip.h b/src/deluge/gui/menu_item/song/master_clip.h
+new file mode 100644
+index 000000000..9f79503bf
+--- /dev/null
++++ b/src/deluge/gui/menu_item/song/master_clip.h
+@@ -0,0 +1,84 @@
++/*
++ * Copyright (c) 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++#pragma once
++
++// SONG > MASTER: MASTER CLIP (type), CLIP DRIVE and CEILING, the clipper / limiter at the end of the song chain
++
++#include "dsp/master_clip.h"
++#include "gui/l10n/l10n.h"
++#include "gui/menu_item/integer.h"
++#include "gui/menu_item/selection.h"
++#include "model/song/song.h"
++
++namespace deluge::gui::menu_item::song {
++
++class MasterClipType final : public Selection {
++public:
++	using Selection::Selection;
++	void readCurrentValue() override { this->setValue(currentSong->masterClip.type); }
++	void writeCurrentValue() override { currentSong->masterClip.type = this->getValue<dsp::MasterClipType>(); }
++	deluge::vector<std::string_view> getOptions(OptType optType) override {
++		(void)optType;
++		using enum l10n::String;
++		return {
++		    l10n::getView(STRING_FOR_DISABLED),   l10n::getView(STRING_FOR_CLIP_SOFT),
++		    l10n::getView(STRING_FOR_CLIP_TANH),  l10n::getView(STRING_FOR_SAT_HARD),
++		    l10n::getView(STRING_FOR_SAT_TAPE),   l10n::getView(STRING_FOR_SAT_FOLD),
++		    l10n::getView(STRING_FOR_CLIP_LIMIT),
++		};
++	}
++	void getColumnLabel(StringBuf& label) override {
++		label.append(l10n::get(l10n::String::STRING_FOR_MASTER_CLIP_SHORT));
++	}
++};
++
++class MasterClipDrive final : public Integer {
++public:
++	using Integer::Integer;
++	void readCurrentValue() override { this->setValue(currentSong->masterClip.driveDb); }
++	void writeCurrentValue() override { currentSong->masterClip.driveDb = this->getValue(); }
++	[[nodiscard]] int32_t getMaxValue() const override { return dsp::MasterClip::kMaxDriveDb; }
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return currentSong->masterClip.type != dsp::MasterClipType::OFF;
++	}
++	void getColumnLabel(StringBuf& label) override {
++		label.append(l10n::get(l10n::String::STRING_FOR_MASTER_CLIP_DRIVE_SHORT));
++	}
++
++protected:
++	const char* getUnit() override { return "DB"; }
++};
++
++class MasterClipCeiling final : public Integer {
++public:
++	using Integer::Integer;
++	void readCurrentValue() override { this->setValue(currentSong->masterClip.ceilingDb); }
++	void writeCurrentValue() override { currentSong->masterClip.ceilingDb = this->getValue(); }
++	[[nodiscard]] int32_t getMinValue() const override { return dsp::MasterClip::kMinCeilingDb; }
++	[[nodiscard]] int32_t getMaxValue() const override { return 0; }
++	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
++		return currentSong->masterClip.type != dsp::MasterClipType::OFF;
++	}
++	void getColumnLabel(StringBuf& label) override {
++		label.append(l10n::get(l10n::String::STRING_FOR_MASTER_CLIP_CEILING_SHORT));
++	}
++
++protected:
++	const char* getUnit() override { return "DB"; }
++};
++
++} // namespace deluge::gui::menu_item::song
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
 index 000000000..662c41d01
@@ -23291,7 +24446,7 @@ index f4e341a9b..918674f66 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..c514d7dcf 100644
+index 7bbd559f6..d3481a2c4 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -23366,7 +24521,15 @@ index 7bbd559f6..c514d7dcf 100644
  #include "gui/menu_item/sample/time_stretch.h"
  #include "gui/menu_item/sample/transpose.h"
  #include "gui/menu_item/sequence/direction.h"
-@@ -216,7 +228,10 @@
+@@ -201,6 +213,7 @@
+ #include "gui/menu_item/sidechain/volume.h"
+ #include "gui/menu_item/sidechain/volume_global.h"
+ #include "gui/menu_item/song/configure_macros.h"
++#include "gui/menu_item/song/master_clip.h"
+ #include "gui/menu_item/song/midi_learn.h"
+ #include "gui/menu_item/source/patched_param/modulator_feedback.h"
+ #include "gui/menu_item/source/patched_param/modulator_level.h"
+@@ -216,7 +229,10 @@
  #include "gui/menu_item/submenu/mod_fx.h"
  #include "gui/menu_item/submenu/modulator.h"
  #include "gui/menu_item/swing/interval.h"
@@ -23377,7 +24540,7 @@ index 7bbd559f6..c514d7dcf 100644
  #include "gui/menu_item/trigger/in/ppqn.h"
  #include "gui/menu_item/trigger/out/ppqn.h"
  #include "gui/menu_item/unison/count.h"
-@@ -224,6 +239,7 @@
+@@ -224,6 +240,7 @@
  #include "gui/menu_item/unison/stereoSpread.h"
  #include "gui/menu_item/unpatched_param.h"
  #include "gui/menu_item/unpatched_param/pan.h"
@@ -23385,7 +24548,7 @@ index 7bbd559f6..c514d7dcf 100644
  #include "gui/menu_item/voice/polyphony.h"
  #include "gui/menu_item/voice/portamento.h"
  #include "gui/menu_item/voice/priority.h"
-@@ -243,6 +259,7 @@ namespace params = deluge::modulation::params;
+@@ -243,6 +260,7 @@ namespace params = deluge::modulation::params;
  // Include the autogenerated menu structures
  #include "gui/menu_item/audio_clip/specific_output_source_selector.h"
  #include "gui/menu_item/generate/g_menus.inc"
@@ -23393,7 +24556,7 @@ index 7bbd559f6..c514d7dcf 100644
  #include "gui/menu_item/midi/y_axis_to_cc1.h"
  
  // Arp --------------------------------------------------------------------------------------
-@@ -453,15 +470,17 @@ PLACE_SDRAM_BSS voice::PolyphonyType polyphonyMenu{STRING_FOR_POLYPHONY};
+@@ -453,15 +471,17 @@ PLACE_SDRAM_BSS voice::PolyphonyType polyphonyMenu{STRING_FOR_POLYPHONY};
  PLACE_SDRAM_BSS voice::VoiceCount voice::polyphonicVoiceCountMenu{STRING_FOR_MAX_VOICES};
  PLACE_SDRAM_BSS voice::Portamento portaMenu{STRING_FOR_PORTAMENTO};
  PLACE_SDRAM_BSS voice::Priority priorityMenu{STRING_FOR_PRIORITY};
@@ -23420,7 +24583,7 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_BSS HorizontalMenuGroup voiceMenuGroup{{&unisonMenu, &voiceMenuWithoutUnison}};
  
  // Envelope 1-4 menu -----------------------------------------------------------------------------
-@@ -472,6 +491,8 @@ PLACE_SDRAM_BSS HorizontalMenuGroup lfoMenuGroup{{&lfo1Menu, &lfo2Menu, &lfo3Men
+@@ -472,6 +492,8 @@ PLACE_SDRAM_BSS HorizontalMenuGroup lfoMenuGroup{{&lfo1Menu, &lfo2Menu, &lfo3Men
  
  // Mod FX ----------------------------------------------------------------------------------
  PLACE_SDRAM_BSS mod_fx::Type modFXTypeMenu{STRING_FOR_TYPE, STRING_FOR_MODFX_TYPE};
@@ -23429,7 +24592,7 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_BSS mod_fx::Rate modFXRateMenu{STRING_FOR_RATE, STRING_FOR_MODFX_RATE, params::GLOBAL_MOD_FX_RATE};
  PLACE_SDRAM_BSS mod_fx::Feedback modFXFeedbackMenu{STRING_FOR_FEEDBACK, STRING_FOR_MODFX_FEEDBACK,
                                                     params::UNPATCHED_MOD_FX_FEEDBACK};
-@@ -484,6 +505,7 @@ PLACE_SDRAM_BSS submenu::ModFxHorizontalMenu modFXMenu{
+@@ -484,6 +506,7 @@ PLACE_SDRAM_BSS submenu::ModFxHorizontalMenu modFXMenu{
      STRING_FOR_MOD_FX,
      {
          &modFXTypeMenu,
@@ -23437,7 +24600,7 @@ index 7bbd559f6..c514d7dcf 100644
          &modFXDepthMenu,
          &modFXRateMenu,
          &modFXFeedbackMenu,
-@@ -512,6 +534,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
+@@ -512,6 +535,10 @@ PLACE_SDRAM_BSS eq::EqMenu eqMenu{
  // Delay ---------------------------------------------------------------------------------
  PLACE_SDRAM_BSS delay::Amount delayFeedbackMenu{STRING_FOR_AMOUNT, STRING_FOR_DELAY_AMOUNT,
                                                  params::GLOBAL_DELAY_FEEDBACK};
@@ -23448,7 +24611,7 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_BSS patched_param::Integer delayRateMenu{STRING_FOR_RATE, STRING_FOR_DELAY_RATE, params::GLOBAL_DELAY_RATE};
  PLACE_SDRAM_BSS delay::PingPong delayPingPongMenu{STRING_FOR_PINGPONG, STRING_FOR_DELAY_PINGPONG};
  PLACE_SDRAM_BSS delay::Analog delayAnalogMenu{STRING_FOR_TYPE, STRING_FOR_DELAY_TYPE};
-@@ -521,6 +547,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
+@@ -521,6 +548,8 @@ PLACE_SDRAM_BSS HorizontalMenu delayMenu{
      STRING_FOR_DELAY,
      {
          &delayFeedbackMenu,
@@ -23457,7 +24620,7 @@ index 7bbd559f6..c514d7dcf 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &delayRateMenu,
-@@ -630,20 +658,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
+@@ -630,20 +659,27 @@ PLACE_SDRAM_BSS HorizontalMenu routingHorizontal{STRING_FOR_FILTER_ROUTE, {&filt
  PLACE_SDRAM_BSS HorizontalMenuGroup filtersMenuGroup{{&lpfMenu, &hpfMenu, &routingHorizontal}};
  
  // FX ----------------------------------------------------------------------------------------
@@ -23486,7 +24649,7 @@ index 7bbd559f6..c514d7dcf 100644
      },
  };
  
-@@ -674,6 +709,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
+@@ -674,6 +710,7 @@ PLACE_SDRAM_BSS midi::Bank midiBankMenu{STRING_FOR_BANK, STRING_FOR_MIDI_BANK};
  PLACE_SDRAM_BSS midi::Sub midiSubMenu{STRING_FOR_SUB_BANK_SHORT, STRING_FOR_MIDI_SUB_BANK};
  PLACE_SDRAM_BSS midi::PGM midiPGMMenu{STRING_FOR_PGM, STRING_FOR_MIDI_PGM_NUMB_MENU_TITLE};
  PLACE_SDRAM_BSS midi::MPEYToModWheel mpeyToModWheelMenu{STRING_FOR_Y_AXIS_CONVERSION, STRING_FOR_Y_AXIS_CONVERSION};
@@ -23494,7 +24657,27 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_BSS cv::DualCVSelection cv2SourceMenu{STRING_FOR_CV2_SOURCE};
  PLACE_SDRAM_BSS midi::AftertouchToMono midiAftertouchCollapseMenu{STRING_FOR_PATCH_SOURCE_AFTERTOUCH,
                                                                    STRING_FOR_PATCH_SOURCE_AFTERTOUCH};
-@@ -772,6 +808,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
+@@ -695,11 +732,19 @@ PLACE_SDRAM_BSS UnpatchedParam globalPitchMenu{STRING_FOR_PITCH, params::UNPATCH
+ // Pan
+ PLACE_SDRAM_BSS unpatched_param::Pan globalPanMenu{STRING_FOR_PAN, params::UNPATCHED_PAN};
+ 
++PLACE_SDRAM_BSS song::MasterClipType masterClipTypeMenu{STRING_FOR_MASTER_CLIP, STRING_FOR_MASTER_CLIP};
++PLACE_SDRAM_BSS song::MasterClipDrive masterClipDriveMenu{STRING_FOR_MASTER_CLIP_DRIVE, STRING_FOR_MASTER_CLIP_DRIVE};
++PLACE_SDRAM_BSS song::MasterClipCeiling masterClipCeilingMenu{STRING_FOR_MASTER_CLIP_CEILING,
++                                                              STRING_FOR_MASTER_CLIP_CEILING};
++
+ PLACE_SDRAM_BSS HorizontalMenu songMasterMenu{
+     STRING_FOR_MASTER,
+     {
+         &globalLevelMenu,
+         &globalPanMenu,
++        &masterClipTypeMenu,
++        &masterClipDriveMenu,
++        &masterClipCeilingMenu,
+     },
+ };
+ 
+@@ -772,6 +817,8 @@ PLACE_SDRAM_BSS HorizontalMenu globalDelayMenu{
      STRING_FOR_DELAY,
      {
          &globalDelayFeedbackMenu,
@@ -23503,7 +24686,7 @@ index 7bbd559f6..c514d7dcf 100644
          &delayPingPongMenu,
          &delaySyncMenu,
          &globalDelayRateMenu,
-@@ -840,6 +878,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
+@@ -840,6 +887,7 @@ PLACE_SDRAM_BSS HorizontalMenu globalDistortionMenu{
      {
          &srrMenu,
          &bitcrushMenu,
@@ -23511,7 +24694,7 @@ index 7bbd559f6..c514d7dcf 100644
      },
  };
  
-@@ -855,6 +894,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
+@@ -855,6 +903,30 @@ PLACE_SDRAM_BSS Submenu globalFXMenu{
      },
  };
  
@@ -23542,7 +24725,7 @@ index 7bbd559f6..c514d7dcf 100644
  // Sidechain menu
  PLACE_SDRAM_BSS sidechain::GlobalVolume globalSidechainVolumeMenu{STRING_FOR_VOLUME_DUCKING,
                                                                    params::UNPATCHED_SIDECHAIN_VOLUME};
-@@ -910,8 +973,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
+@@ -910,8 +982,10 @@ PLACE_SDRAM_BSS HorizontalMenu audioClipDistortionMenu{
      STRING_FOR_DISTORTION,
      {
          &clippingMenu,
@@ -23553,7 +24736,7 @@ index 7bbd559f6..c514d7dcf 100644
      },
  };
  
-@@ -985,6 +1050,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
+@@ -985,6 +1059,11 @@ PLACE_SDRAM_BSS cv::Selection cvSelectionMenu{STRING_FOR_CV, STRING_FOR_CV_OUTPU
  PLACE_SDRAM_BSS gate::Selection gateSelectionMenu{STRING_FOR_GATE, STRING_FOR_GATE_OUTPUTS};
  
  PLACE_SDRAM_BSS swing::Interval swingIntervalMenu{STRING_FOR_SWING_INTERVAL};
@@ -23565,7 +24748,7 @@ index 7bbd559f6..c514d7dcf 100644
  
  // Pads menu
  PLACE_SDRAM_BSS shortcuts::Version shortcutsVersionMenu{STRING_FOR_SHORTCUTS_VERSION,
-@@ -1049,6 +1119,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
+@@ -1049,6 +1128,7 @@ PLACE_SDRAM_BSS firmware::Version firmwareVersionMenu{STRING_FOR_FIRMWARE_VERSIO
  
  PLACE_SDRAM_BSS battery::Level batteryLevelMenu{STRING_FOR_BATTERY_LEVEL, STRING_FOR_BATTERY_LEVEL_MENU_TITLE};
  PLACE_SDRAM_BSS cpu::VoiceUsage voiceUsageMenu{STRING_FOR_VOICE_USAGE, STRING_FOR_VOICE_USAGE};
@@ -23573,7 +24756,7 @@ index 7bbd559f6..c514d7dcf 100644
  
  PLACE_SDRAM_BSS runtime_feature::Settings runtimeFeatureSettingsMenu{STRING_FOR_COMMUNITY_FTS,
                                                                       STRING_FOR_COMMUNITY_FTS_MENU_TITLE};
-@@ -1349,10 +1420,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
+@@ -1349,10 +1429,17 @@ PLACE_SDRAM_BSS defaults::ui::clip_type::DefaultNewClipType defaultNewClipTypeMe
  PLACE_SDRAM_BSS ToggleBool defaultUseLastClipTypeMenu{
      STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, FlashStorage::defaultUseLastClipType};
  
@@ -23591,7 +24774,7 @@ index 7bbd559f6..c514d7dcf 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1547,785 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1556,785 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -24377,7 +25560,7 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2367,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2376,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -24389,7 +25572,7 @@ index 7bbd559f6..c514d7dcf 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2396,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2405,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -24398,7 +25581,7 @@ index 7bbd559f6..c514d7dcf 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2405,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2414,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -24409,7 +25592,7 @@ index 7bbd559f6..c514d7dcf 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2435,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2444,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -24417,7 +25600,7 @@ index 7bbd559f6..c514d7dcf 100644
      },
  };
  
-@@ -1668,8 +2525,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2534,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -24431,7 +25614,7 @@ index 7bbd559f6..c514d7dcf 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2559,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2568,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -24448,7 +25631,7 @@ index 7bbd559f6..c514d7dcf 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2579,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2588,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -24457,7 +25640,7 @@ index 7bbd559f6..c514d7dcf 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2701,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2710,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -24466,7 +25649,7 @@ index 7bbd559f6..c514d7dcf 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2752,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2761,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -24481,7 +25664,7 @@ index 7bbd559f6..c514d7dcf 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2780,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2789,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -24489,7 +25672,7 @@ index 7bbd559f6..c514d7dcf 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2797,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2806,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -24498,7 +25681,7 @@ index 7bbd559f6..c514d7dcf 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1943,7 +2815,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1943,7 +2824,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	&stutterDirectionMenu},
@@ -24507,7 +25690,7 @@ index 7bbd559f6..c514d7dcf 100644
      {nullptr,	        &voice::polyphonicVoiceCountMenu, nullptr,  nullptr,	        &unison::stereoSpreadMenu,  &compRatio,	nullptr,	nullptr              },
      {&env3ReleaseMenu,	&env3SustainMenu,	    &env3DecayMenu,	    &env3AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
      {&env4ReleaseMenu,	&env4SustainMenu,	    &env4DecayMenu,	    &env4AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
-@@ -1951,10 +2823,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2832,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -24541,7 +25724,7 @@ index 7bbd559f6..c514d7dcf 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2894,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2903,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -24550,7 +25733,7 @@ index 7bbd559f6..c514d7dcf 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2918,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2927,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -28394,7 +29577,7 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..37055dc62 100644
+index 51a40bfd2..de373a73d 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -28466,7 +29649,7 @@ index 51a40bfd2..37055dc62 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,3308 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3309 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -29521,11 +30704,12 @@ index 51a40bfd2..37055dc62 100644
 +		return type != ModFXType::NONE && type != ModFXType::BRUNO_CHORUS;
 +	}
 +	case KnobRule::MOD_FX_DEPTH:
-+		return util::one_of(sound->getModFXType(), {ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::GRAIN,
-+		                                            ModFXType::PHASER, ModFXType::WARBLE, ModFXType::DIMENSION});
-+	case KnobRule::MOD_FX_FB:
 +		return util::one_of(sound->getModFXType(),
-+		                    {ModFXType::FLANGER, ModFXType::PHASER, ModFXType::GRAIN, ModFXType::WARBLE});
++		                    {ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::GRAIN, ModFXType::PHASER,
++		                     ModFXType::WARBLE, ModFXType::DIMENSION, ModFXType::SHIFT});
++	case KnobRule::MOD_FX_FB:
++		return util::one_of(sound->getModFXType(), {ModFXType::FLANGER, ModFXType::PHASER, ModFXType::GRAIN,
++		                                            ModFXType::WARBLE, ModFXType::SHIFT});
 +	case KnobRule::OFFSET_A:
 +	case KnobRule::OFFSET_B: {
 +		// As sample::isSampleModeSample()
@@ -31775,7 +32959,7 @@ index 51a40bfd2..37055dc62 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3390,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +3391,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -31786,7 +32970,7 @@ index 51a40bfd2..37055dc62 100644
  	default:
  		break;
  	}
-@@ -79,6 +3438,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +3439,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -31795,7 +32979,7 @@ index 51a40bfd2..37055dc62 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +3597,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +3598,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -32956,7 +34140,7 @@ index 8158be2c4..a6a825f8d 100644
 +	int32_t shifted(int32_t noteCode) const { return std::clamp<int32_t>(noteCode + noteShift_, 0, kMaxMIDIValue); }
  };
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
-index a7bbbd46a..219a56d32 100644
+index a7bbbd46a..f078090a0 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable.cpp
 @@ -710,6 +710,16 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
@@ -32976,6 +34160,15 @@ index a7bbbd46a..219a56d32 100644
  	ModelStackWithParamId* newModelStack1 = modelStack->addParamCollectionAndId(paramCollection, summary, paramId);
  
  	if (paramId == 255) {
+@@ -733,7 +743,7 @@ void GlobalEffectable::ensureModFXParamIsValid() {
+ 		}
+ 		else if (currentModFXParam == ModFXParam::OFFSET) {
+ 			if (modFXType_ != ModFXType::CHORUS && modFXType_ != ModFXType::CHORUS_STEREO
+-			    && modFXType_ != ModFXType::GRAIN) {
++			    && modFXType_ != ModFXType::GRAIN && modFXType_ != ModFXType::SHIFT) {
+ 				goto ohNo;
+ 			}
+ 		}
 @@ -862,6 +872,11 @@ void GlobalEffectable::writeParamTagsToFile(Serializer& writer, ParamManager* pa
  	                                       valuesForOverride);
  	unpatchedParams->writeParamAsAttribute(writer, "feedback", params::UNPATCHED_DELAY_AMOUNT, writeAutomation, false,
@@ -33028,29 +34221,58 @@ index a7bbbd46a..219a56d32 100644
  		delayWorkingState.delayFeedbackAmount =
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
-@@ -1162,7 +1194,7 @@ void GlobalEffectable::processFXForGlobalEffectable(std::span<StereoSample> buff
+@@ -1161,8 +1193,14 @@ void GlobalEffectable::processFXForGlobalEffectable(std::span<StereoSample> buff
+ 	// like "depth".
  	// TODO: this saves a tiny amount of memory at the cost of needing allocations during the audio render cycle...
  	// seems kinda dumb
++	if (modFXTypeNow == ModFXType::SHIFT) {
++		modfx.setupShift();
++	}
++	else {
++		modfx.disableShift();
++	}
  	if (util::one_of(modFXTypeNow, {ModFXType::CHORUS_STEREO, ModFXType::CHORUS, ModFXType::FLANGER, ModFXType::WARBLE,
 -	                                ModFXType::DIMENSION})) {
 +	                                ModFXType::DIMENSION, ModFXType::BRUNO_CHORUS})) {
  		modfx.setupBuffer();
  		disableGrain();
  	}
-@@ -1194,6 +1226,7 @@ deluge::vector<std::string_view> getModNames() {
+@@ -1194,6 +1232,7 @@ deluge::vector<std::string_view> getModNames() {
  	    l10n::getView(STRING_FOR_WARBLE),
  	    l10n::getView(STRING_FOR_DIMENSION), //<
  	    l10n::getView(STRING_FOR_GRAIN),     //<
-+	    l10n::getView(STRING_FOR_BRUNO_CHORUS),
++	    l10n::getView(STRING_FOR_BRUNO_CHORUS),  l10n::getView(STRING_FOR_MODFX_SHIFT),
  	};
  }
  
-@@ -1246,6 +1279,8 @@ const char* modFXToString(ModFXType type) {
+@@ -1215,6 +1254,19 @@ const char* getParamName(ModFXType type, ModFXParam param, bool shortName) {
+ 		}
+ 	}
+ 
++	case ModFXType::SHIFT: {
++		switch (param) {
++		case ModFXParam::DEPTH:
++			return l10n::get(shortName ? STRING_FOR_SHIFT_AMOUNT_SHORT : STRING_FOR_SHIFT_AMOUNT);
++		case ModFXParam::FEEDBACK:
++			return l10n::get(shortName ? STRING_FOR_FEEDBACK_SHORT : STRING_FOR_FEEDBACK);
++		case ModFXParam::OFFSET:
++			return l10n::get(shortName ? STRING_FOR_SHIFT_MORPH_SHORT : STRING_FOR_SHIFT_MORPH);
++		default:
++			return l10n::get(STRING_FOR_NONE);
++		}
++	}
++
+ 	default: {
+ 		switch (param) {
+ 		case ModFXParam::DEPTH:
+@@ -1246,6 +1298,10 @@ const char* modFXToString(ModFXType type) {
  		return l10n::get(STRING_FOR_DIMENSION);
  	case ModFXType::GRAIN:
  		return l10n::get(STRING_FOR_GRAIN);
 +	case ModFXType::BRUNO_CHORUS:
 +		return l10n::get(STRING_FOR_BRUNO_CHORUS);
++	case ModFXType::SHIFT:
++		return l10n::get(STRING_FOR_MODFX_SHIFT);
  	case ModFXType::WARBLE:
  		return l10n::get(STRING_FOR_WARBLE);
  	default:
@@ -34509,10 +35731,20 @@ index 000000000..52f3e7f40
 +
 +} // namespace deluge::synth_instruments
 diff --git a/src/deluge/model/mod_controllable/ModFXProcessor.cpp b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
-index eec776ee6..e9ccaf29e 100644
+index eec776ee6..82ec698ae 100644
 --- a/src/deluge/model/mod_controllable/ModFXProcessor.cpp
 +++ b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
-@@ -31,6 +31,22 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+@@ -22,7 +22,9 @@
+ #include "modulation/params/param_set.h"
+ #include "processing/engines/audio_engine.h"
+ #include "util/comparison.h"
++#include <cmath>
+ #include <cstdint>
++#include <new>
+ 
+ /// NOT GRAIN! - this only does the comb filter based mod fx
+ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXType& modFXType, int32_t modFXRate,
+@@ -31,6 +33,45 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
  	// if nothing rendered into the clip then we can just return
  	if (anySoundComingIn == false)
  		return;
@@ -34532,38 +35764,96 @@ index eec776ee6..e9ccaf29e 100644
 +		return;
 +	}
 +	brunoChorus.started = false;
++	if (modFXType == ModFXType::SHIFT) {
++		if (freqShift == nullptr) {
++			return;
++		}
++		if (!freqShift->started) {
++			freqShift->reset();
++		}
++		using namespace deluge::modulation::params;
++		deluge::dsp::FreqShift::Controls k;
++		// DEPTH is a volume-curve param: about (knob / 50)^2 of full scale at the top
++		k.amount = std::sqrt(std::clamp(static_cast<float>(modFXDepth) * (1.f / 2147483648.f), 0.f, 1.f));
++		// RATE: 121739 at the middle of the knob, one doubling per 1/16 of the travel
++		k.glide =
++		    std::clamp(0.5f + std::log2(std::max(static_cast<float>(modFXRate), 1.f) / 121739.f) / 16.f, 0.f, 1.f);
++		k.feedback =
++		    static_cast<float>(unpatchedParams->getValue(UNPATCHED_MOD_FX_FEEDBACK)) * (1.f / 4294967296.f) + 0.5f;
++		k.morph = static_cast<float>(unpatchedParams->getValue(UNPATCHED_MOD_FX_OFFSET)) * (1.f / 4294967296.f) + 0.5f;
++		freqShift->process(buffer, k, AudioEngine::renderInStereo, 134217728.f);
++		return;
++	}
++	if (freqShift != nullptr) {
++		freqShift->started = false;
++	}
  	if (modFXType != ModFXType::NONE) {
  
  		LFOType modFXLFOWaveType{};
-@@ -75,6 +91,7 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+@@ -75,6 +116,8 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
  			                                      thisModFXDelayDepth, feedback, AudioEngine::renderInStereo);
  			break;
  		case ModFXType::GRAIN:
 +		case ModFXType::BRUNO_CHORUS: // handled above
++		case ModFXType::SHIFT:
  			break;
  		case ModFXType::DIMENSION:
  			processModFXBuffer<ModFXType::DIMENSION>(buffer, modFXRate, modFXDepth, modFXLFOWaveType, modFXDelayOffset,
-@@ -268,6 +285,7 @@ StereoSample ModFXProcessor::processOnePhaserSample(StereoSample sample, int32_t
+@@ -268,6 +311,10 @@ StereoSample ModFXProcessor::processOnePhaserSample(StereoSample sample, int32_t
  }
  
  void ModFXProcessor::resetMemory() {
 +	brunoChorus.started = false;
++	if (freqShift != nullptr) {
++		freqShift->started = false;
++	}
  	if (modFXBuffer) {
  		memset(modFXBuffer, 0, kModFXBufferSize * sizeof(StereoSample));
  	}
+@@ -286,6 +333,21 @@ void ModFXProcessor::setupBuffer() {
+ 		}
+ 	}
+ }
++void ModFXProcessor::setupShift() {
++	if (freqShift == nullptr) {
++		void* memory = delugeAlloc(sizeof(deluge::dsp::FreqShift));
++		if (memory != nullptr) {
++			freqShift = new (memory) deluge::dsp::FreqShift();
++		}
++	}
++}
++void ModFXProcessor::disableShift() {
++	if (freqShift != nullptr) {
++		freqShift->~FreqShift();
++		delugeDealloc(freqShift);
++		freqShift = nullptr;
++	}
++}
+ void ModFXProcessor::disableBuffer() {
+ 	if (modFXBuffer) {
+ 		delugeDealloc(modFXBuffer);
 diff --git a/src/deluge/model/mod_controllable/ModFXProcessor.h b/src/deluge/model/mod_controllable/ModFXProcessor.h
-index 47d9c940c..1067eb4f0 100644
+index 47d9c940c..5567acebd 100644
 --- a/src/deluge/model/mod_controllable/ModFXProcessor.h
 +++ b/src/deluge/model/mod_controllable/ModFXProcessor.h
-@@ -17,6 +17,7 @@
+@@ -17,6 +17,8 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
 +#include "dsp/drum_synth/bruno106_chorus.h"
++#include "dsp/freq_shift.h"
  #include "dsp/stereo_sample.h"
  #include "modulation/lfo.h"
  #include "util/containers.h"
-@@ -67,6 +68,13 @@ public:
+@@ -59,6 +61,7 @@ public:
+ 		if (modFXBuffer) {
+ 			delugeDealloc(modFXBuffer);
+ 		}
++		disableShift();
+ 	}
+ 	// Phaser
+ 	StereoSample phaserMemory{0, 0};
+@@ -67,11 +70,22 @@ public:
  	uint16_t modFXBufferWriteIndex{0};
  	LFO modFXLFO;
  	LFO modFXLFOStereo;
@@ -34577,6 +35867,15 @@ index 47d9c940c..1067eb4f0 100644
  	void processModFX(std::span<StereoSample> buffer, const ModFXType& modFXType, int32_t modFXRate, int32_t modFXDepth,
  	                  int32_t* postFXVolume, UnpatchedParamSet* unpatchedParams, bool anySoundComingIn);
  	void resetMemory();
+ 	void setupBuffer();
+ 	void disableBuffer();
++	/// SHIFT keeps its state and delay lines in its own heap block, only while it's the selected type
++	deluge::dsp::FreqShift* freqShift{nullptr};
++	void setupShift();
++	void disableShift();
+ 	void tickLFO(int32_t numSamples, int32_t phaseIncrement) {
+ 		// Do Mod FX
+ 		modFXLFO.tick(numSamples, phaseIncrement);
 diff --git a/src/deluge/model/mod_controllable/filters/filter_config.cpp b/src/deluge/model/mod_controllable/filters/filter_config.cpp
 index 486170691..f2ac253c6 100644
 --- a/src/deluge/model/mod_controllable/filters/filter_config.cpp
@@ -35284,7 +36583,7 @@ index a39f698ae..e7a14fe11 100644
  
  	/**
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index d935c3c5f..61ce61597 100644
+index d935c3c5f..3c3ad0504 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
 @@ -40,10 +40,14 @@
@@ -35367,7 +36666,7 @@ index d935c3c5f..61ce61597 100644
  		display->displayError(error); // E.g. show the CARD error.
  	}
  
-@@ -1214,6 +1236,13 @@ weAreInArrangementEditorOrInClipInstance:
+@@ -1214,6 +1236,19 @@ weAreInArrangementEditorOrInClipInstance:
  	writer.writeAttribute("inputTickMagnitude", getInputTickMagnitude());
  	writer.writeAttribute("swingAmount", swingAmount);
  	writer.writeAbsoluteSyncLevelToFile(this, "swingInterval", (SyncLevel)swingInterval, true);
@@ -35378,10 +36677,16 @@ index d935c3c5f..61ce61597 100644
 +		writer.writeAttribute("stumbleStyle", deluge::swing_style::getName(stumbleStyle).data());
 +		writer.writeAttribute("stumbleLevel", stumbleLevel);
 +	}
++
++	if (masterClip.type != deluge::dsp::MasterClipType::OFF) {
++		writer.writeAttribute("masterClip", deluge::dsp::MasterClip::getName(masterClip.type));
++		writer.writeAttribute("masterClipDrive", masterClip.driveDb);
++		writer.writeAttribute("masterClipCeiling", masterClip.ceilingDb);
++	}
  
  	if (tripletsOn) {
  		writer.writeAttribute("tripletsLevel", tripletsLevel);
-@@ -1428,6 +1457,11 @@ Error Song::readFromFile(Deserializer& reader) {
+@@ -1428,6 +1463,14 @@ Error Song::readFromFile(Deserializer& reader) {
  
  	outputClipInstanceListIsCurrentlyInvalid = true;
  
@@ -35389,11 +36694,14 @@ index d935c3c5f..61ce61597 100644
 +	stumble = false;
 +	stumbleStyle = deluge::swing_style::Style::HOPP;
 +	stumbleLevel = 0;
++	masterClip.type = deluge::dsp::MasterClipType::OFF;
++	masterClip.driveDb = 0;
++	masterClip.ceilingDb = -1;
 +
  	D_PRINTLN("");
  	D_PRINTLN("loading song!!!!!!!!!!!!!!");
  
-@@ -1710,6 +1744,25 @@ unknownTag:
+@@ -1710,6 +1753,42 @@ unknownTag:
  				reader.exitTag("swingInterval");
  			}
  
@@ -35416,10 +36724,27 @@ index d935c3c5f..61ce61597 100644
 +				reader.exitTag("stumbleLevel");
 +			}
 +
++			else if (!strcmp(tagName, "masterClip")) {
++				masterClip.type = deluge::dsp::MasterClip::fromName(reader.readTagOrAttributeValue());
++				reader.exitTag("masterClip");
++			}
++
++			else if (!strcmp(tagName, "masterClipDrive")) {
++				masterClip.driveDb =
++				    std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), 0, deluge::dsp::MasterClip::kMaxDriveDb);
++				reader.exitTag("masterClipDrive");
++			}
++
++			else if (!strcmp(tagName, "masterClipCeiling")) {
++				masterClip.ceilingDb =
++				    std::clamp<int32_t>(reader.readTagOrAttributeValueInt(), deluge::dsp::MasterClip::kMinCeilingDb, 0);
++				reader.exitTag("masterClipCeiling");
++			}
++
  			else if (!strcmp(tagName, "tripletsLevel")) {
  				tripletsLevel = reader.readTagOrAttributeValueInt();
  				reader.exitTag("tripletsLevel");
-@@ -2337,6 +2390,7 @@ skipInstance:
+@@ -2337,6 +2416,7 @@ skipInstance:
  
  	AudioEngine::logAction("aaa4.2");
  
@@ -35427,7 +36752,7 @@ index d935c3c5f..61ce61597 100644
  	setupPatchingForAllParamManagers();
  	AudioEngine::logAction("aaa4.3");
  
-@@ -2623,7 +2677,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
+@@ -2623,7 +2703,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
  }
  
  bool Song::hasAnySwing() {
@@ -35436,7 +36761,7 @@ index d935c3c5f..61ce61597 100644
  }
  
  void Song::resyncLFOs(bool reset_state) {
-@@ -3822,6 +3876,66 @@ void Song::setupPatchingForAllParamManagers() {
+@@ -3822,6 +3902,66 @@ void Song::setupPatchingForAllParamManagers() {
  	}
  }
  
@@ -35503,7 +36828,7 @@ index d935c3c5f..61ce61597 100644
  // Returns NULL if couldn't find one.
  // Supply stealInto to have it delete the "backed up" element, putting the contents into stealInto.
  ParamManager* Song::getBackedUpParamManagerForExactClip(ModControllableAudio* modControllable, Clip* clip,
-@@ -5073,39 +5187,43 @@ gotAnInstrument: {}
+@@ -5073,39 +5213,43 @@ gotAnInstrument: {}
  
  	// Synth or Kit
  	else {
@@ -35574,7 +36899,7 @@ index d935c3c5f..61ce61597 100644
  		}
  
  		display->displayLoadingAnimationText("Loading");
-@@ -5334,6 +5452,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
+@@ -5334,6 +5478,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
  		if (availabilityRequirement == Availability::ANY) {
  			break;
  		}
@@ -35583,7 +36908,7 @@ index d935c3c5f..61ce61597 100644
  		else if (availabilityRequirement == Availability::INSTRUMENT_AVAILABLE_IN_SESSION) {
  			if (!newInstrument || !getClipWithOutput(newInstrument, true)) {
  				break;
-@@ -5740,29 +5860,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
+@@ -5740,29 +5886,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
  	return newClip;
  }
  
@@ -35655,10 +36980,18 @@ index d935c3c5f..61ce61597 100644
  		// Reschedule all the other stuff
  		playbackHandler.swungTickScheduled = false;
 diff --git a/src/deluge/model/song/song.h b/src/deluge/model/song/song.h
-index 539fc922f..43c832002 100644
+index 539fc922f..3c9da2a3c 100644
 --- a/src/deluge/model/song/song.h
 +++ b/src/deluge/model/song/song.h
-@@ -30,6 +30,7 @@
+@@ -18,6 +18,7 @@
+ #pragma once
+ 
+ #include "definitions_cxx.hpp"
++#include "dsp/master_clip.h"
+ #include "gui/menu_item/reverb/model.h"
+ #include "io/midi/learned_midi.h"
+ #include "model/clip/clip.h"
+@@ -30,6 +31,7 @@
  #include "model/scale/preset_scales.h"
  #include "model/scale/scale_change.h"
  #include "model/scale/scale_mapper.h"
@@ -35666,7 +36999,7 @@ index 539fc922f..43c832002 100644
  #include "model/sync.h"
  #include "model/timeline_counter.h"
  #include "modulation/params/param.h"
-@@ -171,6 +172,8 @@ public:
+@@ -171,6 +173,8 @@ public:
  	                                        bool searchNonHibernating = true);
  	AudioOutput* getAudioOutputFromName(std::string_view name);
  	void setupPatchingForAllParamManagers();
@@ -35675,7 +37008,7 @@ index 539fc922f..43c832002 100644
  	void replaceInstrument(Instrument* oldInstrument, Instrument* newInstrument, bool keepNoteRowsWithMIDIInput = true);
  	void stopAllMIDIAndGateNotesPlaying();
  	void stopAllAuditioning();
-@@ -220,6 +223,12 @@ public:
+@@ -220,6 +224,13 @@ public:
  	int8_t swingAmount;
  	uint8_t swingInterval;
  
@@ -35683,12 +37016,13 @@ index 539fc922f..43c832002 100644
 +	// it's switched off again.
 +	bool stumble;
 +	deluge::swing_style::Style stumbleStyle; // Never Classic
++	deluge::dsp::MasterClip masterClip;      // Clipper / limiter at the very end of the song chain
 +	int8_t stumbleLevel;                     // 0 (straight) to swing_style::kMaxLevel
 +
  	Section sections[kMaxNumSections];
  
  	MusicalKey key;
-@@ -283,6 +292,14 @@ public:
+@@ -283,6 +294,14 @@ public:
  	Clip* syncScalingClip;
  	void setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction = false);
  	bool hasAnySwing();
@@ -38658,7 +39992,7 @@ index 98ff45ddd..1943aaffa 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 818e72233..fdc665300 100644
+index 818e72233..e16d40ea7 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -39,6 +39,7 @@
@@ -38734,6 +40068,16 @@ index 818e72233..fdc665300 100644
  
  		masterVolumeAdjustmentR = masterVolumeAdjustmentL; // This might have changed in the above function calls
  
+@@ -1122,6 +1134,9 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
+ 		masterVolumeAdjustmentL = ONE_Q31;
+ 		masterVolumeAdjustmentR = ONE_Q31;
+ 		logAction("mastercomp end");
++
++		// Bribes master clipper / limiter: the last thing before the codec (and resampling / stem export)
++		currentSong->masterClip.process(renderingBuffer);
+ 	}
+ }
+ void setMonitoringMode() { // Monitoring setup
 diff --git a/src/deluge/processing/engines/cpu_meter.h b/src/deluge/processing/engines/cpu_meter.h
 new file mode 100644
 index 000000000..c6b505e0c
@@ -39107,7 +40451,7 @@ index 000000000..1ad5d88dc
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..133aa338a 100644
+index 5f4a82450..62e833f7d 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -39578,16 +40922,27 @@ index 5f4a82450..133aa338a 100644
  ModFXType Sound::getModFXType() {
  	return modFXType_;
  }
-@@ -333,7 +747,7 @@ ModFXType Sound::getModFXType() {
+@@ -332,8 +746,18 @@ ModFXType Sound::getModFXType() {
+ // Returns false if not enough ram
  bool Sound::setModFXType(ModFXType newType) {
  
++	if (newType == ModFXType::SHIFT) {
++		modfx.setupShift();
++		if (modfx.freqShift == nullptr) {
++			return false;
++		}
++	}
++	else {
++		modfx.disableShift();
++	}
++
  	if (util::one_of(newType, {ModFXType::FLANGER, ModFXType::CHORUS, ModFXType::CHORUS_STEREO, ModFXType::WARBLE,
 -	                           ModFXType::DIMENSION})) {
 +	                           ModFXType::DIMENSION, ModFXType::BRUNO_CHORUS})) {
  		modfx.setupBuffer();
  		disableGrain();
  	}
-@@ -435,6 +849,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -435,6 +859,9 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		if (synthMode != SynthMode::RINGMOD) { // Compatibility with old XML files
  			synthMode = stringToSynthMode(contents);
  		}
@@ -39597,7 +40952,7 @@ index 5f4a82450..133aa338a 100644
  		// Uart::print("synth mode set to: ");
  		// Uart::println(synthMode);
  		reader.exitTag("mode");
-@@ -638,6 +1055,27 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -638,6 +1065,27 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("unison", true);
  	}
  
@@ -39625,7 +40980,7 @@ index 5f4a82450..133aa338a 100644
  	else if (!strcmp(tagName, "oscAPitchAdjust")) {
  		ENSURE_PARAM_MANAGER_EXISTS
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_OSC_A_PITCH_ADJUST, readAutomationUpToPos);
-@@ -1249,6 +1687,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1249,6 +1697,12 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		reader.exitTag("envelope3", true);
  	}
  
@@ -39638,7 +40993,7 @@ index 5f4a82450..133aa338a 100644
  	else if (!strcmp(tagName, "polyphonic")) {
  		polyphonic = stringToPolyphonyMode(reader.readTagOrAttributeValue());
  		reader.exitTag("polyphonic");
-@@ -1280,6 +1724,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
+@@ -1280,6 +1734,11 @@ Error Sound::readTagFromFileOrError(Deserializer& reader, char const* tagName, P
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -39650,7 +41005,7 @@ index 5f4a82450..133aa338a 100644
  	else if (!strcmp(tagName, "midiOutput")) {
  		reader.match('{');
  		while (*(tagName = reader.readNextTagOrAttributeName())) {
-@@ -1347,6 +1796,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
+@@ -1347,6 +1806,13 @@ PatchCableAcceptance Sound::maySourcePatchToParam(PatchSource s, uint8_t p, Para
  		return PatchCableAcceptance::DISALLOWED; // Can't patch local source to global param
  	}
  
@@ -39664,7 +41019,7 @@ index 5f4a82450..133aa338a 100644
  	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
  
  	switch (p) {
-@@ -1514,7 +1970,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
+@@ -1514,7 +1980,8 @@ void Sound::noteOn(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBase* a
  
  	ModelStackWithSoundFlags* modelStackWithSoundFlags = modelStack->addSoundFlags();
  
@@ -39674,7 +41029,7 @@ index 5f4a82450..133aa338a 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2103,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1646,7 +2113,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -39693,7 +41048,7 @@ index 5f4a82450..133aa338a 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1654,6 +2121,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1654,6 +2131,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  			const ActiveVoice& voice = voiceToReuse != nullptr ? *voiceToReuse : this->acquireVoice();
  			int32_t envelopePositions[kNumEnvelopes];
  
@@ -39705,7 +41060,7 @@ index 5f4a82450..133aa338a 100644
  			if (voiceToReuse != nullptr) [[unlikely]] {
  				// The osc phases and stuff will remain
  				for (int32_t e = 0; e < kNumEnvelopes; e++) {
-@@ -1692,6 +2164,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1692,6 +2174,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  
  	lastNoteCode = noteCodePostArp; // Store for porta. We store that at both note-on and note-off.
  
@@ -39714,7 +41069,7 @@ index 5f4a82450..133aa338a 100644
  	// Send midi out for sound drums
  	if (outputMidiChannel != MIDI_CHANNEL_NONE) {
  		int32_t outputNoteCode = noteCodePostArp;
-@@ -1708,9 +2182,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1708,9 +2192,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendNote(this, true, outputNoteCode, velocity, outputMidiChannel, 0);
  
  		// If the note doesn't have a tail (for ONCE samples for example and if ARP is OFF), we will never get a noteOff
@@ -39726,7 +41081,7 @@ index 5f4a82450..133aa338a 100644
  		}
  	}
  }
-@@ -1778,6 +2252,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
+@@ -1778,6 +2262,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
  
  // noteCode = ALL_NOTES_OFF (default) means stop *any* voice, regardless of noteCode
  void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t noteCode) {
@@ -39735,7 +41090,7 @@ index 5f4a82450..133aa338a 100644
  	// Send midi note offs out for specific notes,
  	// but only if the type of sound allows note tails (if not, note off was already sent right after its note on)
  	if (outputMidiChannel != MIDI_CHANNEL_NONE && allowNoteTails(modelStack, true)) {
-@@ -1865,6 +2341,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2351,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -39752,7 +41107,7 @@ index 5f4a82450..133aa338a 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2413,11 @@ justSwitchOff:
+@@ -1927,6 +2423,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -39764,7 +41119,7 @@ index 5f4a82450..133aa338a 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2667,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2677,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -39773,7 +41128,7 @@ index 5f4a82450..133aa338a 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2876,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2385,6 +2886,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
  
@@ -39786,7 +41141,7 @@ index 5f4a82450..133aa338a 100644
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
  		return;
-@@ -2392,6 +2889,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2899,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -39796,7 +41151,7 @@ index 5f4a82450..133aa338a 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +2996,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +3006,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -39827,7 +41182,7 @@ index 5f4a82450..133aa338a 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +3026,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +3036,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -39849,7 +41204,7 @@ index 5f4a82450..133aa338a 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +3056,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +3066,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -39864,7 +41219,7 @@ index 5f4a82450..133aa338a 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2605,9 +3125,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2605,9 +3135,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	int32_t modFXDepth = paramFinalValues[params::GLOBAL_MOD_FX_DEPTH - params::FIRST_GLOBAL];
  	int32_t modFXRate = paramFinalValues[params::GLOBAL_MOD_FX_RATE - params::FIRST_GLOBAL];
  
@@ -39891,7 +41246,7 @@ index 5f4a82450..133aa338a 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3429,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3439,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -39927,7 +41282,7 @@ index 5f4a82450..133aa338a 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3535,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3545,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -39943,7 +41298,7 @@ index 5f4a82450..133aa338a 100644
  }
  
  // Set cents for master transpose
-@@ -3042,6 +3601,32 @@ void Sound::setupUnisonStereoSpread() {
+@@ -3042,6 +3611,32 @@ void Sound::setupUnisonStereoSpread() {
  	}
  }
  
@@ -39976,7 +41331,7 @@ index 5f4a82450..133aa338a 100644
  void Sound::calculateEffectiveVolume() {
  	// volumeNeutralValueForUnison = (float)getParamNeutralValue(params::LOCAL_VOLUME) / sqrt(numUnison);
  	volumeNeutralValueForUnison = (float)134217728 / sqrtf(numUnison);
-@@ -3053,8 +3638,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3648,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -39997,7 +41352,7 @@ index 5f4a82450..133aa338a 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3696,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3706,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -40098,7 +41453,7 @@ index 5f4a82450..133aa338a 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3903,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3913,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -40107,7 +41462,7 @@ index 5f4a82450..133aa338a 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3401,6 +4092,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3401,6 +4102,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  				return Error::INSUFFICIENT_RAM;
  			}
  			int len = reader.readTagOrAttributeValueHexBytes(patch->params, 156);
@@ -40115,7 +41470,7 @@ index 5f4a82450..133aa338a 100644
  			reader.exitTag("dx7patch");
  		}
  		else if (!strcmp(tagName, "dx7randomdetune")) {
-@@ -3411,6 +4103,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4113,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -40137,7 +41492,7 @@ index 5f4a82450..133aa338a 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4140,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4150,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -40148,7 +41503,7 @@ index 5f4a82450..133aa338a 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4354,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4364,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -40158,7 +41513,7 @@ index 5f4a82450..133aa338a 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4481,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4491,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -40170,7 +41525,7 @@ index 5f4a82450..133aa338a 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4575,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4585,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -40189,7 +41544,7 @@ index 5f4a82450..133aa338a 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4769,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4779,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -40210,7 +41565,7 @@ index 5f4a82450..133aa338a 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4862,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4872,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -40222,7 +41577,7 @@ index 5f4a82450..133aa338a 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4880,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4890,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -40233,7 +41588,7 @@ index 5f4a82450..133aa338a 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4933,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4943,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -40244,7 +41599,7 @@ index 5f4a82450..133aa338a 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4255,6 +5010,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4255,6 +5020,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	writer.writeAttribute("spread", unisonStereoSpread, false);
  	writer.closeTag();
  
@@ -40259,7 +41614,7 @@ index 5f4a82450..133aa338a 100644
  	if (paramManager) {
  		writer.writeOpeningTagBeginning("defaultParams", true);
  		Sound::writeParamsToFile(writer, paramManager, false);
-@@ -4441,6 +5204,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5214,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -40282,7 +41637,7 @@ index 5f4a82450..133aa338a 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4818,6 +5597,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+@@ -4818,6 +5607,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
  		return true;
  	}
  
@@ -40294,7 +41649,7 @@ index 5f4a82450..133aa338a 100644
  	if (unisonStereoSpread && numUnison > 1) {
  		return true;
  	}
-@@ -4948,6 +5732,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5742,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -40817,7 +42172,7 @@ index b2e373032..50316f348 100644
  Error openFavouriteFile(FilePointer* filePointer);
  Error loadFavouriteFile(FilePointer* filePointer, String* fileName);
 diff --git a/src/deluge/util/functions.cpp b/src/deluge/util/functions.cpp
-index c1d99a448..d1b6318eb 100644
+index c1d99a448..7d63b1531 100644
 --- a/src/deluge/util/functions.cpp
 +++ b/src/deluge/util/functions.cpp
 @@ -117,6 +117,9 @@ int32_t getParamNeutralValue(int32_t p) {
@@ -40870,21 +42225,26 @@ index c1d99a448..d1b6318eb 100644
  	else {
  		return SynthMode::SUBTRACTIVE;
  	}
-@@ -891,6 +906,8 @@ char const* fxTypeToString(ModFXType fxType) {
+@@ -891,6 +906,10 @@ char const* fxTypeToString(ModFXType fxType) {
  		return "StereoChorus";
  	case ModFXType::GRAIN:
  		return "grainFX";
 +	case ModFXType::BRUNO_CHORUS:
 +		return "brunoChorus";
++	case ModFXType::SHIFT:
++		return "freqShift";
  
  	case ModFXType::PHASER:
  		return "phaser";
-@@ -919,6 +936,9 @@ ModFXType stringToFXType(char const* string) {
+@@ -919,6 +938,12 @@ ModFXType stringToFXType(char const* string) {
  	else if (!strcmp(string, "grainFX")) {
  		return ModFXType::GRAIN;
  	}
 +	else if (!strcmp(string, "brunoChorus")) {
 +		return ModFXType::BRUNO_CHORUS;
++	}
++	else if (!strcmp(string, "freqShift")) {
++		return ModFXType::SHIFT;
 +	}
  	else if (!strcmp(string, "phaser")) {
  		return ModFXType::PHASER;
