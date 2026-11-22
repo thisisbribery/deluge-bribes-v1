@@ -1,3 +1,18 @@
+diff --git a/src/RZA1/usb/r_usb_basic/src/driver/r_usb_hmanager.c b/src/RZA1/usb/r_usb_basic/src/driver/r_usb_hmanager.c
+index 5333e2e3f..aded5d27f 100644
+--- a/src/RZA1/usb/r_usb_basic/src/driver/r_usb_hmanager.c
++++ b/src/RZA1/usb/r_usb_basic/src/driver/r_usb_hmanager.c
+@@ -184,6 +184,10 @@ static uint16_t usb_hstd_enumeration(usb_utr_t* ptr)
+                 /* Set Address */
+                 case 1:
+ 
++                    /* Allow recovery after SET_ADDRESS before using the new address (USB 2.0 section 9.2.6.3).
++                     * Use 10 ms for compatibility with devices such as the Sequential Take 5. */
++                    usb_cpu_delay_xms(10);
++
+                     descriptor_table = (uint8_t*)g_usb_hstd_device_descriptor[ptr->ip];
+                     devsel           = (uint16_t)(g_usb_hstd_device_addr[ptr->ip] << USB_DEVADDRBIT);
+ 
 diff --git a/src/definitions_cxx.hpp b/src/definitions_cxx.hpp
 index 0c5a8e055..63e3141ba 100644
 --- a/src/definitions_cxx.hpp
@@ -20644,10 +20659,10 @@ index 0b1d60c02..73aaaa061 100644
  
 diff --git a/src/deluge/gui/menu_item/delay/feedback.h b/src/deluge/gui/menu_item/delay/feedback.h
 new file mode 100644
-index 000000000..6b5fdae12
+index 000000000..57783525a
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/delay/feedback.h
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,48 @@
 +/*
 + * Copyright (c) 2026 thisisbribery
 + *
@@ -20667,6 +20682,10 @@ index 000000000..6b5fdae12
 +#pragma once
 +
 +#include "gui/menu_item/delay/amount_unpatched.h"
++#include "gui/ui/sound_editor.h"
++#include "model/mod_controllable/mod_controllable_audio.h"
++#include "modulation/params/param_manager.h"
++#include "modulation/params/param_set.h"
 +
 +namespace deluge::gui::menu_item::delay {
 +
@@ -20676,6 +20695,20 @@ index 000000000..6b5fdae12
 +	using Amount_Unpatched::Amount_Unpatched;
 +
 +	void getColumnLabel(StringBuf& label) override { label.append(l10n::get(l10n::String::STRING_FOR_FEEDBACK_SHORT)); }
++
++	/// An older song's feedback follows its amount until it's set, so show the amount: turning it then carries on
++	/// from what is heard
++	void readCurrentValue() override {
++		namespace params = deluge::modulation::params;
++		ParamManager* paramManager = soundEditor.currentParamManager;
++		int32_t value = paramManager->getUnpatchedParamSet()->getValue(getP());
++		if (value == ModControllableAudio::kDelayFeedbackFollowsAmount) {
++			value = soundEditor.currentSound != nullptr
++			            ? paramManager->getPatchedParamSet()->getValue(params::GLOBAL_DELAY_FEEDBACK)
++			            : paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_AMOUNT);
++		}
++		this->setValue(computeCurrentValueForStandardMenuItem(value));
++	}
 +};
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/delay/tone.h b/src/deluge/gui/menu_item/delay/tone.h
@@ -22184,6 +22217,18 @@ index e484f187b..3456931f1 100644
  	}
  	else if (param == -1) {
  		patch->random_detune = val;
+diff --git a/src/deluge/gui/menu_item/file_selector.cpp b/src/deluge/gui/menu_item/file_selector.cpp
+index cf6866ce8..5953b3122 100644
+--- a/src/deluge/gui/menu_item/file_selector.cpp
++++ b/src/deluge/gui/menu_item/file_selector.cpp
+@@ -41,6 +41,7 @@ void FileSelector::beginSession(MenuItem* navigatedBackwardFrom) {
+ 	}
+ 
+ 	if (!openUI(&sampleBrowser)) {
++		sampleBrowser.clearMenuHeadingTo();
+ 		uiTimerManager.unsetTimer(TimerName::SHORTCUT_BLINK);
+ 	}
+ }
 diff --git a/src/deluge/gui/menu_item/filter/mode.h b/src/deluge/gui/menu_item/filter/mode.h
 index 51b360b01..40c661abc 100644
 --- a/src/deluge/gui/menu_item/filter/mode.h
@@ -22473,6 +22518,20 @@ index 54cac5678..454dc0fcf 100644
  };
  submenu::ActualSource source1Menu{STRING_FOR_OSCILLATOR_2, child7, 1};
  modulator::Transpose modulator0TransposeMenu{STRING_FOR_TRANSPOSE, STRING_FOR_FM_MOD_TRAN_MENU_TITLE, params::LOCAL_MODULATOR_0_PITCH_ADJUST, 0};
+diff --git a/src/deluge/gui/menu_item/horizontal_menu_group.cpp b/src/deluge/gui/menu_item/horizontal_menu_group.cpp
+index 20d88567a..d13e96f58 100644
+--- a/src/deluge/gui/menu_item/horizontal_menu_group.cpp
++++ b/src/deluge/gui/menu_item/horizontal_menu_group.cpp
+@@ -25,7 +25,8 @@
+ namespace deluge::gui::menu_item {
+ 
+ std::string_view HorizontalMenuGroup::getTitle() const {
+-	return current_menu_->getTitle();
++	// current_menu_ is only set once preparePaging() has run, which a vertical render never does
++	return current_menu_ != nullptr ? current_menu_->getTitle() : HorizontalMenu::getTitle();
+ }
+ 
+ void HorizontalMenuGroup::beginSession(MenuItem* navigatedBackwardFrom) {
 diff --git a/src/deluge/gui/menu_item/kit_gate_out.h b/src/deluge/gui/menu_item/kit_gate_out.h
 new file mode 100644
 index 000000000..d837bc9d6
@@ -22894,6 +22953,39 @@ index 2409a2c35..e3bd0985d 100644
  	[[nodiscard]] virtual RenderingStyle getRenderingStyle() const { return KNOB; }
  	virtual float normalize(int32_t value);
  
+diff --git a/src/deluge/gui/menu_item/osc/audio_recorder.h b/src/deluge/gui/menu_item/osc/audio_recorder.h
+index 3f8ea3412..9465afe4d 100644
+--- a/src/deluge/gui/menu_item/osc/audio_recorder.h
++++ b/src/deluge/gui/menu_item/osc/audio_recorder.h
+@@ -17,6 +17,7 @@
+ #pragma once
+ #include "gui/l10n/l10n.h"
+ #include "gui/menu_item/formatted_title.h"
++#include "gui/menu_item/horizontal_menu.h"
+ #include "gui/menu_item/menu_item.h"
+ #include "gui/ui/audio_recorder.h"
+ #include "gui/ui/sound_editor.h"
+@@ -37,15 +38,16 @@ public:
+ 		soundEditor.shouldGoUpOneLevelOnBegin = true;
+ 		soundEditor.setCurrentSource(source_id_);
+ 
+-		if (parentMenuHeadingTo != nullptr && menuItemHeadingTo != nullptr) {
++		// These can be left over from a session that never began, so only go there if it'll render horizontally
++		if (parentMenuHeadingTo != nullptr && menuItemHeadingTo != nullptr
++		    && parentMenuHeadingTo->renderingStyle() == Submenu::HORIZONTAL) {
+ 			parentMenuHeadingTo->focusChild(menuItemHeadingTo);
+ 			soundEditor.navigationDepth = 0;
+ 			soundEditor.menuItemNavigationRecord[soundEditor.navigationDepth] = parentMenuHeadingTo;
+ 			soundEditor.shouldGoUpOneLevelOnBegin = false;
+-
+-			parentMenuHeadingTo = nullptr;
+-			menuItemHeadingTo = nullptr;
+ 		}
++		parentMenuHeadingTo = nullptr;
++		menuItemHeadingTo = nullptr;
+ 
+ 		if (bool success = openUI(&audioRecorder); !success) {
+ 			if (getCurrentUI() == &soundEditor) {
 diff --git a/src/deluge/gui/menu_item/osc/type.h b/src/deluge/gui/menu_item/osc/type.h
 index d5d5a26f5..e3af29e82 100644
 --- a/src/deluge/gui/menu_item/osc/type.h
@@ -23265,6 +23357,23 @@ index 000000000..9f79503bf
 +};
 +
 +} // namespace deluge::gui::menu_item::song
+diff --git a/src/deluge/gui/menu_item/submenu.cpp b/src/deluge/gui/menu_item/submenu.cpp
+index 95d3f6ea5..0312df07a 100644
+--- a/src/deluge/gui/menu_item/submenu.cpp
++++ b/src/deluge/gui/menu_item/submenu.cpp
+@@ -62,6 +62,12 @@ void Submenu::renderInHorizontalMenu(const SlotPosition& slot) {
+ }
+ 
+ void Submenu::drawPixelsForOled() {
++	// The walks below only stop if current_item_ points into our own items. A HorizontalMenuGroup points it into its
++	// child menus' items, so if one is ever drawn vertically, draw nothing rather than walking off through memory
++	if (current_item_ < items.begin() || current_item_ > items.end()) {
++		return;
++	}
++
+ 	// Collect items before the current item, this is possibly more than we need.
+ 	etl::vector<MenuItem*, kOLEDMenuNumOptionsVisible> before = {};
+ 	for (auto it = current_item_ - 1; it != items.begin() - 1 && before.size() < before.capacity(); it--) {
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
 index 000000000..662c41d01
@@ -23823,11 +23932,80 @@ index 56bdf4934..75dee4c1a 100644
  	static int32_t numFileItemsDeletedAtEnd;
  	// These hold the displayName of the boundary FileItem kept when we cull items off either end of the list to stay
  	// under the memory cap. They must own a *copy* of the name (not borrow the FileItem's buffer): the FileItem they
+diff --git a/src/deluge/gui/ui/browser/sample_browser.cpp b/src/deluge/gui/ui/browser/sample_browser.cpp
+index 6469ff215..428a9f6f9 100644
+--- a/src/deluge/gui/ui/browser/sample_browser.cpp
++++ b/src/deluge/gui/ui/browser/sample_browser.cpp
+@@ -264,6 +264,7 @@ void SampleBrowser::currentFileChanged(int32_t movementDirection) {
+ }
+ 
+ void SampleBrowser::exitAndNeverDeleteDrum() {
++	clearMenuHeadingTo();
+ 	display->setNextTransitionDirection(-1);
+ 	close();
+ }
+@@ -272,6 +273,9 @@ void SampleBrowser::exitAndNeverDeleteDrum() {
+ void SampleBrowser::exitAction() {
+ 	UI* redrawUI = nullptr;
+ 
++	// No file was chosen, so don't jump to the horizontal menu next time a file is chosen from some other route
++	clearMenuHeadingTo();
++
+ 	display->setNextTransitionDirection(-1);
+ 	if (!isUIOpen(&soundEditor)) {
+ 		// If no file was selected, the user wanted to get out of creating this Drum.
+@@ -376,6 +380,7 @@ void SampleBrowser::enterKeyPress() {
+ 
+ 		if (error != Error::NONE) {
+ 			display->displayError(error);
++			clearMenuHeadingTo();
+ 			close(); // Don't use goBackToSoundEditor() because that would do a left-scroll
+ 		}
+ 	}
+@@ -1164,19 +1169,20 @@ doLoadAsSample:
+ 	}
+ 
+ 	if (!loadWithoutExiting) {
++		menu_item::HorizontalMenu* parentMenu = parentMenuHeadingTo;
++		MenuItem* menuItem = menuItemHeadingTo;
+ 		exitAndNeverDeleteDrum();
+ 
+-		if (menuItemHeadingTo != nullptr && parentMenuHeadingTo != nullptr) {
++		// A HorizontalMenuGroup can't be drawn as a vertical menu, so only go there if it'll render horizontally
++		if (menuItem != nullptr && parentMenu != nullptr
++		    && parentMenu->renderingStyle() == menu_item::Submenu::HORIZONTAL) {
+ 			if (isUIOpen(&soundEditor)) {
+ 				closeUI(&soundEditor);
+ 			}
+ 
+-			parentMenuHeadingTo->focusChild(menuItemHeadingTo);
+-			soundEditor.setup(getCurrentClip(), parentMenuHeadingTo);
++			parentMenu->focusChild(menuItem);
++			soundEditor.setup(getCurrentClip(), parentMenu);
+ 			soundEditor.enterOrUpdateSoundEditor(true);
+-
+-			parentMenuHeadingTo = nullptr;
+-			menuItemHeadingTo = nullptr;
+ 		}
+ 
+ 		uiNeedsRendering(&audioClipView);
 diff --git a/src/deluge/gui/ui/browser/sample_browser.h b/src/deluge/gui/ui/browser/sample_browser.h
-index 039e1203c..7f10e5940 100644
+index 039e1203c..400832800 100644
 --- a/src/deluge/gui/ui/browser/sample_browser.h
 +++ b/src/deluge/gui/ui/browser/sample_browser.h
-@@ -71,6 +71,8 @@ public:
+@@ -65,12 +65,19 @@ public:
+ 
+ 	String lastFilePathLoaded;
+ 
+-	// menus to open when a sample file is selected
++	// menus to open when a sample file is selected. Only valid for one browser session.
++	// should be cleared on exit or failure
+ 	deluge::gui::menu_item::HorizontalMenu* parentMenuHeadingTo{nullptr};
+ 	MenuItem* menuItemHeadingTo{nullptr};
++	void clearMenuHeadingTo() {
++		parentMenuHeadingTo = nullptr;
++		menuItemHeadingTo = nullptr;
++	}
  
  	// ui
  	UIType getUIType() override { return UIType::SAMPLE_BROWSER; }
@@ -23854,7 +24032,7 @@ index 3b9089ec8..0679f9646 100644
  					exitScaleMode();
  				}
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
-index a2997fff5..ad4b328d2 100644
+index a2997fff5..a2e4286d1 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.cpp
 @@ -19,6 +19,8 @@
@@ -24013,7 +24191,23 @@ index a2997fff5..ad4b328d2 100644
  		close();
  	}
  }
-@@ -506,6 +555,7 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
+@@ -456,12 +505,10 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
+ 		return;
+ 	}
+ 
+-	InstrumentClip* clip = getCurrentInstrumentClip();
+-
+-	// don't allow clip type change if clip is not empty
+-	// only impose this restriction if switching to/from kit clip
++	// Switching to/from a kit requires the target clip and output to be empty.
++	// Arranger browsing replaces an output without a target clip; the current clip may belong to another track.
+ 	if (((outputTypeToLoad == OutputType::KIT) || (newOutputType == OutputType::KIT))
+-	    && (!clip->isEmpty() || !clip->output->isEmpty())) {
++	    && ((instrumentClipToLoadFor && !instrumentClipToLoadFor->isEmpty()) || !instrumentToReplace->isEmpty())) {
+ 		return;
+ 	}
+ 
+@@ -506,6 +553,7 @@ void LoadInstrumentPresetUI::changeOutputType(OutputType newOutputType) {
  
  	// Or, for normal synths, kits and midi
  	else {
@@ -24021,7 +24215,7 @@ index a2997fff5..ad4b328d2 100644
  		OutputType oldOutputType = outputTypeToLoad;
  		outputTypeToLoad = newOutputType;
  
-@@ -1153,10 +1203,260 @@ Error LoadInstrumentPresetUI::performLoadSynthToKit() {
+@@ -1153,10 +1201,260 @@ Error LoadInstrumentPresetUI::performLoadSynthToKit() {
  }
  // Previously called "exitAndResetInstrumentToInitial()". Does just that.
  void LoadInstrumentPresetUI::exitAction() {
@@ -24282,7 +24476,7 @@ index a2997fff5..ad4b328d2 100644
  ActionResult LoadInstrumentPresetUI::padAction(int32_t x, int32_t y, int32_t on) {
  
  	// Audition pad
-@@ -1237,6 +1537,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
+@@ -1237,6 +1535,15 @@ void LoadInstrumentPresetUI::instrumentEdited(Instrument* instrument) {
  	}
  }
  
@@ -24298,7 +24492,7 @@ index a2997fff5..ad4b328d2 100644
  // Caller must set currentDir before calling this.
  // Caller must call emptyFileItems() at some point after calling this function.
  // song may be supplied as NULL, in which case it won't be searched for Instruments; sometimes this will get called when
-@@ -1298,7 +1607,7 @@ startDoingFolders:
+@@ -1298,7 +1605,7 @@ startDoingFolders:
  		// Look through our list of FileItems, for a preset.
  		for (int32_t i = 0; i < fileItems.getNumElements(); i++) {
  			auto* fileItem = (FileItem*)fileItems.getElementAddress(i);
@@ -24307,13 +24501,13 @@ index a2997fff5..ad4b328d2 100644
  				return fileItem; // We found a preset / file.
  			}
  		}
-@@ -1462,11 +1771,17 @@ needToGrabLeftmostButHaveToReadFirst:
+@@ -1462,11 +1769,17 @@ needToGrabLeftmostButHaveToReadFirst:
  /// Caller must call emptyFileItems() at some point after calling this function - unless an error is returned
  /// Caller must remove OLED working animation after calling this too.
  PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset, Instrument* oldInstrument,
 -                                                                  Availability availabilityRequirement, bool doBlink) {
 +                                                                  Availability availabilityRequirement, bool doBlink,
-+                                                                  char const* fromFolderStart) {
++                                                                  Clip* displayClip, char const* fromFolderStart) {
  
  	AudioEngine::logAction("doPresetNavigation");
  
@@ -24327,7 +24521,7 @@ index a2997fff5..ad4b328d2 100644
  	OutputType outputType = oldInstrument->type;
  
  	PresetNavigationResult toReturn;
-@@ -1474,10 +1789,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
+@@ -1474,10 +1787,13 @@ PresetNavigationResult LoadInstrumentPresetUI::doPresetNavigation(int32_t offset
  	String oldNameString; // We only might use this later for temporary storage
  	String newName;
  
@@ -24345,7 +24539,7 @@ index a2997fff5..ad4b328d2 100644
  	}
  
  readAgain:
-@@ -1603,6 +1921,17 @@ doneMoving:
+@@ -1603,12 +1919,23 @@ doneMoving:
  	if (availabilityRequirement == Availability::INSTRUMENT_UNUSED && isAlreadyInSong && wrapped < 2) {
  		goto moveAgain;
  	}
@@ -24363,8 +24557,24 @@ index a2997fff5..ad4b328d2 100644
  
  	toReturn.loadedFromFile = false;
  	bool isHibernating = toReturn.fileItem->instrument && !toReturn.fileItem->instrumentAlreadyInSong;
+ 
+ 	if (toReturn.fileItem->instrument) {
+-		view.displayOutputName(toReturn.fileItem->instrument, doBlink);
++		view.displayOutputName(toReturn.fileItem->instrument, doBlink, displayClip);
+ 	}
+ 	else {
+ 		toReturn.error = toReturn.fileItem->getFilenameWithoutExtension(&newName);
+@@ -1621,7 +1948,7 @@ doneMoving:
+ 			emptyFileItems();
+ 			return toReturn;
+ 		}
+-		view.drawOutputNameFromDetails(outputType, 0, 0, newName.get(), newName.isEmpty(), false, doBlink);
++		view.drawOutputNameFromDetails(outputType, 0, 0, newName.get(), newName.isEmpty(), false, doBlink, displayClip);
+ 	}
+ 
+ 	if (display->haveOLED()) {
 diff --git a/src/deluge/gui/ui/load/load_instrument_preset_ui.h b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
-index f4e341a9b..918674f66 100644
+index f4e341a9b..0063cf875 100644
 --- a/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 +++ b/src/deluge/gui/ui/load/load_instrument_preset_ui.h
 @@ -53,8 +53,10 @@ public:
@@ -24375,7 +24585,7 @@ index f4e341a9b..918674f66 100644
  	PresetNavigationResult doPresetNavigation(int32_t offset, Instrument* oldInstrument,
 -	                                          Availability availabilityRequirement, bool doBlink);
 +	                                          Availability availabilityRequirement, bool doBlink,
-+	                                          char const* fromFolderStart = nullptr);
++	                                          Clip* displayClip = nullptr, char const* fromFolderStart = nullptr);
  	void setupLoadInstrument(OutputType newOutputType, Instrument* instrumentToReplace_,
  	                         InstrumentClip* instrumentClipToLoadFor_) {
  		Browser::outputTypeToLoad = newOutputType;
@@ -25993,7 +26203,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index 1cd5b7410..10ae348dc 100644
+index 1cd5b7410..91184dd39 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -2,7 +2,10 @@
@@ -26186,7 +26396,7 @@ index 1cd5b7410..10ae348dc 100644
  		do_sound_checks = true;
  	}
  	return {item, do_sound_checks};
-@@ -1476,7 +1569,111 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
+@@ -1476,7 +1569,119 @@ std::tuple<MenuItem*, bool> SoundEditor::get_basic_shortcut_action(int32_t x, in
  
  static const uint32_t shortcutPadUIModes[] = {UI_MODE_AUDITIONING, UI_MODE_HOLDING_AFFECT_ENTIRE_IN_SOUND_EDITOR, 0};
  
@@ -26295,10 +26505,18 @@ index 1cd5b7410..10ae348dc 100644
 +	if (!on) {
 +		endShortcutName(x, y);
 +	}
++
++	// Underlying views can forward pads here while the sound editor is open. Apply
++	// this restriction here too, so keyboard/performance shortcuts cannot bypass it.
++	// Settings has no clip parameter context for sound parameter shortcuts.
++	if (isUIOpen(this) && (inSettingsMenu() || inNoteEditor() || inNoteRowEditor())) {
++		return ActionResult::NOT_DEALT_WITH;
++	}
++
  	// a bunch of other views call this, in which case we actually want to know if we *would* edit kit affect entire
  	// if we were to open a menu. There's a weird edge case in kits otherwise where trying to open a kit param that
  	// doesn't exist in the current selected drum row (like if a filter is off or different modfx) otherwise
-@@ -1614,10 +1811,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1614,10 +1819,17 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  			        (x == 15 && y >= 1 && y <= 3))) {
  				//< randomizer shortcuts
  
@@ -26317,7 +26535,7 @@ index 1cd5b7410..10ae348dc 100644
  
  				// Replace the current shortcut with a second layer shortcut if the pad was pressed twice
  				secondLayerShortcutsToggled =
-@@ -1626,7 +1830,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1626,7 +1838,7 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				        ? !secondLayerShortcutsToggled
  				        : false;
  
@@ -26326,7 +26544,7 @@ index 1cd5b7410..10ae348dc 100644
  					if (const auto secondLayerItem = paramShortcutsForSoundsSecondLayer[x][y];
  					    secondLayerItem != nullptr) {
  						item = secondLayerItem;
-@@ -1634,6 +1838,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1634,6 +1846,19 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  				}
  			}
  		}
@@ -26346,7 +26564,7 @@ index 1cd5b7410..10ae348dc 100644
  
  		if (item) {
  			if (item == comingSoonMenu) {
-@@ -1658,7 +1875,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1658,7 +1883,11 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  
  			// Special shortcut for Note Row Editor menu: [audition pad] + [sequence direction pad]
  			Clip* currentClip = getCurrentClip();
@@ -26359,7 +26577,7 @@ index 1cd5b7410..10ae348dc 100644
  			    && runtimeFeatureSettings.get(HorizontalMenus) == On
  			    && instrumentClipView.getNumNoteRowsAuditioning() == 1) {
  
-@@ -1675,6 +1896,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1675,6 +1904,18 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  			if (!setupSuccess && item == &modulator0Volume && currentSource->oscType == OscType::DX7) {
  				item = &dxParam;
  				setupSuccess = setup(currentClip, item, thingIndex);
@@ -26378,7 +26596,7 @@ index 1cd5b7410..10ae348dc 100644
  			}
  
  			if (!setupSuccess) {
-@@ -1682,6 +1915,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
+@@ -1682,6 +1923,12 @@ ActionResult SoundEditor::potentialShortcutPadAction(int32_t x, int32_t y, bool
  			}
  
  			enterOrUpdateSoundEditor(on);
@@ -26391,7 +26609,7 @@ index 1cd5b7410..10ae348dc 100644
  		}
  	}
  
-@@ -1727,6 +1966,14 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
+@@ -1727,13 +1974,19 @@ ActionResult SoundEditor::padAction(int32_t x, int32_t y, int32_t on) {
  		return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
  	}
  
@@ -26405,8 +26623,41 @@ index 1cd5b7410..10ae348dc 100644
 +
  	RootUI* rootUI = getRootUI();
  
- 	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
-@@ -2170,6 +2417,7 @@ doMIDIOrCV:
+-	if (!inSettingsMenu() && !inNoteEditor() && !inNoteRowEditor()) {
+-		ActionResult result = potentialShortcutPadAction(x, y, on);
+-		if (result != ActionResult::NOT_DEALT_WITH) {
+-			return result;
+-		}
++	ActionResult result = potentialShortcutPadAction(x, y, on);
++	if (result != ActionResult::NOT_DEALT_WITH) {
++		return result;
+ 	}
+ 
+ 	if (rootUI == &keyboardScreen) {
+@@ -2094,7 +2347,10 @@ doMIDIOrCV:
+ 
+ 	// This isn't a very nice solution, but we have to set currentParamManager before calling
+ 	// checkPermissionToBeginSession(), because in a minority of cases, like "patch cable strength" / "modulation
+-	// depth", it needs this.
++	// depth", it needs this. If permission is refused, the menu that's open stays open, so put these back - or it'd
++	// be left reading through another output's ParamManager (E411 if that has no patched params)
++	ParamManagerForTimeline* const previousParamManager = currentParamManager;
++	ModControllableAudio* const previousModControllable = currentModControllable;
+ 	currentParamManager = newParamManager;
+ 	// And we also have to set currentModControllable before focusing on the child item in a horizontal menu
+ 	currentModControllable = newModControllable;
+@@ -2112,6 +2368,10 @@ doMIDIOrCV:
+ 	    horizontal_menu_child->checkPermissionToBeginSession(newModControllable, sourceIndex, &newRange);
+ 
+ 	if (result == MenuPermission::NO) {
++		// The browser won't be opened so forget where maybeGetParentMenu() said to go once a file is chosen
++		sampleBrowser.clearMenuHeadingTo();
++		currentParamManager = previousParamManager;
++		currentModControllable = previousModControllable;
+ 		display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_PARAMETER_NOT_APPLICABLE));
+ 		return false;
+ 	}
+@@ -2170,6 +2430,7 @@ doMIDIOrCV:
  	navigationDepth = 0;
  	shouldGoUpOneLevelOnBegin = false;
  	menuItemNavigationRecord[navigationDepth] = newItem;
@@ -26596,7 +26847,7 @@ index 89c2e7690..8d1ae62d6 100644
  
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
 diff --git a/src/deluge/gui/views/automation_view.cpp b/src/deluge/gui/views/automation_view.cpp
-index a9c9d56c3..1e7ee0f22 100644
+index a9c9d56c3..ca7339083 100644
 --- a/src/deluge/gui/views/automation_view.cpp
 +++ b/src/deluge/gui/views/automation_view.cpp
 @@ -110,6 +110,34 @@ using deluge::modulation::params::unpatchedNonGlobalParamShortcuts;
@@ -26634,7 +26885,18 @@ index a9c9d56c3..1e7ee0f22 100644
  const uint32_t auditionPadActionUIModes[] = {UI_MODE_NOTES_PRESSED,
                                               UI_MODE_AUDITIONING,
                                               UI_MODE_HORIZONTAL_SCROLL,
-@@ -123,8 +151,8 @@ const uint32_t mutePadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITION
+@@ -119,12 +147,19 @@ const uint32_t auditionPadActionUIModes[] = {UI_MODE_NOTES_PRESSED,
+ 
+ const uint32_t editPadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITIONING, 0};
+ 
++const uint32_t editPadReleaseUIModes[] = {UI_MODE_NOTES_PRESSED,
++                                          UI_MODE_AUDITIONING,
++                                          UI_MODE_HOLDING_HORIZONTAL_ENCODER_BUTTON,
++                                          UI_MODE_QUANTIZE,
++                                          UI_MODE_SCALE_MODE_BUTTON_PRESSED,
++                                          0};
++
+ const uint32_t mutePadActionUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITIONING, 0};
  
  const uint32_t verticalScrollUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_AUDITIONING, UI_MODE_RECORD_COUNT_IN, 0};
  
@@ -26645,7 +26907,7 @@ index a9c9d56c3..1e7ee0f22 100644
  
  // synth and kit rows FX - sorted in the order that Parameters are scrolled through on the display
  const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutomation> nonGlobalParamsForAutomation{{
-@@ -148,15 +176,19 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -148,15 +183,19 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::UNPATCHED_SOUND, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::PATCHED, params::GLOBAL_REVERB_AMOUNT},
@@ -26667,7 +26929,7 @@ index a9c9d56c3..1e7ee0f22 100644
      // OSC 1 Volume, Pitch, Pulse Width, Carrier Feedback, Wave Index
      {params::Kind::PATCHED, params::LOCAL_OSC_A_VOLUME},
      {params::Kind::PATCHED, params::LOCAL_OSC_A_PITCH_ADJUST},
-@@ -242,6 +274,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
+@@ -242,6 +281,9 @@ const std::array<std::pair<params::Kind, ParamType>, kNumNonGlobalParamsForAutom
      {params::Kind::EXPRESSION, Expression::Y_SLIDE_TIMBRE},
      // Mono Expression: Z - Channel Pressure
      {params::Kind::EXPRESSION, Expression::Z_PRESSURE},
@@ -26677,7 +26939,7 @@ index a9c9d56c3..1e7ee0f22 100644
  }};
  
  // global FX - sorted in the order that Parameters are scrolled through on the display
-@@ -267,15 +302,18 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
+@@ -267,15 +309,18 @@ const std::array<std::pair<params::Kind, ParamType>, kNumGlobalParamsForAutomati
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_TREBLE_FREQ},
      // Reverb Amount
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_REVERB_SEND_AMOUNT},
@@ -26698,7 +26960,7 @@ index a9c9d56c3..1e7ee0f22 100644
      // Mod FX Offset, Feedback, Depth, Rate
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_MOD_FX_OFFSET},
      {params::Kind::UNPATCHED_GLOBAL, params::UNPATCHED_MOD_FX_FEEDBACK},
-@@ -783,10 +821,10 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -783,10 +828,10 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
  			ModelStackWithAutoParam* modelStackWithParam = nullptr;
  
  			if (!onArrangerView && (outputType == OutputType::SYNTH || singleSoundDrum)) {
@@ -26713,7 +26975,7 @@ index a9c9d56c3..1e7ee0f22 100644
  				}
  
  				else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
-@@ -827,6 +865,7 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
+@@ -827,6 +872,7 @@ void AutomationView::renderAutomationOverview(ModelStackWithTimelineCounter* mod
  						if ((paramID == params::UNPATCHED_PITCH_ADJUST)
  						    || (paramID == params::UNPATCHED_SIDECHAIN_SHAPE)
  						    || (paramID == params::UNPATCHED_SIDECHAIN_VOLUME)
@@ -26721,7 +26983,170 @@ index a9c9d56c3..1e7ee0f22 100644
  						    || (paramID >= params::UNPATCHED_FIRST_ARP_PARAM
  						        && paramID <= params::UNPATCHED_LAST_ARP_PARAM)
  						    || (paramID == params::UNPATCHED_ARP_RATE)) {
-@@ -1903,7 +1942,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -946,8 +992,8 @@ void AutomationView::clipNeedsReRendering(Clip* clip) {
+ 
+ On Automation Overview:
+ 
+-- on OLED it renders "Automation Overview" (or "Can't Automate CV" if you're on a CV clip)
+-- on 7Seg it renders AUTO (or CANT if you're on a CV clip)
++- on OLED it renders "Automation Overview"
++- on 7Seg it renders AUTO
+ 
+ On Automation Editor:
+ 
+@@ -1279,6 +1325,10 @@ passToOthers:
+ 		// when you press affect entire, the parameter selection needs to reset
+ 		// do this here because affect entire state may have just changed
+ 		if (on && b == AFFECT_ENTIRE) {
++			// Overview releases use physical pad rows, not the note rows stored by Velocity Editor.
++			if (inNoteEditor()) {
++				instrumentClipView.endAllEditPadPresses();
++			}
+ 			initParameterSelection();
+ 			blinkShortcuts();
+ 		}
+@@ -1297,6 +1347,11 @@ passToOthers:
+ void AutomationView::handleSessionButtonAction(Clip* clip, bool on) {
+ 	// if shift is pressed, go back to automation overview
+ 	if (on && Buttons::isShiftButtonPressed()) {
++		// Note edits store the selected note row, not the physical pad row used by overview releases.
++		// End them while leaving the editor, before discarding that context.
++		if (inNoteEditor()) {
++			instrumentClipView.endAllEditPadPresses();
++		}
+ 		initParameterSelection();
+ 		blinkShortcuts();
+ 		uiNeedsRendering(&automationView);
+@@ -1304,6 +1359,8 @@ void AutomationView::handleSessionButtonAction(Clip* clip, bool on) {
+ 	// go back to song / arranger view
+ 	else if (on && (currentUIMode == UI_MODE_NONE || (currentUIMode == UI_MODE_NOTES_PRESSED && padSelectionOn))) {
+ 		if (padSelectionOn) {
++			// Song / Arranger View cannot release the automation editor's held pads.
++			endAutomationEditPadPresses();
+ 			initPadSelection();
+ 		}
+ 		// automation arranger view transitioning back to arranger view
+@@ -1322,6 +1379,8 @@ void AutomationView::handleSessionButtonAction(Clip* clip, bool on) {
+ void AutomationView::handleKeyboardButtonAction(bool on) {
+ 	if (on && (currentUIMode == UI_MODE_NONE || (currentUIMode == UI_MODE_NOTES_PRESSED && padSelectionOn))) {
+ 		if (padSelectionOn) {
++			// Keyboard / Performance View cannot release the automation editor's held pads.
++			endAutomationEditPadPresses();
+ 			initPadSelection();
+ 		}
+ 		if (onArrangerView) {
+@@ -1341,13 +1400,19 @@ void AutomationView::handleKeyboardButtonAction(bool on) {
+ void AutomationView::handleClipButtonAction(bool on, bool isAudioClip) {
+ 	// if audition pad or shift is pressed, go back to automation overview
+ 	if (on && (currentUIMode == UI_MODE_AUDITIONING || Buttons::isShiftButtonPressed())) {
++		// Note edits store the selected note row, not the physical pad row used by overview releases.
++		// End them while leaving the editor, before discarding that context.
++		if (inNoteEditor()) {
++			instrumentClipView.endAllEditPadPresses();
++		}
+ 		initParameterSelection();
+ 		blinkShortcuts();
+ 		uiNeedsRendering(&automationView);
+ 	}
+-	// go back to clip view
++	// go back to arranger view or clip view
+ 	else if (on && (currentUIMode == UI_MODE_NONE || (currentUIMode == UI_MODE_NOTES_PRESSED && padSelectionOn))) {
+ 		if (padSelectionOn) {
++			endAutomationEditPadPresses();
+ 			initPadSelection();
+ 		}
+ 		// automation arranger view transitioning back to arranger view
+@@ -1464,6 +1529,14 @@ void AutomationView::handleCVButtonAction(OutputType outputType, bool on) {
+ }
+ // called by button action if b == X_ENC
+ bool AutomationView::handleHorizontalEncoderButtonAction(bool on, bool isAudioClip) {
++	// Always let TimelineView clear the held-encoder mode, regardless of shortcut modifiers.
++	if (!on) {
++		if (isUIModeActive(UI_MODE_AUDITIONING)) {
++			instrumentClipView.timeHorizontalKnobLastReleased = AudioEngine::audioSampleTimer;
++		}
++		return true;
++	}
++
+ 	// copy / paste automation (same shortcut used for notes)
+ 	if (Buttons::isButtonPressed(deluge::hid::button::LEARN)) {
+ 		if (inAutomationEditor()) {
+@@ -1536,11 +1609,6 @@ bool AutomationView::handleHorizontalEncoderButtonAction(bool on, bool isAudioCl
+ 
+ 	// Otherwise...
+ 	else {
+-		if (isUIModeActive(UI_MODE_AUDITIONING)) {
+-			if (!on) {
+-				instrumentClipView.timeHorizontalKnobLastReleased = AudioEngine::audioSampleTimer;
+-			}
+-		}
+ 		return true;
+ 	}
+ 	return false;
+@@ -1702,9 +1770,12 @@ ActionResult AutomationView::padAction(int32_t x, int32_t y, int32_t velocity) {
+ 	// if we're in a midi clip, with a midi cc selected and we press the name shortcut
+ 	// while holding shift, then enter the rename midi cc UI
+ 	if (outputType == OutputType::MIDI_OUT) {
+-		if (Buttons::isShiftButtonPressed() && x == 11 && y == 5) {
++		if (velocity && Buttons::isShiftButtonPressed() && x == 11 && y == 5) {
+ 			if (!onAutomationOverview()) {
+-				openUI(&renameMidiCCUI);
++				// Keep releases in Automation View until all held edits and other UI modes have ended.
++				if (isNoUIModeActive()) {
++					openUI(&renameMidiCCUI);
++				}
+ 				return ActionResult::DEALT_WITH;
+ 			}
+ 		}
+@@ -1780,16 +1851,34 @@ ActionResult AutomationView::handleEditPadAction(ModelStackWithAutoParam* modelS
+                                                  int32_t effectiveLength, int32_t x, int32_t y, int32_t velocity,
+                                                  SquareInfo& squareInfo) {
+ 
++	// A pad can still be held when Shift+Clip / Shift+Song returns to the overview.
++	// Retire its registered press even though there is no longer a parameter to edit.
++	if (!velocity && onAutomationOverview()) {
++		for (int32_t i = 0; i < kEditPadPressBufferSize; i++) {
++			auto& press = instrumentClipView.editPadPresses[i];
++			if (press.isActive && press.xDisplay == x && press.yDisplay == y) {
++				instrumentClipView.endEditPadPress(i);
++				instrumentClipView.checkIfAllEditPadPressesEnded();
++				break;
++			}
++		}
++		return ActionResult::DEALT_WITH;
++	}
++
+ 	if (onArrangerView && isUIModeActive(UI_MODE_HOLDING_ARRANGEMENT_ROW_AUDITION)) {
+ 		return ActionResult::DEALT_WITH;
+ 	}
+ 
+ 	// potentially enter or refresh note velocity editor if you're in an instrument clip, holding audition pad and
+ 	// pressing PatchSource::Velocity shortcut
+-	if (!onArrangerView && clip->type == ClipType::INSTRUMENT && isUIModeActive(UI_MODE_AUDITIONING)
++	if (velocity && !onArrangerView && clip->type == ClipType::INSTRUMENT && isUIModeActive(UI_MODE_AUDITIONING)
+ 	    && isNoteVelocityEditorShortcut(x, y)) {
+ 		// don't enter if we're in a kit with affect entire enabled
+ 		if (!(outputType == OutputType::KIT && getAffectEntire())) {
++			// Automation edits store physical pad rows, which note-editor releases cannot match.
++			if (inAutomationEditor()) {
++				endAutomationEditPadPresses();
++			}
+ 			if (outputType == OutputType::KIT) {
+ 				potentiallyVerticalScrollToSelectedDrum((InstrumentClip*)clip, output);
+ 			}
+@@ -1821,7 +1910,10 @@ ActionResult AutomationView::handleEditPadAction(ModelStackWithAutoParam* modelS
+ 	}
+ 
+ 	// regular automation / note editing action
+-	if (isUIModeWithinRange(editPadActionUIModes) && isSquareDefined(x, xScroll, xZoom)) {
++	// Holding the horizontal encoder blocks new presses, but must not swallow releases of existing ones.
++	const uint32_t* allowedModes = velocity ? editPadActionUIModes : editPadReleaseUIModes;
++	// Enabling triplets can make a held pad's column undefined; its release must still end the press.
++	if (isUIModeWithinRange(allowedModes) && (!velocity || isSquareDefined(x, xScroll, xZoom))) {
+ 		if (inAutomationEditor()) {
+ 			automationEditorLayoutModControllable.automationEditPadAction(modelStackWithParam, clip, x, y, velocity,
+ 			                                                              effectiveLength, xScroll, xZoom);
+@@ -1903,7 +1995,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  	    && (outputType == OutputType::SYNTH
  	        || (outputType == OutputType::KIT && !getAffectEntire() && ((Kit*)output)->selectedDrum
  	            && ((Kit*)output)->selectedDrum->type == DrumType::SOUND))
@@ -26730,7 +27155,7 @@ index a9c9d56c3..1e7ee0f22 100644
  	        || (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID)
  	        || params::isPatchCableShortcut(xDisplay, yDisplay))) {
  		// don't allow automation of portamento in kit's
-@@ -1914,9 +1953,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1914,9 +2006,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  
  		// if you are in a synth or a kit instrumentClip and the shortcut is valid, set current selected
  		// ParamID
@@ -26742,7 +27167,7 @@ index a9c9d56c3..1e7ee0f22 100644
  		}
  		else if (unpatchedNonGlobalParamShortcuts[xDisplay][yDisplay] != kNoParamID) {
  			clip->lastSelectedParamKind = params::Kind::UNPATCHED_SOUND;
-@@ -1946,7 +1985,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+@@ -1946,7 +2038,7 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
  		// don't allow automation of pitch adjust, or sidechain in arranger
  		if (onArrangerView
  		    && ((paramID == params::UNPATCHED_PITCH_ADJUST) || (paramID == params::UNPATCHED_SIDECHAIN_SHAPE)
@@ -26751,7 +27176,100 @@ index a9c9d56c3..1e7ee0f22 100644
  		        || (paramID >= params::UNPATCHED_FIRST_ARP_PARAM && paramID <= params::UNPATCHED_LAST_ARP_PARAM)
  		        || (paramID == params::UNPATCHED_ARP_RATE))) {
  			return; // no parameter selected, don't re-render grid;
-@@ -2699,6 +2738,7 @@ void AutomationView::selectGlobalParam(int32_t offset, Clip* clip) {
+@@ -2000,6 +2092,9 @@ void AutomationView::handleParameterSelection(Clip* clip, Output* output, Output
+ 
+ 	resetParameterShortcutBlinking();
+ 	if (inNoteEditor()) {
++		// Note edits use the selected note row; parameter edits release by physical pad row.
++		// Finish held note edits before switching to the parameter editor.
++		instrumentClipView.endAllEditPadPresses();
+ 		automationParamType = AutomationParamType::PER_SOUND;
+ 		instrumentClipView.resetSelectedNoteRowBlinking();
+ 	}
+@@ -2076,22 +2171,18 @@ ActionResult AutomationView::handleAuditionPadAction(InstrumentClip* instrumentC
+ 		// Actual basic audition pad press:
+ 		else if (!velocity || isUIModeWithinRange(auditionPadActionUIModes)) {
+ 			bool auditioningSilently = Buttons::isShiftButtonPressed();
+-			if (inNoteEditor()) {
+-				if (isUIModeActive(UI_MODE_NOTES_PRESSED)) {
+-					// special handling for note editor and holding a note and we changed row selection
+-					// don't process audition pad action as it leads to stuck notes
+-					if (instrumentClipView.lastAuditionedYDisplay != y) {
+-						return ActionResult::DEALT_WITH;
+-					}
++			if (inNoteEditor() && isUIModeActive(UI_MODE_NOTES_PRESSED)) {
++				// Don't change row selection while holding a note, but always release held audition pads.
++				if (velocity && instrumentClipView.lastAuditionedYDisplay != y) {
++					return ActionResult::DEALT_WITH;
+ 				}
+-				// We're quantizing: either adding a new note to the set being quantized, or removing.
+-				// In the first case we simply defer to auditionPadAction.
+-				else if (isUIModeActive(UI_MODE_QUANTIZE)) {
+-					if (velocity == 0) {
+-						return instrumentClipView.commandStopQuantize(y);
+-					}
+-					auditioningSilently = true;
++			}
++			// Finish quantizing on release even with a note edit held or after changing editors.
++			if (isUIModeActive(UI_MODE_QUANTIZE)) {
++				if (velocity == 0) {
++					return instrumentClipView.commandStopQuantize(y);
+ 				}
++				auditioningSilently = true;
+ 			}
+ 			return auditionPadAction(instrumentClip, output, outputType, y, velocity, auditioningSilently);
+ 		}
+@@ -2183,7 +2274,10 @@ ActionResult AutomationView::auditionPadAction(InstrumentClip* clip, Output* out
+ 
+ 	// Or if auditioning this NoteRow just finished...
+ 	else {
+-		instrumentClipView.finishAuditioningRow(yDisplay, modelStackWithNoteRowOnCurrentClip, noteRowOnActiveClip);
++		// Keep the held note edit attached to its row even if other audition pads remain held.
++		bool changeRowSelection = !inNoteEditor() || !isUIModeActive(UI_MODE_NOTES_PRESSED);
++		instrumentClipView.finishAuditioningRow(yDisplay, modelStackWithNoteRowOnCurrentClip, noteRowOnActiveClip,
++		                                        changeRowSelection);
+ 		if (display->have7SEG()) {
+ 			renderDisplay();
+ 		}
+@@ -2516,6 +2610,12 @@ void AutomationView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
+ 		return;
+ 	}
+ 
++	// Stutter or MIDI CC assignment may have started before a shortcut selected a parameter.
++	if (!on && (isUIModeActive(UI_MODE_STUTTERING) || isUIModeActive(UI_MODE_SELECTING_MIDI_CC))) {
++		view.modEncoderButtonAction(whichModEncoder, false);
++		return;
++	}
++
+ 	// if we're not trying to copy / paste (holding learn) and not trying to delete (holding shift), return
+ 	// if we're releasing mod encoder button action, return (we don't do anything on release)
+ 	bool is_learn_pressed = Buttons::isButtonPressed(hid::button::LEARN);
+@@ -2588,6 +2688,10 @@ void AutomationView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
+ // once parameter is selected
+ // used to fine tune the values of non-midi parameters
+ void AutomationView::selectEncoderAction(int8_t offset) {
++	if (offset == 0) {
++		return;
++	}
++
+ 	// 5x acceleration of select encoder when holding the shift button
+ 	if (Buttons::isButtonPressed(deluge::hid::button::SHIFT)) {
+ 		offset = offset * 5;
+@@ -2653,7 +2757,12 @@ void AutomationView::selectEncoderAction(int8_t offset) {
+ 			getLastSelectedParamShortcut(clip);
+ 		}
+ 	}
+-	// if you're in a CV clip or function is called for some other reason, do nothing
++	// if you're in a CV clip, cycle through the expression params (pitch bend, Y, pressure)
++	else if (outputType == OutputType::CV) {
++		selectExpressionParam(offset, clip);
++		getLastSelectedParamShortcut(clip);
++	}
++	// function is called for some other reason, do nothing
+ 	else {
+ 		return;
+ 	}
+@@ -2699,6 +2808,7 @@ void AutomationView::selectGlobalParam(int32_t offset, Clip* clip) {
  		{
  			while ((id == params::UNPATCHED_PITCH_ADJUST || id == params::UNPATCHED_SIDECHAIN_SHAPE
  			        || id == params::UNPATCHED_SIDECHAIN_VOLUME || id == params::UNPATCHED_COMPRESSOR_THRESHOLD
@@ -26759,7 +27277,90 @@ index a9c9d56c3..1e7ee0f22 100644
  			        || (id >= params::UNPATCHED_FIRST_ARP_PARAM && id <= params::UNPATCHED_LAST_ARP_PARAM)
  			        || id == params::UNPATCHED_ARP_RATE)) {
  
-@@ -2941,7 +2981,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
+@@ -2754,8 +2864,13 @@ void AutomationView::selectGlobalParam(int32_t offset, Clip* clip) {
+ // used with SelectEncoderAction to get the next synth or kit non-affect entire param
+ void AutomationView::selectNonGlobalParam(int32_t offset, Clip* clip) {
+ 	bool foundPatchCable = false;
++	// Patch cables follow the regular parameters, so enter their list from the end when
++	// scrolling left from the overview, regardless of the previously selected array position.
++	if (onAutomationOverview() && offset < 0) {
++		foundPatchCable = selectPatchCable(offset, clip);
++	}
+ 	// if we previously selected a patch cable, we'll see if there are any more to scroll through
+-	if (clip->lastSelectedParamKind == params::Kind::PATCH_CABLE) {
++	else if (clip->lastSelectedParamKind == params::Kind::PATCH_CABLE) {
+ 		foundPatchCable = selectPatchCable(offset, clip);
+ 		// did we find another patch cable?
+ 		if (!foundPatchCable) {
+@@ -2796,7 +2911,7 @@ void AutomationView::selectNonGlobalParam(int32_t offset, Clip* clip) {
+ 		// did we reach beginning or end of list?
+ 		// if yes, then let's scroll through patch cables
+ 		// but only if we haven't already scrolled through patch cables already above
+-		if ((clip->lastSelectedParamKind != params::Kind::PATCH_CABLE)
++		if (!onAutomationOverview() && (clip->lastSelectedParamKind != params::Kind::PATCH_CABLE)
+ 		    && (((offset > 0) && (idx < clip->lastSelectedParamArrayPosition))
+ 		        || ((offset < 0) && (idx > clip->lastSelectedParamArrayPosition)))) {
+ 			foundPatchCable = selectPatchCable(offset, clip);
+@@ -2886,10 +3001,28 @@ bool AutomationView::selectPatchCableAtIndex(Clip* clip, PatchCableSet* set, int
+ 	return false;
+ }
+ 
++// used with SelectEncoderAction to get the next CV clip expression param
++void AutomationView::selectExpressionParam(int32_t offset, Clip* clip) {
++	// Start just outside the list so either direction enters at its respective end.
++	int32_t id = offset > 0 ? -1 : 0;
++	if (!onAutomationOverview() && clip->lastSelectedParamKind == params::Kind::EXPRESSION
++	    && clip->lastSelectedParamID < kNumExpressionDimensions) {
++		id = static_cast<int32_t>(clip->lastSelectedParamID);
++	}
++	id = (id + offset) % kNumExpressionDimensions;
++	if (id < 0) {
++		id += kNumExpressionDimensions;
++	}
++	clip->lastSelectedParamID = id;
++	clip->lastSelectedParamKind = params::Kind::EXPRESSION;
++	automationParamType = AutomationParamType::PER_SOUND;
++}
++
+ // used with SelectEncoderAction to get the next midi CC
+ void AutomationView::selectMIDICC(int32_t offset, Clip* clip) {
+ 	if (onAutomationOverview()) {
+-		clip->lastSelectedParamID = CC_NUMBER_NONE;
++		// NONE is outside the selectable range and would skip CC 0 when scrolling right.
++		clip->lastSelectedParamID = offset > 0 ? kNumCCExpression - 1 : 0;
+ 	}
+ 	clip->lastSelectedParamID = ((MIDIInstrument*)clip->output)->getNextSelectableCC(clip->lastSelectedParamID, offset);
+ 	automationParamType = AutomationParamType::PER_SOUND;
+@@ -2898,22 +3031,14 @@ void AutomationView::selectMIDICC(int32_t offset, Clip* clip) {
+ // used with SelectEncoderAction to get the next parameter in the list of parameters
+ int32_t AutomationView::getNextSelectedParamArrayPosition(int32_t offset, int32_t lastSelectedParamArrayPosition,
+                                                           int32_t numParams) {
+-	int32_t idx;
+-	// if you haven't selected a parameter yet, start at the beginning of the list
++	// Enter at the first or last parameter from the overview. Keep the offset so callers
++	// can advance past parameters unavailable in the current context.
+ 	if (onAutomationOverview()) {
+-		idx = 0;
+-	}
+-	// if you are scrolling left and are at the beginning of the list, go to the end of the list
+-	else if ((lastSelectedParamArrayPosition + offset) < 0) {
+-		idx = numParams + offset;
++		lastSelectedParamArrayPosition = offset > 0 ? -1 : 0;
+ 	}
+-	// if you are scrolling right and are at the end of the list, go to the beginning of the list
+-	else if ((lastSelectedParamArrayPosition + offset) > (numParams - 1)) {
+-		idx = 0;
+-	}
+-	// otherwise scrolling left/right within the list
+-	else {
+-		idx = lastSelectedParamArrayPosition + offset;
++	int32_t idx = (lastSelectedParamArrayPosition + offset) % numParams;
++	if (idx < 0) {
++		idx += numParams;
+ 	}
+ 	return idx;
+ }
+@@ -2941,7 +3066,7 @@ void AutomationView::getLastSelectedParamShortcut(Clip* clip) {
  			}
  			else {
  				if ((clip->lastSelectedParamKind == params::Kind::PATCHED
@@ -26768,8 +27369,45 @@ index a9c9d56c3..1e7ee0f22 100644
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_SOUND
  				        && unpatchedNonGlobalParamShortcuts[x][y] == clip->lastSelectedParamID)
  				    || (clip->lastSelectedParamKind == params::Kind::UNPATCHED_GLOBAL
+@@ -3075,6 +3200,16 @@ void AutomationView::initParameterSelection(bool updateDisplay) {
+ 	}
+ }
+ 
++void AutomationView::endAutomationEditPadPresses() {
++	// Automation records contain value-pad rows, so do not reassess note audition for these rows.
++	for (int32_t i = 0; i < kEditPadPressBufferSize; i++) {
++		if (instrumentClipView.editPadPresses[i].isActive) {
++			instrumentClipView.endEditPadPress(i);
++		}
++	}
++	instrumentClipView.checkIfAllEditPadPressesEnded();
++}
++
+ // exit pad selection mode, reset pad press statuses
+ void AutomationView::initPadSelection() {
+ 	padSelectionOn = false;
+diff --git a/src/deluge/gui/views/automation_view.h b/src/deluge/gui/views/automation_view.h
+index 663b5da50..8b06dfd4d 100644
+--- a/src/deluge/gui/views/automation_view.h
++++ b/src/deluge/gui/views/automation_view.h
+@@ -176,6 +176,7 @@ public:
+ 	bool isNoteVelocityEditorShortcut(int32_t x, int32_t y);
+ 
+ private:
++	void endAutomationEditPadPresses();
+ 	// button action functions
+ 	void handleSessionButtonAction(Clip* clip, bool on);
+ 	void handleKeyboardButtonAction(bool on);
+@@ -237,6 +238,7 @@ private:
+ 	bool selectPatchCable(int32_t offset, Clip* clip);
+ 	bool selectPatchCableAtIndex(Clip* clip, PatchCableSet* set, int32_t patchCableIndex, bool& foundCurrentPatchCable);
+ 	void selectMIDICC(int32_t offset, Clip* clip);
++	void selectExpressionParam(int32_t offset, Clip* clip);
+ 	int32_t getNextSelectedParamArrayPosition(int32_t offset, int32_t lastSelectedParamArrayPosition,
+ 	                                          int32_t numParams);
+ 	void getLastSelectedNonGlobalParamArrayPosition(Clip* clip);
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..7a914afb5 100644
+index 75e1a7340..e4f96b575 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -20,12 +20,18 @@
@@ -26941,7 +27579,18 @@ index 75e1a7340..7a914afb5 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -955,6 +1008,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
+@@ -925,9 +978,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
+ 	}
+ 	else {
+ 		// Button release
+-		if (currentUIMode == UI_MODE_SCALE_MODE_BUTTON_PRESSED) {
+-			currentUIMode = UI_MODE_NONE;
+-		}
++		exitUIMode(UI_MODE_SCALE_MODE_BUTTON_PRESSED);
+ 		if (toggleScaleModeOnButtonRelease && isShortPress(scaleButtonPressTime)) {
+ 			toggleScaleModeOnButtonRelease = false;
+ 			if (inScaleMode) {
+@@ -955,6 +1006,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
  		            == RuntimeFeatureStateToggle::On);
  	}
  
@@ -26973,7 +27622,30 @@ index 75e1a7340..7a914afb5 100644
  	if (!isMIDIorCV && (is_fm || Buttons::isShiftButtonPressed())) {
  		return createNewInstrument(outputType, is_fm);
  	}
-@@ -1114,7 +1192,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1059,15 +1135,13 @@ ramError:
+ 
+ void InstrumentClipView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
+ 
+-	// If they want to copy or paste automation...
+-	if (Buttons::isButtonPressed(deluge::hid::button::LEARN)) {
+-		if (on) {
+-			if (Buttons::isShiftButtonPressed()) {
+-				pasteAutomation(whichModEncoder);
+-			}
+-			else {
+-				copyAutomation(whichModEncoder);
+-			}
++	// Copy / paste uses presses; releases must still reach the sound to stop stutter.
++	if (on && Buttons::isButtonPressed(deluge::hid::button::LEARN)) {
++		if (Buttons::isShiftButtonPressed()) {
++			pasteAutomation(whichModEncoder);
++		}
++		else {
++			copyAutomation(whichModEncoder);
+ 		}
+ 	}
+ 	else {
+@@ -1114,7 +1188,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -26982,7 +27654,7 @@ index 75e1a7340..7a914afb5 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1203,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1199,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -26993,7 +27665,7 @@ index 75e1a7340..7a914afb5 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1375,8 @@ ramError:
+@@ -1297,8 +1371,8 @@ ramError:
  	}
  }
  
@@ -27004,7 +27676,7 @@ index 75e1a7340..7a914afb5 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1711,11 +1789,107 @@ getOut: {}
+@@ -1711,11 +1785,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -27113,7 +27785,7 @@ index 75e1a7340..7a914afb5 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1777,6 +1951,269 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1777,6 +1947,269 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -27383,7 +28055,7 @@ index 75e1a7340..7a914afb5 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1796,6 +2233,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1796,6 +2229,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -27405,7 +28077,57 @@ index 75e1a7340..7a914afb5 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2607,9 +3059,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2132,19 +2580,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+ 	if (path == &nothing) {
+ 		return ActionResult::NOT_DEALT_WITH;
+ 	}
+-	char* slashAddress = strrchr(path, '/');
++	char const* slashAddress = strrchr(path, '/');
+ 	if (slashAddress == nullptr) {
+ 		return ActionResult::NOT_DEALT_WITH;
+ 	}
+ 
++	// This allocation avoids shenanigans with trying to terminate in place to get a subpath.
++	// I think the afh filepath can get changed in this process so putting it back could later crash.
++	String dirPath;
++	if (dirPath.set(path, slashAddress - path) != Error::NONE) {
++		display->displayError(Error::INSUFFICIENT_RAM);
++		return ActionResult::DEALT_WITH;
++	}
++
+ 	// Open directory of current audio file
+-	*slashAddress = 0;
+-	staticDIR = D_TRY_CATCH(FatFS::Directory::open(path), error, {
+-		*slashAddress = '/';
++	staticDIR = D_TRY_CATCH(FatFS::Directory::open(dirPath.get()), error, {
+ 		display->displayError(Error::SD_CARD);
+ 		return ActionResult::DEALT_WITH;
+ 	});
+-	*slashAddress = '/';
+ 
+ 	// Select random audio file from directory
+ 	int32_t fileCount = 0;
+@@ -2164,10 +2617,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+ 		soundDrum->killAllVoices();
+ 
+ 		afh->setAudioFile(nullptr);
+-		// set the slash to 0 again
+-		*slashAddress = 0;
+-		afh->filePath.set(path);
+-
++		afh->filePath.set(&dirPath);
+ 		afh->filePath.concatenate("/");
+ 		afh->filePath.concatenate(chosenFilename);
+ 		afh->loadFile(false, true, true, 1, nullptr, false);
+@@ -2179,7 +2629,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+ 		}
+ 		soundDrum->drumName = chosenFilename;
+ 		kit->beenEdited();
+-		*slashAddress = '/';
+ 
+ 		// we've randomized a drum sample
+ 		return ActionResult::ACTIONED_AND_CAUSED_CHANGE;
+@@ -2607,9 +3056,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -27427,7 +28149,7 @@ index 75e1a7340..7a914afb5 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -2631,10 +3095,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2631,10 +3092,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  					// Can only set the mod region after setting the selected drum! Otherwise the params' currentValues
  					// don't end up right
@@ -27442,7 +28164,7 @@ index 75e1a7340..7a914afb5 100644
  
  					// Now that we're holding a note down, get set up for if the user wants to edit its MPE values.
  					for (int32_t t = 0; t < MPE_RECORD_LENGTH_FOR_NOTE_EDITING; t++) {
-@@ -2700,8 +3164,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2700,8 +3161,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  				int32_t wrapEditLevel = clip->getWrapEditLevel();
  
@@ -27472,7 +28194,7 @@ index 75e1a7340..7a914afb5 100644
  
  				noteRow->clearMPEUpUntilNextNote(modelStackWithNoteRow, squareStart, wrapEditLevel, true);
  
-@@ -2775,6 +3258,10 @@ void InstrumentClipView::endAllEditPadPresses() {
+@@ -2775,6 +3255,10 @@ void InstrumentClipView::endAllEditPadPresses() {
  
  void InstrumentClipView::checkIfAllEditPadPressesEnded(bool mayRenderSidebar) {
  	if (numEditPadPresses == 0) {
@@ -27483,7 +28205,7 @@ index 75e1a7340..7a914afb5 100644
  		view.setModRegion();
  		exitUIMode(UI_MODE_NOTES_PRESSED);
  		actionLogger.closeAction(ActionType::NOTE_EDIT);
-@@ -4957,6 +5444,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4957,6 +5441,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -27509,7 +28231,7 @@ index 75e1a7340..7a914afb5 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5198,6 +5704,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+@@ -5198,6 +5701,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
  		}
  	}
  
@@ -27522,7 +28244,7 @@ index 75e1a7340..7a914afb5 100644
  	if (shouldRedrawStuff) {
  		// make sure the clip we're displaying actually belongs to this kit
  		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
-@@ -5420,6 +5932,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5420,6 +5929,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -27534,7 +28256,27 @@ index 75e1a7340..7a914afb5 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -6312,6 +6829,11 @@ drawNormally:
+@@ -5642,7 +6156,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
+ // sub-function of AuditionPadAction
+ // pad is released, end previous audition pad press
+ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack,
+-                                              NoteRow* noteRowOnActiveClip) {
++                                              NoteRow* noteRowOnActiveClip, bool changeRowSelection) {
+ 	if (auditionPadIsPressed[yDisplay]) {
+ 		bool auditionNoteWasSounding = lastAuditionedVelocityOnScreen[yDisplay] != 255;
+ 		auditionPadIsPressed[yDisplay] = 0;
+@@ -5657,8 +6171,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
+ 			sendAuditionNote(false, yDisplay, 64, 0);
+ 		}
+ 	}
+-	display->cancelPopup();        // In case euclidean stuff was being edited etc
+-	someAuditioningHasEnded(true); // lastAuditionedYDisplay == yDisplay);
++	display->cancelPopup(); // In case euclidean stuff was being edited etc
++	someAuditioningHasEnded(changeRowSelection);
+ 	actionLogger.closeAction(ActionType::EUCLIDEAN_NUM_EVENTS_EDIT);
+ 	actionLogger.closeAction(ActionType::NOTEROW_ROTATE);
+ }
+@@ -6312,6 +6826,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -27546,7 +28288,7 @@ index 75e1a7340..7a914afb5 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6422,6 +6944,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6422,6 +6941,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -27554,7 +28296,7 @@ index 75e1a7340..7a914afb5 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6437,6 +6960,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6437,6 +6957,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -27568,7 +28310,18 @@ index 75e1a7340..7a914afb5 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -7383,7 +7913,7 @@ abandonModRegion:
+@@ -6849,8 +7376,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
+ 
+ ActionResult InstrumentClipView::commandStopQuantize(int32_t y) {
+ 	ActionResult res;
+-	bool inNoteEditor = getRootUI() == &automationView && automationView.inNoteEditor();
+-	if (inNoteEditor) {
++	// Automation View owns the audition release even if a shortcut changed its editor.
++	if (getRootUI() == &automationView) {
+ 		InstrumentClip* clip = getCurrentInstrumentClip();
+ 		Output* output = clip->output;
+ 		OutputType outputType = output->type;
+@@ -7383,7 +7910,7 @@ abandonModRegion:
  		// view.setModRegion(newPos, max((uint32_t)distanceToNextNote + lastNote->pos - firstNote->pos,
  		// squareWidth));
  		// // This is what happens with initial press, kinda different...
@@ -27577,7 +28330,7 @@ index 75e1a7340..7a914afb5 100644
  	}
  
  	uiNeedsRendering(this, 0xFFFFFFFF, 0);
-@@ -7587,6 +8117,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7587,6 +8114,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -27599,7 +28352,7 @@ index 75e1a7340..7a914afb5 100644
  	if (!image) {
  		return true;
  	}
-@@ -7604,6 +8149,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7604,6 +8146,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
  	                    drawUndefinedArea);
  	render_selected_note_pulse(whichRows, image);
@@ -27607,7 +28360,7 @@ index 75e1a7340..7a914afb5 100644
  	PadLEDs::renderingLock = false;
  
  	return true;
-@@ -7646,6 +8192,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7646,6 +8189,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -27617,7 +28370,7 @@ index 75e1a7340..7a914afb5 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7694,6 +8243,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7694,6 +8240,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -27630,7 +28383,7 @@ index 75e1a7340..7a914afb5 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8415,3 +8970,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8415,3 +8967,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -27884,7 +28637,7 @@ index 75e1a7340..7a914afb5 100644
 +	display->displayPopup(text);
 +}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 091c51b57..da6e5e5e8 100644
+index 091c51b57..005d99a67 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -17,7 +17,10 @@
@@ -27898,7 +28651,17 @@ index 091c51b57..da6e5e5e8 100644
  #include "gui/views/clip_view.h"
  #include "hid/button.h"
  #include "model/clip/instrument_clip_minder.h"
-@@ -223,6 +226,21 @@ public:
+@@ -168,7 +171,8 @@ public:
+ 	void potentiallyRefreshNoteRowMenu();
+ 	bool startAuditioningRow(int32_t velocity, int32_t yDisplay, bool shiftButtonDown, bool isKit,
+ 	                         NoteRow* noteRowOnActiveClip, Drum* drum, bool displayNoteCode = true);
+-	void finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack, NoteRow* noteRowOnActiveClip);
++	void finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack, NoteRow* noteRowOnActiveClip,
++	                          bool changeRowSelection = true);
+ 	void enterScaleMode(uint8_t yDisplay = 255);
+ 	void exitScaleMode();
+ 	void drawMuteSquare(NoteRow* thisNoteRow, RGB thisImage[], uint8_t thisOccupancyMask[]);
+@@ -223,6 +227,21 @@ public:
  	uint32_t getSquareWidth(int32_t square, int32_t effectiveLength);
  	void drawNoteCode(uint8_t yDisplay);
  	bool createNewInstrument(OutputType instrumentType, bool is_fm = false);
@@ -27920,7 +28683,7 @@ index 091c51b57..da6e5e5e8 100644
  	bool changeOutputType(OutputType newOutputType);
  	Sound* getSoundForNoteRow(NoteRow* noteRow, ParamManagerForTimeline** getParamManager);
  	void someAuditioningHasEnded(bool recalculateLastAuditionedNoteOnScreen);
-@@ -311,7 +329,13 @@ public:
+@@ -311,7 +330,13 @@ public:
  	bool handleNoteRowEditorPadAction(int32_t x, int32_t y, int32_t on);
  	bool handleNoteRowEditorMainPadAction(int32_t x, int32_t y, int32_t on);
  	void handleNoteRowEditorAuditionPadAction(int32_t y);
@@ -27935,7 +28698,7 @@ index 091c51b57..da6e5e5e8 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -352,6 +376,21 @@ public:
+@@ -352,6 +377,21 @@ public:
  	ModControllableAudio* getModControllableAudioOrNone() override;
  
  private:
@@ -27957,7 +28720,7 @@ index 091c51b57..da6e5e5e8 100644
  	bool doneAnyNudgingSinceFirstEditPadPress{};
  	bool offsettingNudgeNumberDisplay{};
  
-@@ -395,11 +434,13 @@ private:
+@@ -395,11 +435,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -28840,7 +29603,7 @@ index 000000000..4bbd4cbd8
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/session_view.cpp b/src/deluge/gui/views/session_view.cpp
-index d571c07f2..dec78dc07 100644
+index d571c07f2..32044e819 100644
 --- a/src/deluge/gui/views/session_view.cpp
 +++ b/src/deluge/gui/views/session_view.cpp
 @@ -59,6 +59,7 @@
@@ -28851,6 +29614,24 @@ index d571c07f2..dec78dc07 100644
  #include "model/instrument/instrument.h"
  #include "model/instrument/melodic_instrument.h"
  #include "model/note/note_row.h"
+@@ -634,7 +635,7 @@ doActualSimpleChange:
+ 							if (instrument->type != newOutputType) {
+ 								Instrument* newInstrument = currentSong->changeOutputType(instrument, newOutputType);
+ 								if (newInstrument) {
+-									view.displayOutputName(newInstrument);
++									view.displayOutputName(newInstrument, true, clip);
+ 									view.setActiveModControllableTimelineCounter(newInstrument->getActiveClip());
+ 								}
+ 							}
+@@ -1331,7 +1332,7 @@ void SessionView::commandChangeClipPreset(int8_t offset) {
+ 		}
+ 		case SessionLayoutType::SessionLayoutTypeGrid: {
+ 			Output* oldOutput = clip->output;
+-			Output* newOutput = currentSong->navigateThroughPresetsForInstrument(oldOutput, offset);
++			Output* newOutput = currentSong->navigateThroughPresetsForInstrument(oldOutput, offset, clip);
+ 			if (oldOutput != newOutput) {
+ 				view.setActiveModControllableTimelineCounter(newOutput->getActiveClip());
+ 				requestRendering(this, 0xFFFFFFFF, 0xFFFFFFFF);
 @@ -1520,6 +1521,31 @@ ActionResult SessionView::verticalScrollOneSquare(int32_t direction) {
  	return ActionResult::DEALT_WITH;
  }
@@ -29011,6 +29792,22 @@ index d571c07f2..dec78dc07 100644
  
  	if (display->haveOLED()) {
  		displayPotentialTempoChange(this);
+@@ -4886,10 +4962,11 @@ Output* SessionView::getOutputFromPad(int32_t x, int32_t y) {
+ 	if (currentSong->sessionLayout == SessionLayoutType::SessionLayoutTypeGrid) {
+ 		return gridTrackFromX(x, gridTrackCount());
+ 	}
+-	else {
+-		return getClipOnScreen(y)->output;
+-	}
+-	return nullptr;
++
++	// row layout
++	Clip* clip = getClipOnScreen(y);
++	// ensure there's actually a clip on this row
++	return clip ? clip->output : nullptr;
+ }
+ 
+ Cartesian SessionView::gridXYFromClip(Clip& clip) {
 diff --git a/src/deluge/gui/views/session_view.h b/src/deluge/gui/views/session_view.h
 index bec64c015..abdbee639 100644
 --- a/src/deluge/gui/views/session_view.h
@@ -29024,7 +29821,7 @@ index bec64c015..abdbee639 100644
  	uint32_t getMaxLength() override;
  	bool setupScroll(uint32_t oldScroll) override;
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 1a20da07c..fb65256ad 100644
+index 1a20da07c..b1412a8a5 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
 @@ -29,6 +29,7 @@
@@ -29120,7 +29917,24 @@ index 1a20da07c..fb65256ad 100644
  
  			if (instrumentPressedForMIDILearn->type == OutputType::SYNTH) {
  				currentSong->grabVelocityToLevelFromMIDICableAndSetupPatchingForAllParamManagersForInstrument(
-@@ -851,6 +886,12 @@ void View::modEncoderAction_nonExistentParam(int32_t whichModEncoder, int32_t of
+@@ -771,13 +806,14 @@ void View::ccReceivedForMIDILearn(MIDICable& cable, int32_t channel, int32_t cc,
+ 		if (thingPressedForMidiLearn == MidiLearn::INSTRUMENT_INPUT) {
+ 
+ 			// Special case for MIDIInstruments - CCs can learn the input MIDI channel
+-			if (getCurrentOutputType() == OutputType::MIDI_OUT) {
++			// In arranger view, the instrument being learned can differ from the current clip's output.
++			if (instrumentPressedForMIDILearn->type == OutputType::MIDI_OUT) {
+ 
+ 				// But only if user hasn't already started learning MPE stuff... Or regular note-ons...
+ 				if (learnedThing->channelOrZone == MIDI_CHANNEL_NONE) {
+ 					learnedThing->cable = &cable;
+ 					learnedThing->channelOrZone = channel;
+-					getCurrentInstrument()->beenEdited(false);
++					instrumentPressedForMIDILearn->beenEdited(false);
+ 				}
+ 			}
+ 		}
+@@ -851,6 +887,12 @@ void View::modEncoderAction_nonExistentParam(int32_t whichModEncoder, int32_t of
  
  void View::modEncoderAction_existentParam(int32_t whichModEncoder, int32_t offset,
                                            ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore) {
@@ -29133,7 +29947,33 @@ index 1a20da07c..fb65256ad 100644
  	char modelStackTempMemory[MODEL_STACK_MAX_SIZE];
  	copyModelStack(modelStackTempMemory, modelStackWithParam, sizeof(ModelStackWithThreeMainThings));
  	ModelStackWithThreeMainThings* tempModelStack = (ModelStackWithThreeMainThings*)modelStackTempMemory;
-@@ -1205,7 +1246,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1118,6 +1160,13 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+ 
+ 	// On OLED, display the name of the parameter on the first line of the popup
+ 	if (display->haveOLED()) {
++		// In session / arranger view the mod encoders can target a different clip from the last one opened.
++		// That last-opened clip can also have been deleted, leaving Song::currentClip null.
++		Output* output = nullptr;
++		if (isClipContext()) {
++			output = static_cast<Clip*>(activeModControllableModelStack.getTimelineCounter())->output;
++		}
++
+ 		if (kind == params::Kind::PATCH_CABLE) {
+ 			parameter_name.append(sourceToStringShort(source1));
+ 			parameter_name.append("->");
+@@ -1128,8 +1177,9 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+ 			parameter_name.append(modulation::params::getPatchedParamShortName(
+ 			    paramID, (ModControllableAudio*)view.activeModControllableModelStack.modControllable));
+ 		}
+-		else if (isClipContext() && getCurrentOutputType() == OutputType::MIDI_OUT) {
+-			MIDIInstrument* midiInstrument = (MIDIInstrument*)getCurrentOutput();
++		else if (output && output->type == OutputType::MIDI_OUT
++		         && (kind == params::Kind::MIDI || kind == params::Kind::EXPRESSION)) {
++			auto* midiInstrument = static_cast<MIDIInstrument*>(output);
+ 			if (kind == params::Kind::EXPRESSION) {
+ 				if (paramID == X_PITCH_BEND) {
+ 					parameter_name.append(deluge::l10n::get(deluge::l10n::String::STRING_FOR_PITCH_BEND));
+@@ -1205,7 +1255,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  	}
  	else {
  		current_display_value = calculateKnobPosForDisplay(kind, paramID, newKnobPos + kKnobPosOffset);
@@ -29161,7 +30001,7 @@ index 1a20da07c..fb65256ad 100644
  	}
  
  	// Check if we need to update the notification (avoid excessive updates)
-@@ -1332,7 +1392,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
+@@ -1332,7 +1401,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
  	valueForDisplayFloat = (knobPosFloat / maxKnobPosFloat) * maxMenuValueFloat;
  
  	// check if parameter is pan or pitch, in which case, further adjust range from 0 - 50 to -25 to +25
@@ -29170,7 +30010,21 @@ index 1a20da07c..fb65256ad 100644
  		valueForDisplayFloat = valueForDisplayFloat - maxMenuRelativeValueFloat;
  	}
  
-@@ -1558,6 +1618,7 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+@@ -1350,11 +1419,9 @@ void View::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
+ 
+ 	// If the learn button is pressed, user is trying to copy or paste, and the fact that we've ended up here means they
+ 	// can't
+-	if (Buttons::isButtonPressed(deluge::hid::button::LEARN)) {
++	if (on && Buttons::isButtonPressed(deluge::hid::button::LEARN)) {
+ 		if (display->have7SEG()) {
+-			if (on) {
+-				display->displayPopup("CANT");
+-			}
++			display->displayPopup("CANT");
+ 		}
+ 		return;
+ 	}
+@@ -1558,6 +1625,7 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
  
  				setKnobIndicatorLevels();
  				setModLedStates();
@@ -29178,7 +30032,7 @@ index 1a20da07c..fb65256ad 100644
  			}
  		}
  		else {
-@@ -1565,6 +1626,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+@@ -1565,6 +1633,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
  			    whichButton, false, (ParamManagerForTimeline*)activeModControllableModelStack.paramManager);
  		}
  	}
@@ -29293,7 +30147,7 @@ index 1a20da07c..fb65256ad 100644
  }
  
  void View::setModLedStates() {
-@@ -1595,6 +1764,9 @@ void View::setModLedStates() {
+@@ -1595,6 +1771,9 @@ void View::setModLedStates() {
  		affectEntire = (uiContextType == UIType::INSTRUMENT_CLIP) ? ((InstrumentClip*)clip)->affectEntire : true;
  	}
  	indicator_leds::setLedState(IndicatorLED::AFFECT_ENTIRE, affectEntire);
@@ -29303,7 +30157,7 @@ index 1a20da07c..fb65256ad 100644
  
  	bool onAutomationClipView = false;
  
-@@ -2297,7 +2469,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
+@@ -2297,7 +2476,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
  }
  
  void View::navigateThroughPresetsForInstrumentClip(int32_t offset, ModelStackWithTimelineCounter* modelStack,
@@ -29312,14 +30166,23 @@ index 1a20da07c..fb65256ad 100644
  
  	AudioEngine::logAction("navigateThroughPresets");
  
-@@ -2543,8 +2715,8 @@ gotAnInstrument:
+@@ -2521,7 +2700,7 @@ gotAnInstrument:
+ 			}
+ 		}
+ 
+-		displayOutputName(newInstrument, doBlink);
++		displayOutputName(newInstrument, doBlink, clip);
+ 
+ 		// Special case: when it is a saved MIDI preset (with a name), then we need to show the channel in a popup, as
+ 		// the name will print over the midi channel and we can't see it while changing it
+@@ -2543,8 +2722,8 @@ gotAnInstrument:
  	// Or if we're on a Kit or Synth...
  	else {
  
 -		PresetNavigationResult results =
 -		    loadInstrumentPresetUI.doPresetNavigation(offset, oldInstrument, availabilityRequirement, false);
 +		PresetNavigationResult results = loadInstrumentPresetUI.doPresetNavigation(
-+		    offset, oldInstrument, availabilityRequirement, false, fromFolderStart);
++		    offset, oldInstrument, availabilityRequirement, false, clip, fromFolderStart);
  		if (results.error == Error::NO_ERROR_BUT_GET_OUT) {
  getOut:
  			display->removeWorkingAnimation();
@@ -29577,7 +30440,7 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..de373a73d 100644
+index 51a40bfd2..d109bb346 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -29649,7 +30512,7 @@ index 51a40bfd2..de373a73d 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,3309 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3324 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -32739,6 +33602,10 @@ index 51a40bfd2..de373a73d 100644
 +			if (len < 5) {
 +				return;
 +			}
++			// Shortcut pads are on the main grid: anything else would index past the shortcut tables
++			if (data[3] >= kDisplayWidth || data[4] >= kDisplayHeight) {
++				return;
++			}
 +			pendingKnobX = data[3];
 +			pendingKnobY = data[4];
 +			break;
@@ -32811,6 +33678,17 @@ index 51a40bfd2..de373a73d 100644
 +		uiTimerManager.setTimer(TimerName::SYSEX_DISPLAY, 100);
 +		return;
 +	}
++
++	// Every redraw lands here, and building the state reads every clip, row and the browser. Do it at most every
++	// 25 ms (40 a second, plenty for a screen), leaving the time to the audio; a timer sends whatever changed since.
++	static uint32_t lastBuildTime = 0;
++	constexpr uint32_t kMinBuildGap = kSampleRate / 40;
++	const uint32_t sinceBuild = AudioEngine::audioSampleTimer - lastBuildTime;
++	if (!force && sinceBuild < kMinBuildGap) {
++		uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 1 + (kMinBuildGap - sinceBuild) * 1000 / kSampleRate);
++		return;
++	}
++	lastBuildTime = AudioEngine::audioSampleTimer;
 +
 +	uint8_t body[96];
 +	const int32_t len = buildState(body);
@@ -32959,7 +33837,7 @@ index 51a40bfd2..de373a73d 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3391,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +3406,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -32970,7 +33848,7 @@ index 51a40bfd2..de373a73d 100644
  	default:
  		break;
  	}
-@@ -79,6 +3439,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +3454,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -32979,7 +33857,7 @@ index 51a40bfd2..de373a73d 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +3598,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +3613,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -33239,7 +34117,7 @@ index 1bb0b8a2b..2eb78e0ab 100644
 +void runPendingPick();
  } // namespace HIDSysex
 diff --git a/src/deluge/io/midi/midi_engine.cpp b/src/deluge/io/midi/midi_engine.cpp
-index 18956ec02..c85c3235e 100644
+index 18956ec02..6f6c58f74 100644
 --- a/src/deluge/io/midi/midi_engine.cpp
 +++ b/src/deluge/io/midi/midi_engine.cpp
 @@ -495,6 +495,12 @@ void MidiEngine::sendPolyphonicAftertouch(MIDISource source, int32_t channel, in
@@ -33255,6 +34133,22 @@ index 18956ec02..c85c3235e 100644
  	if (eventStackTop_ == eventStack_.end()) {
  		// We're somehow 16 messages deep, reject this message.
  		return;
+@@ -931,6 +937,15 @@ void MidiEngine::checkIncomingUsbMidi() {
+ 							if (statusType == 2 || statusType == 3) { // 2 or 3 byte system common messages
+ 								statusType = 0x0F;
+ 							}
++							// System Real-Time (0xF8 to 0xFF) should come with CIN 0xF, but some hosts send it with
++							// CIN 0x5 (single-byte System Common / SysEx end) - the Windows 11 USB MIDI 2 class driver
++							// among them. Take it as real-time: otherwise clock, start and stop are lost, and the byte
++							// ends the SysEx in progress on this cable.
++							else if (statusType == 0x05 && readPos[1] >= 0xF8) {
++								statusType = 0x0F;
++								data1 = 0;
++								data2 = 0;
++							}
+ 							else { // Invalid, or sysex, or something
+ 								checkIncomingUsbSysex(readPos, ip, d, cable);
+ 								continue;
 diff --git a/src/deluge/io/midi/midi_engine.h b/src/deluge/io/midi/midi_engine.h
 index 18087f4ad..a68bc5e28 100644
 --- a/src/deluge/io/midi/midi_engine.h
@@ -33271,6 +34165,149 @@ index 18087f4ad..a68bc5e28 100644
  private:
  	uint8_t serialMidiInput[3];
  	uint8_t numSerialMidiInput;
+diff --git a/src/deluge/io/midi/midi_follow.cpp b/src/deluge/io/midi/midi_follow.cpp
+index 72bb02468..386bcb16d 100644
+--- a/src/deluge/io/midi/midi_follow.cpp
++++ b/src/deluge/io/midi/midi_follow.cpp
+@@ -30,7 +30,6 @@
+ #include "io/midi/midi_takeover.h"
+ #include "model/clip/clip_instance.h"
+ #include "model/clip/instrument_clip.h"
+-#include "model/clip/instrument_clip_minder.h"
+ #include "model/drum/drum.h"
+ #include "model/instrument/kit.h"
+ #include "model/instrument/melodic_instrument.h"
+@@ -398,9 +397,9 @@ Clip* MidiFollow::getSelectedOrActiveClip() {
+ 
+ 	clip = getSelectedClip();
+ 
+-	// if the clip is null, it means you're in a song view and you aren't holding a clip
+-	// in that case, we want to control the active clip
+-	if (!clip) {
++	// Fall back only when no arranger row is held. A selected row without a clip must not control another output.
++	if (!clip && !isUIModeActive(UI_MODE_HOLDING_ARRANGEMENT_ROW_AUDITION)
++	    && !isUIModeActive(UI_MODE_HOLDING_ARRANGEMENT_ROW)) {
+ 		clip = getCurrentClip();
+ 		if (clip) {
+ 			Output* output = clip->output;
+@@ -458,17 +457,22 @@ Clip* MidiFollow::getSelectedClip() {
+ /// special case for note and performance data where you want to let notes,
+ /// midi modulation sources (e.g. mod wheel), and MPE through to the active clip
+ Clip* MidiFollow::getActiveClip(ModelStack* modelStack) {
+-	// If you have an output for which no clip is active,
+-	// when auditioning a clip for that output,
+-	// the active clip for that output should be set to the current clip.
+-	Clip* currentClip = getCurrentClip();
+-	if (currentClip && (currentClip->type == ClipType::INSTRUMENT)) {
+-		if (currentClip->output) {
+-			InstrumentClipMinder::makeCurrentClipActiveOnInstrumentIfPossible(modelStack);
+-			return currentClip->output->getActiveClip();
+-		}
++	// Arranger audition pads select an output without changing the current clip. Use the same selection as CCs.
++	Clip* clip = getSelectedClip();
++	if (!clip && !isUIModeActive(UI_MODE_HOLDING_ARRANGEMENT_ROW_AUDITION)
++	    && !isUIModeActive(UI_MODE_HOLDING_ARRANGEMENT_ROW)) {
++		clip = getCurrentClip();
+ 	}
+-	return nullptr;
++	if (!clip || clip->type != ClipType::INSTRUMENT || !clip->output) {
++		return nullptr;
++	}
++
++	Output* output = clip->output;
++	// Activate the selected clip only if its output is available; do not replace a clip that is playing.
++	if (!clip->isActiveOnOutput() && currentPlaybackMode->isOutputAvailable(output)) {
++		output->setActiveClip(modelStack->addTimelineCounter(clip));
++	}
++	return output->getActiveClip();
+ }
+ 
+ /// used to forward midi messages to specific tracks
+diff --git a/src/deluge/model/action/action.h b/src/deluge/model/action/action.h
+index e781b4179..e40c57ca3 100644
+--- a/src/deluge/model/action/action.h
++++ b/src/deluge/model/action/action.h
+@@ -31,7 +31,7 @@ class AutoParam;
+ class ConsequenceParamChange;
+ class Note;
+ class ActionClipState;
+-class UI;
++class RootUI;
+ class Instrument;
+ class ClipInstance;
+ class Song;
+@@ -125,7 +125,8 @@ public:
+ 
+ 	// bool inKeyboardView;
+ 
+-	UI* view;
++	// Grouping and navigation use the root view, including for edits made in an overlay.
++	RootUI* view;
+ 
+ 	Clip* currentClip; // Watch out - this might get set to NULL
+ 
+diff --git a/src/deluge/model/action/action_logger.cpp b/src/deluge/model/action/action_logger.cpp
+index f08ff964a..0a9d15a65 100644
+--- a/src/deluge/model/action/action_logger.cpp
++++ b/src/deluge/model/action/action_logger.cpp
+@@ -125,7 +125,7 @@ Action* ActionLogger::getNewAction(ActionType newActionType, ActionAddition addT
+ 	// See if we can add to an existing action...
+ 	else if (addToExistingIfPossible != ActionAddition::NOT_ALLOWED && firstAction[BEFORE]
+ 	         && firstAction[BEFORE]->openForAdditions && firstAction[BEFORE]->type == newActionType
+-	         && firstAction[BEFORE]->view == getCurrentUI()
++	         && firstAction[BEFORE]->view == getRootUI()
+ 	         && (addToExistingIfPossible == ActionAddition::ALLOWED
+ 	             || firstAction[BEFORE]->creationTime == AudioEngine::audioSampleTimer)) {
+ 		newAction = firstAction[BEFORE];
+@@ -192,7 +192,7 @@ Action* ActionLogger::getNewAction(ActionType newActionType, ActionAddition addT
+ 		// newAction->modKnobModeSongView = currentSong->modKnobMode;
+ 		newAction->affectEntireSongView = currentSong->affectEntire;
+ 
+-		newAction->view = getCurrentUI();
++		newAction->view = getRootUI();
+ 		newAction->currentClip = getCurrentClip();
+ 	}
+ 
+@@ -348,7 +348,7 @@ bool ActionLogger::revert(TimeType time, bool updateVisually, bool doNavigation)
+ 		Action* toRevert = firstAction[time];
+ 
+ 		// If we're in a UI mode, and reverting this Action would mean changing UI, we have to disallow that.
+-		if (toRevert->view != getCurrentUI() && !isNoUIModeActive()) {
++		if (toRevert->view != getRootUI() && !isNoUIModeActive()) {
+ 			return false;
+ 		}
+ 
+@@ -397,7 +397,7 @@ void ActionLogger::revertAction(Action* action, bool updateVisually, bool doNavi
+ 
+ 			// If user is in song view or arranger view, just stay in that UI.
+ 			if (getCurrentUI() == &arrangerView || getCurrentUI() == &sessionView) {
+-				action->view = getCurrentUI();
++				action->view = getRootUI();
+ 
+ 				// If in arranger view, don't go scrolling anywhere - that'd just visually confuse things
+ 				if (getCurrentUI() == &arrangerView) {
+@@ -408,7 +408,9 @@ void ActionLogger::revertAction(Action* action, bool updateVisually, bool doNavi
+ 
+ 		// We only want to display one animation
+ 
+-		if (updateVisually) {
++		// A browser can undo its preview while still open. Restore the data underneath it without navigating
++		// away or treating the overlay as a TimelineView for scroll/zoom animations.
++		if (updateVisually && getCurrentUI() == getRootUI()) {
+ 
+ 			// Switching between session / arranger
+ 			if (action->view == &sessionView && getCurrentUI() == &arrangerView) {
+@@ -643,6 +645,10 @@ currentClipSwitchedOver:
+ 		}
+ 		else {
+ 			getCurrentUI()->focusRegained();
++			// if changing clips, the section / clip name may need to be refreshed on the display
++			if (display->haveOLED()) {
++				renderUIsForOled();
++			}
+ 			renderingNeededRegardlessOfUI(); // Didn't have this til March 2020, and stuff didn't update. Guess this is
+ 			                                 // just needed? Can't remember specifics just now
+ 		}
 diff --git a/src/deluge/model/clip/clip.cpp b/src/deluge/model/clip/clip.cpp
 index e1bc1eff7..c040ee971 100644
 --- a/src/deluge/model/clip/clip.cpp
@@ -34140,7 +35177,7 @@ index 8158be2c4..a6a825f8d 100644
 +	int32_t shifted(int32_t noteCode) const { return std::clamp<int32_t>(noteCode + noteShift_, 0, kMaxMIDIValue); }
  };
 diff --git a/src/deluge/model/global_effectable/global_effectable.cpp b/src/deluge/model/global_effectable/global_effectable.cpp
-index a7bbbd46a..f078090a0 100644
+index a7bbbd46a..d3ff6d4bb 100644
 --- a/src/deluge/model/global_effectable/global_effectable.cpp
 +++ b/src/deluge/model/global_effectable/global_effectable.cpp
 @@ -710,6 +710,16 @@ ModelStackWithAutoParam* GlobalEffectable::getParamFromModEncoder(int32_t whichM
@@ -34204,7 +35241,7 @@ index a7bbbd46a..f078090a0 100644
  		}
  		reader.exitTag("delay", true);
  	}
-@@ -1126,10 +1153,15 @@ Delay::State GlobalEffectable::createDelayWorkingState(ParamManager& paramManage
+@@ -1126,10 +1153,19 @@ Delay::State GlobalEffectable::createDelayWorkingState(ParamManager& paramManage
  	Delay::State delayWorkingState;
  	UnpatchedParamSet* unpatchedParams = paramManager.getUnpatchedParamSet();
  
@@ -34212,21 +35249,30 @@ index a7bbbd46a..f078090a0 100644
 +	delayWorkingState.delayAmount = getFinalParameterValueLinear(
  	    paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
  	    cableToLinearParamShortcut(unpatchedParams->getValue(params::UNPATCHED_DELAY_AMOUNT)));
-+	delayWorkingState.delayFeedbackAmount = getFinalParameterValueLinear(
-+	    paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
-+	    cableToLinearParamShortcut(unpatchedParams->getValue(params::UNPATCHED_DELAY_FEEDBACK)));
++	const int32_t delayFeedbackParam = unpatchedParams->getValue(params::UNPATCHED_DELAY_FEEDBACK);
++	// Older files: the amount is the feedback too, exactly, so the delay stays on its single path
++	delayWorkingState.delayFeedbackAmount =
++	    delayFeedbackParam == kDelayFeedbackFollowsAmount
++	        ? delayWorkingState.delayAmount
++	        : getFinalParameterValueLinear(paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
++	                                       cableToLinearParamShortcut(delayFeedbackParam));
 +	delayWorkingState.tone = unpatchedParams->getValue(params::UNPATCHED_DELAY_TONE);
  	if (shouldLimitDelayFeedback) {
 +		delayWorkingState.delayAmount = std::min(delayWorkingState.delayAmount, (int32_t)(1 << 30) - (1 << 26));
  		delayWorkingState.delayFeedbackAmount =
  		    std::min(delayWorkingState.delayFeedbackAmount, (int32_t)(1 << 30) - (1 << 26));
  	}
-@@ -1161,8 +1193,14 @@ void GlobalEffectable::processFXForGlobalEffectable(std::span<StereoSample> buff
+@@ -1161,8 +1197,19 @@ void GlobalEffectable::processFXForGlobalEffectable(std::span<StereoSample> buff
  	// like "depth".
  	// TODO: this saves a tiny amount of memory at the cost of needing allocations during the audio render cycle...
  	// seems kinda dumb
-+	if (modFXTypeNow == ModFXType::SHIFT) {
++	// SHIFT keeps its block for as long as it's the chosen type, so depth crossing zero doesn't free and allocate it
++	// again in the render. Resting at zero depth, it starts fresh when it comes back.
++	if (modFXType_ == ModFXType::SHIFT) {
 +		modfx.setupShift();
++		if (modFXTypeNow != ModFXType::SHIFT && modfx.freqShift != nullptr) {
++			modfx.freqShift->started = false;
++		}
 +	}
 +	else {
 +		modfx.disableShift();
@@ -34237,7 +35283,7 @@ index a7bbbd46a..f078090a0 100644
  		modfx.setupBuffer();
  		disableGrain();
  	}
-@@ -1194,6 +1232,7 @@ deluge::vector<std::string_view> getModNames() {
+@@ -1194,6 +1241,7 @@ deluge::vector<std::string_view> getModNames() {
  	    l10n::getView(STRING_FOR_WARBLE),
  	    l10n::getView(STRING_FOR_DIMENSION), //<
  	    l10n::getView(STRING_FOR_GRAIN),     //<
@@ -34245,7 +35291,7 @@ index a7bbbd46a..f078090a0 100644
  	};
  }
  
-@@ -1215,6 +1254,19 @@ const char* getParamName(ModFXType type, ModFXParam param, bool shortName) {
+@@ -1215,6 +1263,19 @@ const char* getParamName(ModFXType type, ModFXParam param, bool shortName) {
  		}
  	}
  
@@ -34265,7 +35311,7 @@ index a7bbbd46a..f078090a0 100644
  	default: {
  		switch (param) {
  		case ModFXParam::DEPTH:
-@@ -1246,6 +1298,10 @@ const char* modFXToString(ModFXType type) {
+@@ -1246,6 +1307,10 @@ const char* modFXToString(ModFXType type) {
  		return l10n::get(STRING_FOR_DIMENSION);
  	case ModFXType::GRAIN:
  		return l10n::get(STRING_FOR_GRAIN);
@@ -34983,7 +36029,7 @@ index 9589c4dc9..515de182d 100644
  	void writeMelodicInstrumentTagsToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Song* song);
  	bool readTagFromFile(Deserializer& reader, char const* tagName) override;
 diff --git a/src/deluge/model/instrument/midi_instrument.cpp b/src/deluge/model/instrument/midi_instrument.cpp
-index bc4162f32..3393f959d 100644
+index bc4162f32..07a554dd6 100644
 --- a/src/deluge/model/instrument/midi_instrument.cpp
 +++ b/src/deluge/model/instrument/midi_instrument.cpp
 @@ -32,6 +32,7 @@
@@ -34994,6 +36040,17 @@ index bc4162f32..3393f959d 100644
  #include "storage/storage_manager.h"
  #include "util/d_stringbuf.h"
  #include <cstring>
+@@ -75,8 +76,8 @@ bool MIDIInstrument::modEncoderButtonAction(uint8_t whichModEncoder, bool on,
+ 
+ 	// De-press
+ 	else {
+-		if (currentUIMode == UI_MODE_SELECTING_MIDI_CC) {
+-			currentUIMode = UI_MODE_NONE;
++		if (isUIModeActive(UI_MODE_SELECTING_MIDI_CC)) {
++			exitUIMode(UI_MODE_SELECTING_MIDI_CC);
+ 			if (display->haveOLED()) {
+ 				deluge::hid::display::OLED::removePopup();
+ 			}
 @@ -371,6 +372,13 @@ bool MIDIInstrument::writeDataToFile(Serializer& writer, Clip* clipForSavingOutp
  	// NonAudioInstrument::writeDataToFile(writer, clipForSavingOutputOnly, song); // Nope, this gets called within the
  	// below call
@@ -35250,6 +36307,35 @@ index 000000000..c8ce2e4f5
 +}
 +
 +} // namespace deluge::midi_kit
+diff --git a/src/deluge/model/instrument/non_audio_instrument.cpp b/src/deluge/model/instrument/non_audio_instrument.cpp
+index 4ee8df194..448e5d3bd 100644
+--- a/src/deluge/model/instrument/non_audio_instrument.cpp
++++ b/src/deluge/model/instrument/non_audio_instrument.cpp
+@@ -91,6 +91,15 @@ void NonAudioInstrument::sendNote(ModelStackWithThreeMainThings* modelStack, boo
+ 		// Run everything by the Arp...
+ 		arpeggiator.noteOn(arpSettings, noteCodePreArp, velocity, &instruction, fromMIDIChannel, mpeValues);
+ 
++		// If the note was already sounding, the Arp switches it off first so note-ons and note-offs stay paired
++		for (int32_t n = 0; n < ARP_MAX_INSTRUCTION_NOTES; n++) {
++			if (instruction.noteCodeOffPostArp[n] == ARP_NOTE_NONE) {
++				break;
++			}
++			noteOffPostArp(instruction.noteCodeOffPostArp[n], instruction.outputMIDIChannelOff[n], kDefaultLiftValue,
++			               n);
++		}
++
+ 		if (instruction.arpNoteOn != nullptr) {
+ 			for (int32_t n = 0; n < ARP_MAX_INSTRUCTION_NOTES; n++) {
+ 				if (instruction.arpNoteOn->noteCodeOnPostArp[n] == ARP_NOTE_NONE) {
+@@ -212,6 +221,8 @@ int32_t NonAudioInstrument::doTickForwardForArp(ModelStack* modelStack, int32_t
+ 				break;
+ 			}
+ 			noteOnPostArp(instruction.arpNoteOn->noteCodeOnPostArp[n], instruction.arpNoteOn, n);
++			// Otherwise it stays PENDING and the next render or tick sends its note-on again
++			instruction.arpNoteOn->noteStatus[n] = ArpNoteStatus::PLAYING;
+ 		}
+ 	}
+ 
 diff --git a/src/deluge/model/instrument/preset_kit.cpp b/src/deluge/model/instrument/preset_kit.cpp
 new file mode 100644
 index 000000000..c2bd98af6
@@ -35731,7 +36817,7 @@ index 000000000..52f3e7f40
 +
 +} // namespace deluge::synth_instruments
 diff --git a/src/deluge/model/mod_controllable/ModFXProcessor.cpp b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
-index eec776ee6..82ec698ae 100644
+index eec776ee6..2b1f3e223 100644
 --- a/src/deluge/model/mod_controllable/ModFXProcessor.cpp
 +++ b/src/deluge/model/mod_controllable/ModFXProcessor.cpp
 @@ -22,7 +22,9 @@
@@ -35744,7 +36830,7 @@ index eec776ee6..82ec698ae 100644
  
  /// NOT GRAIN! - this only does the comb filter based mod fx
  void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXType& modFXType, int32_t modFXRate,
-@@ -31,6 +33,45 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+@@ -31,6 +33,51 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
  	// if nothing rendered into the clip then we can just return
  	if (anySoundComingIn == false)
  		return;
@@ -35763,7 +36849,13 @@ index eec776ee6..82ec698ae 100644
 +		*postFXVolume = multiply_32x32_rshift32(*postFXVolume, 1518500250) << 1; // Divide by sqrt(2), as the chorus
 +		return;
 +	}
-+	brunoChorus.started = false;
++	if (brunoChorus.started) {
++		// BRUNO CHORUS kept floats in the shared buffer: the other mod FX would read them as samples, a loud burst
++		if (modFXBuffer != nullptr) {
++			memset(modFXBuffer, 0, kModFXBufferSize * sizeof(StereoSample));
++		}
++		brunoChorus.started = false;
++	}
 +	if (modFXType == ModFXType::SHIFT) {
 +		if (freqShift == nullptr) {
 +			return;
@@ -35790,7 +36882,7 @@ index eec776ee6..82ec698ae 100644
  	if (modFXType != ModFXType::NONE) {
  
  		LFOType modFXLFOWaveType{};
-@@ -75,6 +116,8 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
+@@ -75,6 +122,8 @@ void ModFXProcessor::processModFX(std::span<StereoSample> buffer, const ModFXTyp
  			                                      thisModFXDelayDepth, feedback, AudioEngine::renderInStereo);
  			break;
  		case ModFXType::GRAIN:
@@ -35799,7 +36891,7 @@ index eec776ee6..82ec698ae 100644
  			break;
  		case ModFXType::DIMENSION:
  			processModFXBuffer<ModFXType::DIMENSION>(buffer, modFXRate, modFXDepth, modFXLFOWaveType, modFXDelayOffset,
-@@ -268,6 +311,10 @@ StereoSample ModFXProcessor::processOnePhaserSample(StereoSample sample, int32_t
+@@ -268,6 +317,10 @@ StereoSample ModFXProcessor::processOnePhaserSample(StereoSample sample, int32_t
  }
  
  void ModFXProcessor::resetMemory() {
@@ -35810,7 +36902,7 @@ index eec776ee6..82ec698ae 100644
  	if (modFXBuffer) {
  		memset(modFXBuffer, 0, kModFXBufferSize * sizeof(StereoSample));
  	}
-@@ -286,6 +333,21 @@ void ModFXProcessor::setupBuffer() {
+@@ -286,6 +339,21 @@ void ModFXProcessor::setupBuffer() {
  		}
  	}
  }
@@ -35939,7 +37031,7 @@ index 701919156..d793ba43b 100644
  	}
  
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04f..6bb8d9904 100644
+index fd80ba04f..d6b9e4477 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -35968,7 +37060,7 @@ index fd80ba04f..6bb8d9904 100644
  	bassFreq = other->bassFreq; // Eventually, these shouldn't be variables like this
  	trebleFreq = other->trebleFreq;
  	filterRoute = other->filterRoute;
-@@ -137,6 +140,31 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
+@@ -137,6 +140,30 @@ void ModControllableAudio::initParams(ParamManager* paramManager) {
  
  	unpatchedParams->params[params::UNPATCHED_SIDECHAIN_SHAPE].setCurrentValueBasicForSetup(-601295438);
  	unpatchedParams->params[params::UNPATCHED_COMPRESSOR_THRESHOLD].setCurrentValueBasicForSetup(0);
@@ -35993,14 +37085,13 @@ index fd80ba04f..6bb8d9904 100644
 +}
 +
 +void ModControllableAudio::setDelayFeedbackFromOldAmount(ParamManager* paramManager, int32_t amount) {
-+	if (amount != -2147483648) {
-+		paramManager->getUnpatchedParamSet()->params[params::UNPATCHED_DELAY_FEEDBACK].setCurrentValueBasicForSetup(
-+		    amount);
-+	}
++	(void)amount;
++	paramManager->getUnpatchedParamSet()->params[params::UNPATCHED_DELAY_FEEDBACK].setCurrentValueBasicForSetup(
++	    kDelayFeedbackFollowsAmount);
  }
  
  bool ModControllableAudio::hasBassAdjusted(ParamManager* paramManager) {
-@@ -276,12 +304,45 @@ bool ModControllableAudio::isSRREnabled(ParamManager* paramManager) {
+@@ -276,12 +303,45 @@ bool ModControllableAudio::isSRREnabled(ParamManager* paramManager) {
  	return (unpatchedParams->getValue(params::UNPATCHED_SAMPLE_RATE_REDUCTION) != -2147483648);
  }
  
@@ -36008,10 +37099,10 @@ index fd80ba04f..6bb8d9904 100644
 -                                                    ParamManager* paramManager) {
 -	uint32_t bitCrushMaskForSRR = 0xFFFFFFFF;
 +void ModControllableAudio::resolveLoadedCrushType(ParamManager* paramManager) {
-+	// Files from before the crush types (any firmware) have no crushType: if they use either effect, keep the
-+	// original sound
-+	if (!crushTypeInFile && paramManager && paramManager->containsAnyMainParamCollections()
-+	    && (isBitcrushingEnabled(paramManager) || isSRREnabled(paramManager))) {
++	// Files from before the crush types (any firmware) have no crushType: they keep the original sound whatever the
++	// crush is at now, as it may be off here and automated or knobbed up later
++	(void)paramManager;
++	if (!crushTypeInFile) {
 +		crushType = deluge::dsp::CrushType::CLASSIC;
 +	}
 +	crushTypeInFile = true;
@@ -36049,7 +37140,7 @@ index fd80ba04f..6bb8d9904 100644
  	// Bitcrushing ------------------------------------------------------------------------------
  	if (isBitcrushingEnabled(paramManager)) {
  		uint32_t positivePreset =
-@@ -409,9 +470,21 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+@@ -409,9 +469,21 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
  	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
@@ -36073,7 +37164,7 @@ index fd80ba04f..6bb8d9904 100644
  }
  
  void ModControllableAudio::writeTagsToFile(Serializer& writer) {
-@@ -503,6 +576,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
+@@ -503,6 +575,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	unpatchedParams->writeParamAsAttribute(writer, "compressorThreshold", params::UNPATCHED_COMPRESSOR_THRESHOLD,
  	                                       writeAutomation, false, valuesForOverride);
@@ -36082,7 +37173,7 @@ index fd80ba04f..6bb8d9904 100644
  
  	unpatchedParams->writeParamAsAttribute(writer, "arpeggiatorGate", params::UNPATCHED_ARP_GATE, writeAutomation);
  	unpatchedParams->writeParamAsAttribute(writer, "noteProbability", params::UNPATCHED_NOTE_PROBABILITY,
-@@ -615,6 +690,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
+@@ -615,6 +689,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
  		                           readAutomationUpToPos);
  		reader.exitTag("compressorThreshold");
  	}
@@ -36093,7 +37184,7 @@ index fd80ba04f..6bb8d9904 100644
  
  	// Arpeggiator stuff
  
-@@ -724,6 +803,18 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -724,6 +802,18 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  		lpfMode = stringToLPFType(reader.readTagOrAttributeValue());
  		reader.exitTag("lpfMode");
  	}
@@ -36112,7 +37203,7 @@ index fd80ba04f..6bb8d9904 100644
  	else if (!strcmp(tagName, "hpfMode")) {
  		hpfMode = stringToLPFType(reader.readTagOrAttributeValue());
  		reader.exitTag("hpfMode");
-@@ -734,9 +825,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -734,9 +824,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  	}
  
  	else if (!strcmp(tagName, "clippingAmount")) {
@@ -36141,7 +37232,7 @@ index fd80ba04f..6bb8d9904 100644
  
  	// Arpeggiator
  
-@@ -806,6 +915,7 @@ doReadPatchedParam:
+@@ -806,6 +914,7 @@ doReadPatchedParam:
  					PatchedParamSet* patchedParams = (PatchedParamSet*)patchedParamsSummary->paramCollection;
  					patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_DELAY_FEEDBACK,
  					                         readAutomationUpToPos);
@@ -36149,7 +37240,7 @@ index fd80ba04f..6bb8d9904 100644
  				}
  				reader.exitTag();
  			}
-@@ -1439,6 +1549,10 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
+@@ -1439,6 +1548,10 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
  		return l10n::get(STRING_FOR_24DB_LADDER);
  	case FilterMode::TRANSISTOR_24DB_DRIVE:
  		return l10n::get(STRING_FOR_DRIVE);
@@ -36161,7 +37252,7 @@ index fd80ba04f..6bb8d9904 100644
  		return l10n::get(STRING_FOR_SVF_BAND);
  	case FilterMode::SVF_NOTCH:
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.h b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-index 64f25db18..6096dc6ef 100644
+index 64f25db18..b8527236b 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.h
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.h
 @@ -20,7 +20,9 @@
@@ -36185,13 +37276,17 @@ index 64f25db18..6096dc6ef 100644
  	static void writeParamAttributesToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
  	                                       int32_t* valuesForOverride = nullptr);
  	static void writeParamTagsToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
-@@ -66,10 +70,18 @@ public:
+@@ -66,10 +70,22 @@ public:
  	static bool readParamTagFromFile(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
  	                                 int32_t readAutomationUpToPos);
  	static void initParams(ParamManager* paramManager);
-+	/// Files from before the separate delay feedback: a delay that was in use gets feedback = its amount, so it
-+	/// sounds as it did. Call straight after reading the amount; a saved feedback is read after it and wins.
++	/// Files from before the separate delay feedback: feedback follows the amount, as it did there, until the
++	/// feedback is set. Marks the feedback param with kDelayFeedbackFollowsAmount, which saves and loads like any
++	/// value. Call straight after reading the amount; a saved feedback is read after it and wins.
 +	static void setDelayFeedbackFromOldAmount(ParamManager* paramManager, int32_t amount);
++	/// The delay feedback param's value while it follows the delay amount (older files). One step above the minimum,
++	/// which a knob or menu never lands on.
++	static constexpr int32_t kDelayFeedbackFollowsAmount = -2147483647;
  	virtual void wontBeRenderedForAWhile();
  	void beginStutter(ParamManagerForTimeline* paramManager);
  	void endStutter(ParamManagerForTimeline* paramManager);
@@ -36204,7 +37299,7 @@ index 64f25db18..6096dc6ef 100644
  	virtual bool setModFXType(ModFXType newType);
  	bool offerReceivedCCToLearnedParamsForClip(MIDICable& cable, uint8_t channel, uint8_t ccNumber, uint8_t value,
  	                                           ModelStackWithTimelineCounter* modelStack, int32_t noteRowIndex = -1);
-@@ -104,7 +116,36 @@ public:
+@@ -104,7 +120,36 @@ public:
  	StutterConfig stutterConfig;
  
  	bool sampleRateReductionOnLastTime;
@@ -36243,10 +37338,19 @@ index 64f25db18..6096dc6ef 100644
  	FilterMode hpfMode;
  	FilterRoute filterRoute;
 diff --git a/src/deluge/model/note/note_row.cpp b/src/deluge/model/note/note_row.cpp
-index accabdcf2..9f93ec482 100644
+index accabdcf2..2d0c59986 100644
 --- a/src/deluge/model/note/note_row.cpp
 +++ b/src/deluge/model/note/note_row.cpp
-@@ -1822,6 +1822,18 @@ Error NoteRow::changeNotesAcrossAllScreens(int32_t editPos, ModelStackWithNoteRo
+@@ -1763,6 +1763,8 @@ Error NoteRow::changeNotesAcrossAllScreens(int32_t editPos, ModelStackWithNoteRo
+ 	}
+ 
+ 	uint32_t wrapEditLevel = ((InstrumentClip*)modelStack->getTimelineCounter())->getWrapEditLevel();
++	// Start from the first screen, so copies on screens before editPos's get the change too
++	editPos = (uint32_t)editPos % wrapEditLevel;
+ 
+ 	int32_t numScreens = (uint32_t)(modelStack->getLoopLength() - 1) / wrapEditLevel + 1;
+ 
+@@ -1822,6 +1824,18 @@ Error NoteRow::changeNotesAcrossAllScreens(int32_t editPos, ModelStackWithNoteRo
  			case CORRESPONDING_NOTES_SET_FILL: {
  				thisNote->setFill(changeValue);
  			} break;
@@ -36265,7 +37369,7 @@ index accabdcf2..9f93ec482 100644
  			}
  		}
  	}
-@@ -2187,8 +2199,18 @@ noFurtherNotes:
+@@ -2187,8 +2201,18 @@ noFurtherNotes:
  
  			if (!notes.getNumElements()) {
  stopNote:
@@ -36285,7 +37389,7 @@ index accabdcf2..9f93ec482 100644
  			}
  			else {
  
-@@ -2217,7 +2239,7 @@ stopNote:
+@@ -2217,7 +2241,7 @@ stopNote:
  					if (posRelativeToNoteLeftEdge < 0) {
  						posRelativeToNoteLeftEdge += effectiveLength;
  					}
@@ -36294,7 +37398,7 @@ index accabdcf2..9f93ec482 100644
  						goto stopNote; // This is probably fine as either ">" or ">="
  					}
  				}
-@@ -2225,7 +2247,7 @@ stopNote:
+@@ -2225,7 +2249,7 @@ stopNote:
  				int32_t noteLateEdgePos = thisNote->pos; // Depending on play direction, this will be either the
  				                                         // left or right edge of the Note.
  				if (!playingReversedNow) {
@@ -36303,7 +37407,7 @@ index accabdcf2..9f93ec482 100644
  				}
  
  				if (wrapping) {
-@@ -2382,8 +2404,8 @@ gotValidNoteIndex:
+@@ -2382,8 +2406,8 @@ gotValidNoteIndex:
  						goto stopNote;
  					}
  
@@ -36314,7 +37418,7 @@ index accabdcf2..9f93ec482 100644
  				}
  
  				ticksTilNextNoteEvent = newTicksTil;
-@@ -2554,6 +2576,7 @@ storePendingNoteOn:
+@@ -2554,6 +2578,7 @@ storePendingNoteOn:
  					    thisNote->getProbability();
  					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].iterance = thisNote->getIterance();
  					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].fill = thisNote->getFill();
@@ -36322,7 +37426,7 @@ index accabdcf2..9f93ec482 100644
  					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].sampleSyncLength =
  					    thisNote->getLength();
  					pendingNoteOnList->pendingNoteOns[pendingNoteOnList->count].ticksLate = ticksLate;
-@@ -2568,8 +2591,13 @@ storePendingNoteOn:
+@@ -2568,8 +2593,13 @@ storePendingNoteOn:
  					ModelStackWithThreeMainThings* modelStackWithThreeMainThings = modelStack->addOtherTwoThings(
  					    ((Clip*)modelStack->getTimelineCounter())->output->toModControllable(),
  					    &modelStack->getTimelineCounter()->paramManager);
@@ -36337,7 +37441,7 @@ index accabdcf2..9f93ec482 100644
  					               thisNote->velocity, thisNote->length, ticksLate, samplesLate);
  				}
  			}
-@@ -2585,8 +2613,13 @@ storePendingNoteOn:
+@@ -2585,8 +2615,13 @@ storePendingNoteOn:
  			ModelStackWithThreeMainThings* modelStackWithThreeMainThings =
  			    modelStack->addOtherTwoThings(((Clip*)modelStack->getTimelineCounter())->output->toModControllable(),
  			                                  &modelStack->getTimelineCounter()->paramManager);
@@ -36583,7 +37687,7 @@ index a39f698ae..e7a14fe11 100644
  
  	/**
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index d935c3c5f..3c3ad0504 100644
+index d935c3c5f..5b3ba7e92 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
 @@ -40,10 +40,14 @@
@@ -36828,6 +37932,32 @@ index d935c3c5f..3c3ad0504 100644
  // Returns NULL if couldn't find one.
  // Supply stealInto to have it delete the "backed up" element, putting the contents into stealInto.
  ParamManager* Song::getBackedUpParamManagerForExactClip(ModControllableAudio* modControllable, Clip* clip,
+@@ -4830,7 +4970,7 @@ bool Song::shouldOldOutputBeReplaced(Clip* clip, Availability* availabilityRequi
+ 	}
+ }
+ 
+-Output* Song::navigateThroughPresetsForInstrument(Output* output, int32_t offset) {
++Output* Song::navigateThroughPresetsForInstrument(Output* output, int32_t offset, Clip* displayClip) {
+ 	if (output->type == OutputType::AUDIO) {
+ 		return output;
+ 	}
+@@ -4931,13 +5071,13 @@ Output* Song::navigateThroughPresetsForInstrument(Output* output, int32_t offset
+ 			((MIDIInstrument*)oldNonAudioInstrument)->channelSuffix = newChannelSuffix;
+ 		}
+ 
+-		view.displayOutputName(oldNonAudioInstrument);
++		view.displayOutputName(oldNonAudioInstrument, true, displayClip);
+ 	}
+ 
+ 	// Or if we're on a Kit or Synth...
+ 	else {
+-		PresetNavigationResult results =
+-		    loadInstrumentPresetUI.doPresetNavigation(offset, oldInstrument, Availability::INSTRUMENT_UNUSED, true);
++		PresetNavigationResult results = loadInstrumentPresetUI.doPresetNavigation(
++		    offset, oldInstrument, Availability::INSTRUMENT_UNUSED, true, displayClip);
+ 		if (results.error == Error::NO_ERROR_BUT_GET_OUT) {
+ removeWorkingAnimationAndGetOut:
+ 			if (display->haveOLED()) {
 @@ -5073,39 +5213,43 @@ gotAnInstrument: {}
  
  	// Synth or Kit
@@ -36980,7 +38110,7 @@ index d935c3c5f..3c3ad0504 100644
  		// Reschedule all the other stuff
  		playbackHandler.swungTickScheduled = false;
 diff --git a/src/deluge/model/song/song.h b/src/deluge/model/song/song.h
-index 539fc922f..3c9da2a3c 100644
+index 539fc922f..7a3608282 100644
 --- a/src/deluge/model/song/song.h
 +++ b/src/deluge/model/song/song.h
 @@ -18,6 +18,7 @@
@@ -37037,6 +38167,15 @@ index 539fc922f..3c9da2a3c 100644
  	void resyncLFOs(bool reset_state = false);
  	void ensureInaccessibleParamPresetValuesWithoutKnobsAreZero(Sound* sound);
  	bool areAllClipsInSectionPlaying(int32_t section);
+@@ -346,7 +365,7 @@ public:
+ 	void resumeClipsClonedForArrangementRecording();
+ 	void setParamsInAutomationMode(bool newState);
+ 	bool shouldOldOutputBeReplaced(Clip* clip, Availability* availabilityRequirement = nullptr);
+-	Output* navigateThroughPresetsForInstrument(Output* output, int32_t offset);
++	Output* navigateThroughPresetsForInstrument(Output* output, int32_t offset, Clip* displayClip = nullptr);
+ 	void instrumentSwapped(Instrument* newInstrument);
+ 	Instrument* changeOutputType(Instrument* oldInstrument, OutputType newOutputType);
+ 	AudioOutput* getFirstAudioOutput();
 diff --git a/src/deluge/model/swing/swing_style.cpp b/src/deluge/model/swing/swing_style.cpp
 new file mode 100644
 index 000000000..8dee9caae
@@ -37247,7 +38386,7 @@ index 000000000..6c4f55856
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index a22b64aa9..3848a46a4 100644
+index a22b64aa9..a9e027141 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -37430,19 +38569,20 @@ index a22b64aa9..3848a46a4 100644
  
  		bool sourceEverActive = modelStack->checkSourceEverActive(s);
  		if (sourceEverActive) [[likely]] {
-@@ -297,6 +443,11 @@ activenessDetermined:
+@@ -297,6 +443,12 @@ activenessDetermined:
  			source->sampleControls.invertReversed = sound.invertReversed; // Copy the temporary flag from the sound
  			guides[s].setupPlaybackBounds(source->sampleControls.isCurrentlyReversed());
  
 +			// Apply sample start offset (a patched param, so includes velocity / LFO / p-lock modulation)
 +			int32_t startOffsetParam = paramFinalValues[params::LOCAL_OSC_A_START_OFFSET + s];
 +			lastAppliedStartOffset[s] = startOffsetParam;
++			startOffsetSettleSamples[s] = 0;
 +			applyStartOffsetToGuide(guides[s], *source, startOffsetParam);
 +
  			// if (source->repeatMode == SampleRepeatMode::STRETCH) samplesLateHere = 0;
  		}
  
-@@ -652,6 +803,9 @@ bool Voice::sampleZoneChanged(ModelStackWithSoundFlags* modelStack, int32_t s, M
+@@ -652,6 +804,9 @@ bool Voice::sampleZoneChanged(ModelStackWithSoundFlags* modelStack, int32_t s, M
  	Sample* sample = (Sample*)holder->audioFile;
  
  	guides[s].setupPlaybackBounds(source.sampleControls.isCurrentlyReversed());
@@ -37452,7 +38592,7 @@ index a22b64aa9..3848a46a4 100644
  
  	LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
  
-@@ -733,9 +887,16 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -733,9 +888,16 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  		noteOff(modelStack);
  	}
  
@@ -37470,7 +38610,7 @@ index a22b64aa9..3848a46a4 100644
  		    || (paramManager->getPatchCableSet()->sourcesPatchedToAnything[GLOBALITY_LOCAL]
  		        & (1 << (util::to_underlying(PatchSource::ENVELOPE_0) + e)))) {
  			int32_t old = sourceValues[util::to_underlying(PatchSource::ENVELOPE_0) + e];
-@@ -743,10 +904,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -743,10 +905,10 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  			if (e == 0 && overrideAmplitudeEnvelopeReleaseRate) {
  				release = overrideAmplitudeEnvelopeReleaseRate;
  			}
@@ -37485,7 +38625,7 @@ index a22b64aa9..3848a46a4 100644
  			uint32_t anyChange = (old != sourceValues[util::to_underlying(PatchSource::ENVELOPE_0) + e]);
  			sourcesChanged |= anyChange << (util::to_underlying(PatchSource::ENVELOPE_0) + e);
  		}
-@@ -923,6 +1084,21 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
+@@ -923,6 +1085,21 @@ uint32_t Voice::getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::para
  					int32_t bytesLeft =
  					    (int32_t)((uint32_t)guides[s].endPlaybackAtByte - (uint32_t)bytePos) * guides[s].playDirection;
  
@@ -37507,7 +38647,7 @@ index a22b64aa9..3848a46a4 100644
  					Source* source = &sound.sources[s];
  					int32_t bytesPerSample = sample->byteDepth * sample->numChannels;
  
-@@ -1165,9 +1341,12 @@ skipAutoRelease: {}
+@@ -1165,9 +1342,12 @@ skipAutoRelease: {}
  		doPanning = false;
  	}
  	else {
@@ -37523,7 +38663,7 @@ index a22b64aa9..3848a46a4 100644
  	}
  
  	uint32_t sourcesToRenderInStereo = 0;
-@@ -1512,6 +1691,12 @@ carriersDone: {}
+@@ -1512,6 +1692,12 @@ carriersDone: {}
  skipUnisonPart: {}
  	}
  
@@ -37536,7 +38676,7 @@ index a22b64aa9..3848a46a4 100644
  	if (didStereoTempBuffer) {
  		int32_t* const oscBufferEnd = oscBuffer + (numSamples << 1);
  		// fold
-@@ -1519,10 +1704,10 @@ skipUnisonPart: {}
+@@ -1519,10 +1705,10 @@ skipUnisonPart: {}
  			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, paramFinalValues[params::LOCAL_FOLD]);
  		}
  		// Filters
@@ -37549,7 +38689,7 @@ index a22b64aa9..3848a46a4 100644
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			StereoSample* __restrict__ outputSample = (StereoSample*)soundBuffer;
-@@ -1550,7 +1735,38 @@ skipUnisonPart: {}
+@@ -1550,7 +1736,38 @@ skipUnisonPart: {}
  			} while (oscBufferPos != oscBufferEnd);
  		}
  
@@ -37589,7 +38729,7 @@ index a22b64aa9..3848a46a4 100644
  		else {
  
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
-@@ -1603,10 +1819,10 @@ skipUnisonPart: {}
+@@ -1603,10 +1820,10 @@ skipUnisonPart: {}
  			dsp::foldBufferPolyApproximation(oscBuffer, oscBufferEnd, foldAmount);
  		}
  
@@ -37602,7 +38742,7 @@ index a22b64aa9..3848a46a4 100644
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
  			int32_t overallOscAmplitudeNow = overallOscAmplitudeLastTime;
-@@ -1635,7 +1851,39 @@ skipUnisonPart: {}
+@@ -1635,7 +1852,39 @@ skipUnisonPart: {}
  			} while (++oscBufferPos != oscBufferEnd);
  		}
  
@@ -37643,7 +38783,7 @@ index a22b64aa9..3848a46a4 100644
  		else {
  			int32_t const* __restrict__ oscBufferPos = oscBuffer; // For traversal
  			int32_t* __restrict__ outputSample = soundBuffer;
-@@ -1956,6 +2204,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
+@@ -1956,6 +2205,42 @@ void Voice::renderFMWithFeedbackAdd(int32_t* bufferStart, int32_t numSamples, in
  // require an additional copying(summing) step, 		and we might as well just apply amplitude while that's
  // happening, which is exactly how it is currently.
  
@@ -37686,7 +38826,7 @@ index a22b64aa9..3848a46a4 100644
  void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManager, int32_t s,
                                int32_t* __restrict__ oscBuffer, int32_t numSamples, bool stereoBuffer,
                                int32_t sourceAmplitude, bool* __restrict__ unisonPartBecameInactive,
-@@ -1966,6 +2250,101 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
+@@ -1966,6 +2251,112 @@ void Voice::renderBasicSource(Sound& sound, ParamManagerForTimeline* paramManage
  
  	GeneralMemoryAllocator::get().checkStack("Voice::renderBasicSource");
  
@@ -37709,7 +38849,18 @@ index a22b64aa9..3848a46a4 100644
 +	    && (sound.sources[s].repeatMode == SampleRepeatMode::LOOP
 +	        || sound.sources[s].repeatMode == SampleRepeatMode::STRETCH)) {
 +		int32_t currentOffset = paramFinalValues[params::LOCAL_OSC_A_START_OFFSET + s];
-+		if (currentOffset != lastAppliedStartOffset[s]) {
++		// A re-seek drops and reloads every reader, so an LFO, envelope or knob moving the offset only gets one when
++		// it has moved at least 1/1024 of the sample, and at most every 10 ms
++		constexpr int32_t kReseekStep = (1 << 30) >> 10;
++		constexpr int32_t kReseekInterval = 441;
++		if (startOffsetSettleSamples[s] > 0) {
++			startOffsetSettleSamples[s] -= numSamples;
++		}
++		const int64_t offsetMoved = (int64_t)currentOffset - lastAppliedStartOffset[s];
++		const bool offsetGone = currentOffset == 0 && lastAppliedStartOffset[s] != 0;
++		if ((offsetGone || offsetMoved >= kReseekStep || offsetMoved <= -kReseekStep)
++		    && startOffsetSettleSamples[s] <= 0) {
++			startOffsetSettleSamples[s] = kReseekInterval;
 +			// Save old start position to compute the byte shift
 +			uint32_t oldStartByte = guides[s].startPlaybackAtByte;
 +
@@ -37788,7 +38939,7 @@ index a22b64aa9..3848a46a4 100644
  	// For each unison part
  	for (int32_t u = 0; u < sound.numUnison; u++) {
  
-@@ -2116,6 +2495,11 @@ pitchTooHigh:
+@@ -2116,6 +2507,11 @@ pitchTooHigh:
  
  			LoopType loopingType = guides[s].getLoopingType(sound.sources[s]);
  
@@ -37800,7 +38951,7 @@ index a22b64aa9..3848a46a4 100644
  			int32_t interpolationBufferSize;
  
  			// If pitch adjustment...
-@@ -2133,6 +2517,12 @@ pitchTooHigh:
+@@ -2133,6 +2529,12 @@ pitchTooHigh:
  				if (!voiceSample->doneFirstRenderYet && !tryToStartMidNote
  				    && portaEnvelopePos == 0xFFFFFFFF) { // No porta
  
@@ -37813,7 +38964,7 @@ index a22b64aa9..3848a46a4 100644
  					// If looping, make sure the loop isn't too short. If so, caching just wouldn't sound good /
  					// accurate
  					if (loopingType != LoopType::NONE) {
-@@ -2447,6 +2837,41 @@ dontUseCache: {}
+@@ -2447,6 +2849,41 @@ dontUseCache: {}
  					oscBuffer[i] += multiply_32x32_rshift32(uniBuf[i], sourceAmplitudeNow) << 6;
  				}
  			}
@@ -37855,7 +39006,7 @@ index a22b64aa9..3848a46a4 100644
  
  			// Or regular wave
  		}
-@@ -2562,6 +2987,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
+@@ -2562,6 +2999,32 @@ static_assert(kNumEnvelopeStages < 8, "Too many envelope stages");
  static_assert(kNumVoicePriorities < 4, "Too many priority options");
  
  // Higher numbers are lower priority. 1 is top priority. Will never return 0, because nextVoiceState starts at 1
@@ -37888,7 +39039,7 @@ index a22b64aa9..3848a46a4 100644
  uint32_t Voice::getPriorityRating() const {
  	return
  	    // Bits 30-31 - manual priority setting
-@@ -2574,7 +3025,7 @@ uint32_t Voice::getPriorityRating() const {
+@@ -2574,7 +3037,7 @@ uint32_t Voice::getPriorityRating() const {
  	    + ((uint32_t)std::min<size_t>(sound.numActiveVoices(), 7) << 27)
  
  	    // Bits 24-26 - envelope state
@@ -37898,7 +39049,7 @@ index a22b64aa9..3848a46a4 100644
  	    // Bits  0-23 - time entered
  	    + ((uint32_t)(-envelopes[0].timeEnteredState) & (0xFFFFFFFF >> 8));
 diff --git a/src/deluge/model/voice/voice.h b/src/deluge/model/voice/voice.h
-index 33be91e25..f035d7046 100644
+index 33be91e25..ba59497c7 100644
 --- a/src/deluge/model/voice/voice.h
 +++ b/src/deluge/model/voice/voice.h
 @@ -18,7 +18,9 @@
@@ -37911,7 +39062,7 @@ index 33be91e25..f035d7046 100644
  #include "model/voice/voice_sample_playback_guide.h"
  #include "model/voice/voice_unison_part.h"
  #include "modulation/envelope.h"
-@@ -74,11 +76,13 @@ public:
+@@ -74,11 +76,15 @@ public:
  	int32_t portaEnvelopeMaxAmplitude;
  
  	std::array<uint32_t, 2> lastSaturationTanHWorkingValue;
@@ -37922,10 +39073,12 @@ index 33be91e25..f035d7046 100644
  	std::array<int32_t, kNumModulators> modulatorAmplitudeLastTime;
  	std::array<uint32_t, kNumSources> sourceWaveIndexesLastTime;
 +	std::array<int32_t, kNumSources> lastAppliedStartOffset{};
++	// Samples until a moving start offset may re-seek this source again (it reloads every reader, so not every block)
++	std::array<int32_t, kNumSources> startOffsetSettleSamples{};
  
  	int32_t filterGainLastTime;
  	bool doneFirstRender;
-@@ -88,6 +92,9 @@ public:
+@@ -88,6 +94,9 @@ public:
  
  	int32_t overrideAmplitudeEnvelopeReleaseRate;
  
@@ -37935,7 +39088,7 @@ index 33be91e25..f035d7046 100644
  	bool justCreated{false};
  
  	uint32_t getLocalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Local param);
-@@ -109,6 +116,8 @@ public:
+@@ -109,6 +118,8 @@ public:
  	bool hasReleaseStage();
  	void unassignStuff(bool deletingSong);
  	[[nodiscard]] uint32_t getPriorityRating() const;
@@ -37944,7 +39097,7 @@ index 33be91e25..f035d7046 100644
  	void expressionEventImmediate(const Sound& sound, int32_t voiceLevelValue, int32_t s);
  	void expressionEventSmooth(int32_t newValue, int32_t s);
  
-@@ -159,4 +168,5 @@ private:
+@@ -159,4 +170,5 @@ private:
  	bool areAllUnisonPartsInactive(ModelStackWithSoundFlags& modelStack) const;
  	void setupPorta(const Sound& sound);
  	int32_t combineExpressionValues(const Sound& sound, int32_t expressionDimension) const;
@@ -38376,6 +39529,29 @@ index c14b3f729..67d47a50d 100644
 +	// RINGS' resonators, only on a drum synth source playing RINGS: tens of KB in SDRAM, from their own pool
 +	deluge::dsp::drum_synth::rings::Voice* ringsVoice = nullptr;
  };
+diff --git a/src/deluge/modulation/arpeggiator.cpp b/src/deluge/modulation/arpeggiator.cpp
+index acb15e4dc..60b18d181 100644
+--- a/src/deluge/modulation/arpeggiator.cpp
++++ b/src/deluge/modulation/arpeggiator.cpp
+@@ -373,6 +373,18 @@ void Arpeggiator::noteOn(ArpeggiatorSettings* settings, int32_t noteCode, int32_
+ 			uint8_t velocity = calculateSpreadVelocity(originalVelocity, spreadVelocityForCurrentStep);
+ 			arp_note->velocity = velocity; // calculated modified velocity
+ 
++			// If this note is already sounding (e.g. auditioned while the sequencer plays it), switch it off before
++			// sounding it again. Both note-ons share this one ArpNote, so only one note-off will ever come out for
++			// them, and a receiver that counts note-ons (like a mono synth's note stack) would hold the note forever.
++			// Callers that manage their own voices (Sound) ignore this note-off
++			if (note_exists && arp_note->noteStatus[0] == ArpNoteStatus::PLAYING
++			    && arp_note->noteCodeOnPostArp[0] != ARP_NOTE_NONE) {
++				instruction->noteCodeOffPostArp[0] = arp_note->noteCodeOnPostArp[0];
++				instruction->outputMIDIChannelOff[0] = arp_note->outputMemberChannel[0];
++				// So MPE output doesn't count the old note when choosing a member channel for the new one
++				arp_note->outputMemberChannel[0] = MIDI_CHANNEL_NONE;
++			}
++
+ 			// Set the note to be played
+ 			arp_note->noteCodeOnPostArp[0] = noteCode;
+ 			arp_note->noteStatus[0] = ArpNoteStatus::PENDING;
 diff --git a/src/deluge/modulation/automation/elektron_locks.cpp b/src/deluge/modulation/automation/elektron_locks.cpp
 new file mode 100644
 index 000000000..ef8cefed7
@@ -39033,10 +40209,10 @@ index a5d24d74c..415d27813 100644
  
 diff --git a/src/deluge/playback/autofill.cpp b/src/deluge/playback/autofill.cpp
 new file mode 100644
-index 000000000..5eb0155a0
+index 000000000..80d9a9518
 --- /dev/null
 +++ b/src/deluge/playback/autofill.cpp
-@@ -0,0 +1,401 @@
+@@ -0,0 +1,417 @@
 +/*
 + * Copyright © 2026 Synthstrom Audible Limited
 + *
@@ -39405,8 +40581,24 @@ index 000000000..5eb0155a0
 +	}
 +}
 +
++namespace {
++/// A clip held for a retrigger or a sounding hit may have been deleted since (a bar can pass): only use it if the song
++/// still has it
++bool songStillHas(InstrumentClip const* clip) {
++	if (currentSong == nullptr) {
++		return false;
++	}
++	for (Clip* songClip : AllClips::everywhere(currentSong)) {
++		if (songClip == clip) {
++			return true;
++		}
++	}
++	return false;
++}
++} // namespace
++
 +void Autofill::hit(InstrumentClip* clip, int32_t noteRowId, int32_t velocity, int32_t semitones) {
-+	if (velocity <= 0 || noteRowId >= clip->noteRows.getNumElements()) {
++	if (velocity <= 0 || !songStillHas(clip) || noteRowId >= clip->noteRows.getNumElements()) {
 +		return;
 +	}
 +	char modelStackMemory[MODEL_STACK_MAX_SIZE];
@@ -39428,7 +40620,7 @@ index 000000000..5eb0155a0
 +void Autofill::stopSoundingHits() {
 +	for (int32_t i = 0; i < numSounding_; i++) {
 +		InstrumentClip* clip = sounding_[i].clip;
-+		if (sounding_[i].noteRowId < clip->noteRows.getNumElements()) {
++		if (songStillHas(clip) && sounding_[i].noteRowId < clip->noteRows.getNumElements()) {
 +			char modelStackMemory[MODEL_STACK_MAX_SIZE];
 +			clip->stopAutofillHit(setupModelStackWithTimelineCounter(modelStackMemory, currentSong, clip),
 +			                      sounding_[i].noteRowId);
@@ -40451,7 +41643,7 @@ index 000000000..1ad5d88dc
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..62e833f7d 100644
+index 5f4a82450..61958e5d5 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -41151,16 +42343,20 @@ index 5f4a82450..62e833f7d 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +3006,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +3006,31 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
 -	delayWorkingState.delayFeedbackAmount = paramFinalValues[params::GLOBAL_DELAY_FEEDBACK - params::FIRST_GLOBAL];
 +	// GLOBAL_DELAY_FEEDBACK is the delay amount (wet level); the feedback has its own unpatched param
 +	delayWorkingState.delayAmount = paramFinalValues[params::GLOBAL_DELAY_FEEDBACK - params::FIRST_GLOBAL];
-+	delayWorkingState.delayFeedbackAmount = getFinalParameterValueLinear(
-+	    paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
-+	    cableToLinearParamShortcut(paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_FEEDBACK)));
++	const int32_t delayFeedbackParam = paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_FEEDBACK);
++	// Older files: the amount is the feedback too, exactly, so the delay stays on its single path
++	delayWorkingState.delayFeedbackAmount =
++	    delayFeedbackParam == kDelayFeedbackFollowsAmount
++	        ? delayWorkingState.delayAmount
++	        : getFinalParameterValueLinear(paramNeutralValues[params::GLOBAL_DELAY_FEEDBACK],
++	                                       cableToLinearParamShortcut(delayFeedbackParam));
 +	delayWorkingState.tone = paramManager->getUnpatchedParamSet()->getValue(params::UNPATCHED_DELAY_TONE);
  	if (shouldLimitDelayFeedback) {
 +		delayWorkingState.delayAmount = std::min(delayWorkingState.delayAmount, (q31_t)(1 << 30) - (1 << 26));
@@ -41182,7 +42378,7 @@ index 5f4a82450..62e833f7d 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +3036,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +3040,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -41204,7 +42400,7 @@ index 5f4a82450..62e833f7d 100644
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +3066,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2541,9 +3070,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -41219,7 +42415,7 @@ index 5f4a82450..62e833f7d 100644
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2605,9 +3135,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2605,9 +3139,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	int32_t modFXDepth = paramFinalValues[params::GLOBAL_MOD_FX_DEPTH - params::FIRST_GLOBAL];
  	int32_t modFXRate = paramFinalValues[params::GLOBAL_MOD_FX_RATE - params::FIRST_GLOBAL];
  
@@ -41246,7 +42442,7 @@ index 5f4a82450..62e833f7d 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3439,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3443,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -41282,7 +42478,7 @@ index 5f4a82450..62e833f7d 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3545,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3549,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
@@ -41298,7 +42494,7 @@ index 5f4a82450..62e833f7d 100644
  }
  
  // Set cents for master transpose
-@@ -3042,6 +3611,32 @@ void Sound::setupUnisonStereoSpread() {
+@@ -3042,6 +3615,32 @@ void Sound::setupUnisonStereoSpread() {
  	}
  }
  
@@ -41331,7 +42527,7 @@ index 5f4a82450..62e833f7d 100644
  void Sound::calculateEffectiveVolume() {
  	// volumeNeutralValueForUnison = (float)getParamNeutralValue(params::LOCAL_VOLUME) / sqrt(numUnison);
  	volumeNeutralValueForUnison = (float)134217728 / sqrtf(numUnison);
-@@ -3053,8 +3648,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3652,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -41352,7 +42548,7 @@ index 5f4a82450..62e833f7d 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3706,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3710,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -41453,7 +42649,7 @@ index 5f4a82450..62e833f7d 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3913,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3917,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -41462,7 +42658,7 @@ index 5f4a82450..62e833f7d 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3401,6 +4102,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3401,6 +4106,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  				return Error::INSUFFICIENT_RAM;
  			}
  			int len = reader.readTagOrAttributeValueHexBytes(patch->params, 156);
@@ -41470,7 +42666,7 @@ index 5f4a82450..62e833f7d 100644
  			reader.exitTag("dx7patch");
  		}
  		else if (!strcmp(tagName, "dx7randomdetune")) {
-@@ -3411,6 +4113,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4117,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
@@ -41492,7 +42688,7 @@ index 5f4a82450..62e833f7d 100644
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4150,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4154,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -41503,7 +42699,7 @@ index 5f4a82450..62e833f7d 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4364,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4368,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -41513,7 +42709,7 @@ index 5f4a82450..62e833f7d 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4491,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4495,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
@@ -41525,7 +42721,7 @@ index 5f4a82450..62e833f7d 100644
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4585,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4589,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -41544,7 +42740,7 @@ index 5f4a82450..62e833f7d 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4779,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4783,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -41565,7 +42761,7 @@ index 5f4a82450..62e833f7d 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4872,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4876,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -41577,7 +42773,7 @@ index 5f4a82450..62e833f7d 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4890,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4894,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -41588,7 +42784,7 @@ index 5f4a82450..62e833f7d 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4943,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +4947,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -41599,7 +42795,7 @@ index 5f4a82450..62e833f7d 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4255,6 +5020,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4255,6 +5024,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	writer.writeAttribute("spread", unisonStereoSpread, false);
  	writer.closeTag();
  
@@ -41614,7 +42810,7 @@ index 5f4a82450..62e833f7d 100644
  	if (paramManager) {
  		writer.writeOpeningTagBeginning("defaultParams", true);
  		Sound::writeParamsToFile(writer, paramManager, false);
-@@ -4441,6 +5214,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5218,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -41637,7 +42833,7 @@ index 5f4a82450..62e833f7d 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4818,6 +5607,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+@@ -4818,6 +5611,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
  		return true;
  	}
  
@@ -41649,7 +42845,7 @@ index 5f4a82450..62e833f7d 100644
  	if (unisonStereoSpread && numUnison > 1) {
  		return true;
  	}
-@@ -4948,6 +5742,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5746,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();

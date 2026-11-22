@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.37
+# BRIBELUGE: Deluge Bribes FW v1.38
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though!
 
@@ -36,7 +36,7 @@ Unofficial firmware for the Synthstrom Deluge, rebased on the latest official co
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 
-**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.37), pinned to the exact commit the bin was built from, and as a full source download on the [v1.37 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.37). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.38), pinned to the exact commit the bin was built from, and as a full source download on the [v1.38 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.38). See [Source code](#source-code).
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -48,9 +48,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.37.bin`](firmware/deluge-bribes-v1.37.bin)
+[`firmware/deluge-bribes-v1.38.bin`](firmware/deluge-bribes-v1.38.bin)
 
-SHA-256: `49b6fa41f7c814014dc19dc15da1dbfaae0f88e1e8ef80b0b615438a87a239a8`
+SHA-256: `c317d149723e185ca156854b9ed6dcea50b99362b5fc27f5ae365f7a1f19138b`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -66,7 +66,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.37.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.38.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -655,7 +655,7 @@ On the stock Deluge, the delay's Amount sets both how loud the echoes are and ho
 ### Good to know
 
 - New sounds start with feedback at 13 (half), so turning Amount up still gives a short tail of repeats.
-- Songs and presets saved before v1.9 that use the delay load with feedback set to their amount, so they sound the same. Automation recorded on the old amount now moves only the echo level.
+- Songs and presets from the stock firmware, or saved before v1.9, keep the stock delay: feedback follows the amount exactly, automation and modulation on the amount included, so they sound the same. Once you set the feedback, the two are separate. Until then the feedback menu shows the amount.
 - The tone starts flat, so it changes nothing until you turn it. When flat, the filter is switched off entirely.
 - Feedback and tone save with the song and the preset. Other firmware ignores them: it uses the amount for both level and feedback, and no filter.
 
@@ -1050,7 +1050,7 @@ The type only changes the sound once **Bitcrush** or **Decimation** is turned up
 - The level stays put as you turn either control up, with no DC offset. Jitter and Data get a little louder at the top.
 - Decay and Data keep silence silent: nothing is left once the sound has stopped.
 - Decay's sputters and Data's bursts run on their own random timing, not synced to the tempo.
-- New sounds, kits, audio clips and songs start on **Hard**. Songs and presets saved before v1.27 that use Bitcrush or Decimation load as **Classic**, so they sound the same; ones that didn't start on **Hard** when you turn them up.
+- New sounds, kits, audio clips and songs start on **Hard**. Songs and presets from the stock firmware, or saved before v1.27, load as **Classic**, so they sound the same, even where Bitcrush or Decimation only comes up later from a knob or automation.
 - Bitcrush and Decimation are still parameters: gold knobs, automation, MIDI learn and parameter locks work as before, and the type changes how they sound.
 - Songs and presets save it (`crushType`). Other firmware ignores it and plays the original.
 - It costs a few operations per sample, only while Bitcrush or Decimation is on.
@@ -1439,6 +1439,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.38: Stability.** No new features: this one is about older songs and staying up. It takes in the community's 18 fixes since 1.3.0, among them the freeze when a menu refuses to open, the undo crash in the note editor, crashes around deleted clips and stuck MIDI notes. It's now built as a release candidate, not a developer build, so the extra internal checks that stopped the Deluge with an error code on some older songs are left out, as on the official release. Older songs' delays work as they did: feedback follows the amount, automation included, until you set the feedback, and the delay stays on its single, lighter path. Older songs that use Bitcrush or Decimation always load as Classic. *Fixed:* switching from BRUNO CHORUS to another chorus, flanger, warble or dimension could burst; a modulated sample start offset stuttered on looping samples; deleting a kit clip during an Autofill could crash; the companion rebuilt everything it shows on every screen redraw, which could take longer than an audio buffer, and now does it at most 40 times a second. *Why:* reports of crashes, clicks and older songs sounding different. *Learned:* a developer build halts on checks the official release skips, so some of the crashes were the Deluge stopping itself.
+
 - **v1.37: Master clip, SHIFT, Decay and Data.** Things from my other firmware, brought over. **Master clip** puts a clipper or limiter at the very end of the song (Soft, Tanh, Hard, Tape, Fold or Limit, with drive and a ceiling), with the curves from KALI SMASH's SQUASH section. **SHIFT** is KALI SMASH's three-band frequency shifter as a Mod FX type. Two new crush types: **Decay**, the dying BBD chip from Seal Eggs' BBD character, on a BBD-style clock, and **Data**, new for this build, which corrupts the sound as 16-bit words. *Why:* the Deluge's output had nothing between a clean mix and a harsh digital clip, and these had already proved themselves on the Kali and the Sealegs. *Learned:* a clipper's filters start from silence, and the processed sound runs a little late, so switching it on mid-song clicked; now the filters are primed with the last samples that went past, every type has the same latency, and on and off crossfade.
 
 - **v1.36: WAVE panel.** With a wavetable synth selected, the companion draws the table as a stack of its frames, with the position knob's frame lit and every playing note moving through it, envelope and LFO sweeps included (see [WAVE panel](#wave-panel)). Drag on it to move the position; a 3D / 2D switch flattens it to one cycle. The oscillators' position, sweep amounts, level and pitch sit beside it, envelope 2, filter, amp envelope, fold, feedback, volume and reverb underneath, both ways like the other panels. The WAVE presets' **CUSTOM 3** is LFO 1's sweep of the position again, not Feedback: with the position on CUSTOM 2, the pair reads as where and how much. *Fixed:* 128 BROPHET programs and 9 DX7 voices played off C (BROPHET where the original's osc A sat on another note, DX7 where the transpose or the carriers did); each now plays C on C, its intervals kept. *Why:* a wavetable is a picture of the sound, so you should be able to see where you are in it. *Learned:* the 3D view was slow on a tablet because it drew all 64 frames, and a blurred glow, every time a note moved; now the stack is drawn once and only the moving lines after it.
@@ -1550,7 +1552,7 @@ The complete source of every release is published in three places:
 
 The same changes as a single patch on the official firmware:
 
-- **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at the `v1.3.0` tag (commit `156500e7c`, community firmware 1.3.0). Up to v1.22.2 the base was commit `a616dd8e`, the 1.3 beta.
+- **Base:** [SynthstromAudible/DelugeFirmware](https://github.com/SynthstromAudible/DelugeFirmware) at the `v1.3.0` tag (commit `156500e7c`, community firmware 1.3.0), plus the fixes on the community's `release/1.3` branch up to `ff14b0762`. Up to v1.22.2 the base was commit `a616dd8e`, the 1.3 beta.
 - **Changes:** [`source/stumble-swing.patch`](source/stumble-swing.patch)
 
 To build it yourself (or check out `v1.3.0` from the official repo and `git apply` the patch):
