@@ -4,13 +4,15 @@
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
-Unofficial firmware for the Synthstrom Deluge, rebased on the latest official community firmware release (CFW v1.3.0, Derbyshire) from [delugecommunity.com](https://delugecommunity.com/), with thanks to [everyone who has contributed to the community firmware](https://github.com/SynthstromAudible/DelugeFirmware/graphs/contributors).
+Bribeluge is an unofficial modified firmware for the Synthstrom Deluge, rebased on the latest official community firmware release (CFW v1.3.0, Derbyshire) from [delugecommunity.com](https://delugecommunity.com/), with thanks to [everyone who has contributed to it](https://github.com/SynthstromAudible/DelugeFirmware/graphs/contributors).
+
+I build Bribeluge for those who want more wonk, more destruction options, more speed, and a "studio in a box" mentality. I could not have done any of this without the incredible work of the original Deluge creators, Rohan Hill and [Synthstrom Audible](https://synthstrom.com/), and the tireless work of the community firmware team ever since the Deluge was open sourced.
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
 **Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39), the exact commit the bin was built from, and a full source download on the [v1.39 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39). See [Source code](#source-code).
 
-Bribeluge adds things for people who want more wonk, more destruction, more speed, moarrrrr:
+What Bribeluge adds:
 
 1. **[Stumble swing](#1-stumble-swing):** Four extra swing styles (HOPP, DEEP, SQEZ, FOLD), seven levels each, on SHIFT + TEMPO. New songs start on Stumble SQEZ.
 2. **[Kit pattern mode](#2-kit-pattern-mode):** 24 saved patterns for each of a kit's bottom six rows. Step a row through them or load a whole bank.
