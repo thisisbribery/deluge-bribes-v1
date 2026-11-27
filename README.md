@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.40
+# BRIBELUGE: Deluge Bribes FW v1.41
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.40`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.40), the exact commit the bin was built from, and a full source download on the [v1.40 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.40). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.41`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.41), the exact commit the bin was built from, and a full source download on the [v1.41 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.41). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -40,7 +40,7 @@ What Bribeluge adds:
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
-27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, knobs and engine drawings, waveforms with draggable markers, picture pickers, a song view you can tap, and panels for BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs) and wavetable synths (a 3D view of the table with every note moving through it) that work both ways.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, engine drawings, every knob it shows turnable from the screen and following the Deluge (main settings, engine controls, switches and gold knobs), waveforms with draggable markers, picture pickers, a song view you can tap, and panels for BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs) and wavetable synths (a 3D view of the table with every note moving through it) that work both ways.
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
@@ -57,9 +57,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.40.bin`](firmware/deluge-bribes-v1.40.bin)
+[`firmware/deluge-bribes-v1.41.bin`](firmware/deluge-bribes-v1.41.bin)
 
-SHA-256: `56278696710e1fe12a194f2777ec46dead070a34a978324441f5cf6495da56cb`
+SHA-256: `a66469ce23370ffaa84112df32bc5037707bc11c2569a069f386004126852f32`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -75,7 +75,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.40.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.41.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1259,7 +1259,8 @@ It talks plain USB MIDI. The display mirror is the Deluge Community firmware's s
 
 - **Top bar:** Play, Record, the tempo, the Deluge's display mirrored (7SEG or OLED, switchable), Back, the select knob left and right, and a big SELECT button.
 - **Readout:** whatever the display shows, spelled out in full English (no four letter abbreviations), with a menu item's name and value side by side.
-- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. Tap a knob and it opens on the Deluge. BRUNO106, BROPHET and wavetable synths get their own panels (below).
+- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. They work both ways (new in v1.41): drag a knob up or down with a finger or the mouse and the Deluge follows, as if you'd turned it there; turn it on the Deluge and the knob moves. Tap a knob without dragging and it opens on the Deluge, as before. Tap a switch to step it to its next setting. BRUNO106, BROPHET and wavetable synths get their own panels (below).
+- **Gold knobs:** the two knobs of each of the eight mod buttons, with the lit pair glowing. Drag one to turn it (new in v1.41): if its mod button isn't lit, the Deluge lights it first, as only the lit pair turns. It goes through the Deluge's own knob, so the value popup, affect all on a kit and holding notes for parameter locks work as with your hand on it. A knob on a patch cable covers its whole range, -50 to +50. Tap a pair to light its mod button.
 - **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
 - **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
 - **Waveforms:** audio clips, sample markers and Start offset, full width with every playing note's playhead. Drag the start, loop and end markers, or the offset.
@@ -1532,6 +1533,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.41: Every companion knob works both ways.** On the [companion](#27-bribeluge-companion), every knob it shows now turns from the screen, not just the BRUNO106, BROPHET and WAVE panels: the main settings (oscillators, filters, envelopes, voice, effects, LFOs), each drum engine's controls, the 303's knobs and the gold knobs. Drag up or down with a finger or the mouse and the Deluge follows; turn a knob on the Deluge and the screen follows. A tap still opens the setting on the Deluge, and a tap on a switch (BRUNO106 saw, pulse, HPF and chorus, the 303 filter) steps it. Gold knob moves go through the Deluge's own knob, so popups, affect all and parameter locks behave as on the hardware. A gold knob on a patch cable now shows its whole range, -50 to +50; a negative amount used to show as 0. *Why:* the panels showed that two-way control works, and a screen of knobs you can't turn is half a control surface. *Learned:* turning a gold knob from the screen is best done as the turn a hand would make to get there, not by writing the value, so everything the Deluge does around a knob turn still happens.
 
 - **v1.40: Eight-row kits that swap in place.** Every Bribeluge kit (TRIBE, Cycles, LXR, GIN) now has eight rows, so they swap in and out of each other easily: **SHIFT + KIT** to another kit changes it in place, row for row, with the pattern still on its rows. You can add rows under the kick or over the top row, and they stay where they are, with their sounds and notes, when you swap kits or change preset. A Cycles kit gains **CLAP** and **PERC2**, an LXR kit gains **PERC**, and every Cycles and LXR preset has the new rows (copy the preset folders to the card again). A kit's own eight rows keep their order and can't be deleted; rows you added delete as before. Kits in older songs get their missing rows the first time you swap them or change their preset. See [Making a drum synth kit](#making-a-drum-synth-kit). *Why:* a Cycles kit had six rows and an LXR kit seven, so a swap moved things about, and a kit with rows added couldn't be swapped at all. *Learned:* the swap used to build a whole new kit and pour the pattern back in from the bottom. Changing the sounds under the rows, the way the presets already did, is simpler and leaves everything else alone.
 

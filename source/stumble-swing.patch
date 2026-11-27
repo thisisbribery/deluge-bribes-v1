@@ -32718,7 +32718,7 @@ index bec64c015..ca12760e8 100644
  	uint32_t getMaxLength() override;
  	bool setupScroll(uint32_t oldScroll) override;
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 1a20da07c..b1412a8a5 100644
+index 1a20da07c..5231e60f4 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
 @@ -29,6 +29,7 @@
@@ -32844,7 +32844,28 @@ index 1a20da07c..b1412a8a5 100644
  	char modelStackTempMemory[MODEL_STACK_MAX_SIZE];
  	copyModelStack(modelStackTempMemory, modelStackWithParam, sizeof(ModelStackWithThreeMainThings));
  	ModelStackWithThreeMainThings* tempModelStack = (ModelStackWithThreeMainThings*)modelStackTempMemory;
-@@ -1118,6 +1160,13 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1007,6 +1049,20 @@ ModelStackWithAutoParam* View::getModelStackWithParam(int32_t whichModEncoder, b
+ 	return modelStackWithParam;
+ }
+ 
++int32_t View::companionModKnobPos(int32_t whichModEncoder) {
++	if (!activeModControllableModelStack.modControllable) {
++		return INT32_MIN;
++	}
++	bool noteTailsAllowedBefore;
++	ModelStackWithAutoParam* modelStackWithParam = getModelStackWithParam(whichModEncoder, noteTailsAllowedBefore);
++	if (!modelStackWithParam || !modelStackWithParam->autoParam) {
++		return INT32_MIN;
++	}
++	// As modEncoderAction_existentParam reads it before a turn
++	const int32_t value = modelStackWithParam->autoParam->getValuePossiblyAtPos(modPos, modelStackWithParam);
++	return modelStackWithParam->paramCollection->paramValueToKnobPos(value, modelStackWithParam);
++}
++
+ // used to get name of parameter assigned to mod encoder
+ void View::getParameterNameFromModEncoder(int32_t whichModEncoder, char* parameterName) {
+ 	bool noteTailsAllowedBefore;
+@@ -1118,6 +1174,13 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  
  	// On OLED, display the name of the parameter on the first line of the popup
  	if (display->haveOLED()) {
@@ -32858,7 +32879,7 @@ index 1a20da07c..b1412a8a5 100644
  		if (kind == params::Kind::PATCH_CABLE) {
  			parameter_name.append(sourceToStringShort(source1));
  			parameter_name.append("->");
-@@ -1128,8 +1177,9 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1128,8 +1191,9 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  			parameter_name.append(modulation::params::getPatchedParamShortName(
  			    paramID, (ModControllableAudio*)view.activeModControllableModelStack.modControllable));
  		}
@@ -32870,7 +32891,7 @@ index 1a20da07c..b1412a8a5 100644
  			if (kind == params::Kind::EXPRESSION) {
  				if (paramID == X_PITCH_BEND) {
  					parameter_name.append(deluge::l10n::get(deluge::l10n::String::STRING_FOR_PITCH_BEND));
-@@ -1205,7 +1255,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
+@@ -1205,7 +1269,26 @@ void View::displayModEncoderValuePopup(params::Kind kind, int32_t paramID, int32
  	}
  	else {
  		current_display_value = calculateKnobPosForDisplay(kind, paramID, newKnobPos + kKnobPosOffset);
@@ -32898,7 +32919,7 @@ index 1a20da07c..b1412a8a5 100644
  	}
  
  	// Check if we need to update the notification (avoid excessive updates)
-@@ -1332,7 +1401,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
+@@ -1332,7 +1415,7 @@ int32_t View::calculateKnobPosForDisplay(params::Kind kind, int32_t paramID, int
  	valueForDisplayFloat = (knobPosFloat / maxKnobPosFloat) * maxMenuValueFloat;
  
  	// check if parameter is pan or pitch, in which case, further adjust range from 0 - 50 to -25 to +25
@@ -32907,7 +32928,7 @@ index 1a20da07c..b1412a8a5 100644
  		valueForDisplayFloat = valueForDisplayFloat - maxMenuRelativeValueFloat;
  	}
  
-@@ -1350,11 +1419,9 @@ void View::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
+@@ -1350,11 +1433,9 @@ void View::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
  
  	// If the learn button is pressed, user is trying to copy or paste, and the fact that we've ended up here means they
  	// can't
@@ -32921,7 +32942,7 @@ index 1a20da07c..b1412a8a5 100644
  		}
  		return;
  	}
-@@ -1558,6 +1625,7 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+@@ -1558,6 +1639,7 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
  
  				setKnobIndicatorLevels();
  				setModLedStates();
@@ -32929,7 +32950,7 @@ index 1a20da07c..b1412a8a5 100644
  			}
  		}
  		else {
-@@ -1565,6 +1633,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+@@ -1565,6 +1647,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
  			    whichButton, false, (ParamManagerForTimeline*)activeModControllableModelStack.paramManager);
  		}
  	}
@@ -33044,7 +33065,7 @@ index 1a20da07c..b1412a8a5 100644
  }
  
  void View::setModLedStates() {
-@@ -1595,6 +1771,9 @@ void View::setModLedStates() {
+@@ -1595,6 +1785,9 @@ void View::setModLedStates() {
  		affectEntire = (uiContextType == UIType::INSTRUMENT_CLIP) ? ((InstrumentClip*)clip)->affectEntire : true;
  	}
  	indicator_leds::setLedState(IndicatorLED::AFFECT_ENTIRE, affectEntire);
@@ -33054,7 +33075,7 @@ index 1a20da07c..b1412a8a5 100644
  
  	bool onAutomationClipView = false;
  
-@@ -2297,7 +2476,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
+@@ -2297,7 +2490,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
  }
  
  void View::navigateThroughPresetsForInstrumentClip(int32_t offset, ModelStackWithTimelineCounter* modelStack,
@@ -33063,7 +33084,7 @@ index 1a20da07c..b1412a8a5 100644
  
  	AudioEngine::logAction("navigateThroughPresets");
  
-@@ -2521,7 +2700,7 @@ gotAnInstrument:
+@@ -2521,7 +2714,7 @@ gotAnInstrument:
  			}
  		}
  
@@ -33072,7 +33093,7 @@ index 1a20da07c..b1412a8a5 100644
  
  		// Special case: when it is a saved MIDI preset (with a name), then we need to show the channel in a popup, as
  		// the name will print over the midi channel and we can't see it while changing it
-@@ -2543,8 +2722,8 @@ gotAnInstrument:
+@@ -2543,8 +2736,8 @@ gotAnInstrument:
  	// Or if we're on a Kit or Synth...
  	else {
  
@@ -33084,7 +33105,7 @@ index 1a20da07c..b1412a8a5 100644
  getOut:
  			display->removeWorkingAnimation();
 diff --git a/src/deluge/gui/views/view.h b/src/deluge/gui/views/view.h
-index 823aee7b0..8738b23b2 100644
+index 823aee7b0..8c2558679 100644
 --- a/src/deluge/gui/views/view.h
 +++ b/src/deluge/gui/views/view.h
 @@ -71,6 +71,9 @@ public:
@@ -33108,7 +33129,17 @@ index 823aee7b0..8738b23b2 100644
  	void navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* clip, bool doBlink = false);
  	bool changeOutputType(OutputType newOutputType, ModelStackWithTimelineCounter* modelStack, bool doBlink = false);
  	void drawOutputNameFromDetails(OutputType outputType, int32_t slot, int32_t subSlot, char const* name,
-@@ -172,6 +176,14 @@ private:
+@@ -153,6 +157,9 @@ public:
+ 
+ 	int32_t calculateKnobPosForModEncoderTurn(deluge::modulation::params::Kind kind, int32_t knobPos, int32_t offset);
+ 
++	/// Companion: where a gold knob sits now, as a turn of it would read it; INT32_MIN if it has no param
++	int32_t companionModKnobPos(int32_t whichModEncoder);
++
+ private:
+ 	void pretendModKnobsUntouchedForAWhile();
+ 	void instrumentBeenEdited();
+@@ -172,6 +179,14 @@ private:
  	                                    ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore);
  	ModelStackWithAutoParam* getModelStackWithParam(int32_t whichModEncoder, bool& noteTailsAllowedBefore);
  
@@ -33383,7 +33414,7 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..e2b5f64ad 100644
+index 51a40bfd2..25cc0b015 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -33455,7 +33486,7 @@ index 51a40bfd2..e2b5f64ad 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,3324 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3531 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -34463,6 +34494,25 @@ index 51a40bfd2..e2b5f64ad 100644
 +	return params->containsAnyMainParamCollections();
 +}
 +
++/// The 303's knobs (group 7), on their pads
++struct Tb303Knob {
++	uint8_t x;
++	uint8_t y;
++	int32_t param;
++	deluge::l10n::String name;
++};
++constexpr Tb303Knob kTb303Knobs[] = {
++    {8, 7, P::LOCAL_LPF_FREQ, deluge::l10n::String::STRING_FOR_TB303_CUTOFF},
++    {8, 6, P::LOCAL_LPF_RESONANCE, deluge::l10n::String::STRING_FOR_TB303_RESONANCE},
++    {4, 0, kTb303EnvModParam, deluge::l10n::String::STRING_FOR_TB303_ENV_MOD},
++    {5, 0, kTb303DecayParam, deluge::l10n::String::STRING_FOR_TB303_DECAY},
++    {2, 4, kTb303AccentParam, deluge::l10n::String::STRING_FOR_TB303_ACCENT},
++    {2, 3, kTb303WaveformParam, deluge::l10n::String::STRING_FOR_TB303_WAVEFORM},
++    {4, 5, kTb303SlideParam, deluge::l10n::String::STRING_FOR_TB303_SLIDE},
++    {2, 5, kTb303DriveParam, deluge::l10n::String::STRING_FOR_TB303_DRIVE},
++    {2, 6, kTb303AmpDecayParam, deluge::l10n::String::STRING_FOR_TB303_AMP_DECAY},
++};
++
 +/// One PARAMS entry. text: what a switch is set to (empty for a knob).
 +int32_t putKnob(uint8_t* out, int32_t x, int32_t y, int32_t group, int32_t flags, int32_t pos, int32_t shown,
 +                std::string_view name, std::string_view text) {
@@ -34529,8 +34579,10 @@ index 51a40bfd2..e2b5f64ad 100644
 +}
 +
 +/// PARAMS body: version, open, count, then per knob its pad x and y, group, flags (1 bipolar, 2 open in the menu,
-+/// 4 its pad would say CANT),
-+/// position (0 to 127, 64 = middle), the value the Deluge shows (2 bytes, plus 8192), and its English name
++/// 4 its pad would say CANT, 8 engine control 0-127, 16 switch),
++/// position (0 to 127, 64 = middle; a switch: its choice), the value the Deluge shows (2 bytes, plus 8192; a switch:
++/// highest choice * 16 + lowest), its English name, and what a switch is set to.
++/// The tablet sets any of them with host mode 16 (0x10) <group> <x> <y> <hi> <lo> (see applyKnob).
 +int32_t buildParams(uint8_t* out) {
 +	int32_t i = 0;
 +	out[i++] = kStateVersion;
@@ -34661,41 +34713,25 @@ index 51a40bfd2..e2b5f64ad 100644
 +			auto onOff = [](bool on) {
 +				return englishOf(on ? deluge::l10n::String::STRING_FOR_ON : deluge::l10n::String::STRING_FOR_OFF);
 +			};
-+			i += putKnob(out + i, 2, 2, 8, 16 | (isOpen(2, 2) ? 2 : 0), saw, saw,
++			// A switch's shown value is its range, highest choice * 16 + lowest, for the tablet to step through
++			i += putKnob(out + i, 2, 2, 8, 16 | (isOpen(2, 2) ? 2 : 0), saw, 16,
 +			             englishOf(deluge::l10n::String::STRING_FOR_BRUNO_SAW), onOff(saw));
-+			i += putKnob(out + i, 3, 2, 8, 16 | (isOpen(3, 2) ? 2 : 0), pulse, pulse,
++			i += putKnob(out + i, 3, 2, 8, 16 | (isOpen(3, 2) ? 2 : 0), pulse, 16,
 +			             englishOf(deluge::l10n::String::STRING_FOR_BRUNO_PULSE), onOff(pulse));
-+			i += putKnob(out + i, 4, 0, 8, 16 | (isOpen(4, 0) ? 2 : 0), hpf, hpf,
++			i += putKnob(out + i, 4, 0, 8, 16 | (isOpen(4, 0) ? 2 : 0), hpf, 3 * 16,
 +			             englishOf(deluge::l10n::String::STRING_FOR_BRUNO_HPF),
 +			             englishOf(kHpfNames[std::clamp<int32_t>(hpf, 0, 3)]));
-+			i += putKnob(out + i, 4, 1, 8, 16 | (isOpen(4, 1) ? 2 : 0), chorus, chorus,
++			i += putKnob(out + i, 4, 1, 8, 16 | (isOpen(4, 1) ? 2 : 0), chorus, 16,
 +			             englishOf(deluge::l10n::String::STRING_FOR_BRUNO_CHORUS_ON), onOff(chorus));
 +			i +=
-+			    putKnob(out + i, 4, 2, 8, 16 | (isOpen(4, 2) ? 2 : 0) | (chorus ? 0 : 4), mode, mode,
++			    putKnob(out + i, 4, 2, 8, 16 | (isOpen(4, 2) ? 2 : 0) | (chorus ? 0 : 4), mode, 3 * 16 + 1,
 +			            englishOf(deluge::l10n::String::STRING_FOR_BRUNO_CHORUS_MODE), englishOf(kModeNames[mode - 1]));
 +			count += 5;
 +		}
 +	}
 +	else if (sound->synthMode == SynthMode::TB303 && patched != nullptr) {
 +		// The 303's knobs, on their pads, and its filter switch
-+		struct Tb303Knob {
-+			uint8_t x;
-+			uint8_t y;
-+			int32_t param;
-+			deluge::l10n::String name;
-+		};
 +		using S = deluge::l10n::String;
-+		static constexpr Tb303Knob kTb303Knobs[] = {
-+		    {8, 7, P::LOCAL_LPF_FREQ, S::STRING_FOR_TB303_CUTOFF},
-+		    {8, 6, P::LOCAL_LPF_RESONANCE, S::STRING_FOR_TB303_RESONANCE},
-+		    {4, 0, kTb303EnvModParam, S::STRING_FOR_TB303_ENV_MOD},
-+		    {5, 0, kTb303DecayParam, S::STRING_FOR_TB303_DECAY},
-+		    {2, 4, kTb303AccentParam, S::STRING_FOR_TB303_ACCENT},
-+		    {2, 3, kTb303WaveformParam, S::STRING_FOR_TB303_WAVEFORM},
-+		    {4, 5, kTb303SlideParam, S::STRING_FOR_TB303_SLIDE},
-+		    {2, 5, kTb303DriveParam, S::STRING_FOR_TB303_DRIVE},
-+		    {2, 6, kTb303AmpDecayParam, S::STRING_FOR_TB303_AMP_DECAY},
-+		};
 +		for (const Tb303Knob& k : kTb303Knobs) {
 +			const int32_t raw = patched->getValue(k.param);
 +			i += putKnob(out + i, k.x, k.y, 7, isOpen(k.x, k.y) ? 2 : 0, (raw >> 25) + 64,
@@ -34705,7 +34741,7 @@ index 51a40bfd2..e2b5f64ad 100644
 +		static constexpr S kFilterNames[] = {S::STRING_FOR_TB303, S::STRING_FOR_TB303_FILTER_LP18,
 +		                                     S::STRING_FOR_TB303_FILTER_DIRT};
 +		const int32_t filter = std::clamp<int32_t>(static_cast<int32_t>(sound->tb303FilterMode), 0, 2);
-+		i += putKnob(out + i, 5, 5, 8, 16 | (isOpen(5, 5) ? 2 : 0), filter, filter,
++		i += putKnob(out + i, 5, 5, 8, 16 | (isOpen(5, 5) ? 2 : 0), filter, 2 * 16,
 +		             englishOf(S::STRING_FOR_TB303_FILTER), englishOf(kFilterNames[filter]));
 +		count++;
 +	}
@@ -34763,8 +34799,8 @@ index 51a40bfd2..e2b5f64ad 100644
 +}
 +
 +/// GOLD body: version, open, the mod button lit (127 if none), then for each mod button 0-7 its upper knob and its
-+/// lower knob: flags (1 bipolar, 4 nothing assigned), position (0 to 127), the value the Deluge shows (2 bytes, plus
-+/// 8192) and the English name
++/// lower knob: flags (1 bipolar, 2 a patch cable whose position covers -100% to +100%, 4 nothing assigned), position
++/// (0 to 127), the value the Deluge shows (2 bytes, plus 8192) and the English name
 +int32_t buildGold(uint8_t* out) {
 +	int32_t i = 0;
 +	out[i++] = kStateVersion;
@@ -34785,6 +34821,7 @@ index 51a40bfd2..e2b5f64ad 100644
 +			const ParamDescriptor descriptor = sound->modKnobs[button][w].paramDescriptor;
 +			int32_t knobPos = 0;
 +			bool found = false;
++			bool cable = false;
 +			P::Kind kind = P::Kind::NONE;
 +			int32_t paramId = 0;
 +			if (descriptor.isNull()) {}
@@ -34819,14 +34856,18 @@ index 51a40bfd2..e2b5f64ad 100644
 +				paramId = static_cast<int32_t>(descriptor.data);
 +				const uint8_t c =
 +				    cables->getPatchCableIndex(descriptor.getBottomLevelSource(), descriptor.getDestination());
-+				knobPos = c == 255 ? 0 : (cables->patchCables[c].param.getCurrentValue() >> 23) - 64;
++				// As PatchCableSet::paramValueToKnobPos: -192 (amount -100%) to 64 (+100%), -64 = none
++				knobPos = c == 255 ? -64 : (cables->patchCables[c].param.getCurrentValue() >> 23) - 64;
 +				found = true;
++				cable = true;
 +			}
-+			knobPos = std::clamp<int32_t>(knobPos, -64, 64);
++			knobPos = std::clamp<int32_t>(knobPos, cable ? -192 : -64, 64);
 +			const int32_t shown = found ? view.calculateKnobPosForDisplay(kind, paramId, knobPos + 64) : 0;
-+			const bool bipolar = found && view.calculateKnobPosForDisplay(kind, paramId, 0) < 0;
-+			out[i++] = (bipolar ? 1 : 0) | (descriptor.isNull() ? 4 : 0);
-+			out[i++] = static_cast<uint8_t>(std::clamp<int32_t>(knobPos + 64, 0, 127));
++			const bool bipolar = cable || (found && view.calculateKnobPosForDisplay(kind, paramId, 0) < 0);
++			// A cable's position covers its whole range, -100% to +100% (flag 2), so the middle is none
++			out[i++] = (bipolar ? 1 : 0) | (cable ? 2 : 0) | (descriptor.isNull() ? 4 : 0);
++			out[i++] = static_cast<uint8_t>(
++			    std::clamp<int32_t>(cable ? ((knobPos + 192) * 127 + 128) / 256 : knobPos + 64, 0, 127));
 +			const int32_t v = std::clamp<int32_t>(shown + 8192, 0, 16383);
 +			out[i++] = (v >> 7) & 0x7F;
 +			out[i++] = v & 0x7F;
@@ -36463,6 +36504,185 @@ index 51a40bfd2..e2b5f64ad 100644
 +int32_t pendingClip = -1;      ///< Session clip to launch or stop
 +int32_t pendingSection = -1;   ///< Section to launch
 +int32_t pendingModButton = -1; ///< Gold knob tap: the mod button to press
++
++// ---- Knob moves from the tablet: any PARAMS knob or switch, and the gold knobs. Latest move of each wins until the UI
++// timer runs; applied as a knob turn or menu change on the Deluge would make them, then PARAMS / GOLD answer.
++struct PendingKnob {
++	uint8_t group;
++	uint8_t x;
++	uint8_t y;
++	uint16_t pos; ///< 14-bit position; a switch's choice
++};
++constexpr int32_t kMaxPendingKnobs = 8; ///< Fingers at once
++PendingKnob pendingKnobs[kMaxPendingKnobs];
++int32_t numPendingKnobs = 0;
++int32_t pendingGold[kNumModButtons * 2];
++uint32_t pendingGoldMask = 0; ///< Bit button * 2 + knob (1 upper, 0 lower)
++
++void queueKnob(uint8_t group, uint8_t x, uint8_t y, uint16_t pos) {
++	for (int32_t k = 0; k < numPendingKnobs; k++) {
++		PendingKnob& p = pendingKnobs[k];
++		if (p.group == group && p.x == x && p.y == y) {
++			p.pos = pos;
++			return;
++		}
++	}
++	if (numPendingKnobs < kMaxPendingKnobs) {
++		pendingKnobs[numPendingKnobs++] = {group, x, y, pos};
++	}
++}
++
++/// One knob or switch of PARAMS, set from the tablet. Only what PARAMS would show for this sound, and never a knob
++/// whose pad would say CANT.
++bool applyKnob(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params,
++               const PendingKnob& k) {
++	using deluge::dsp::drum_synth::DrumControls;
++	using deluge::dsp::drum_synth::Patch;
++	const int32_t pos = std::clamp<int32_t>(k.pos, 0, kPanelMax);
++	const bool drumEngine = sound->sources[0].oscType == OscType::DRUM_SYNTH;
++	const bool tb303 = sound->synthMode == SynthMode::TB303;
++	if (k.group <= 6) {
++		if ((k.group == 0 && drumEngine) || (k.group <= 3 && tb303)) {
++			return false;
++		}
++		for (const KnobDef& knob : kKnobs) {
++			if (knob.x != k.x || knob.y != k.y || knob.group != k.group) {
++				continue;
++			}
++			if (!knobAvailable(knob.rule, sound)) {
++				return false;
++			}
++			// Standard, pan and start offset all span the param's whole range, as PARAMS reads them
++			if (knob.unpatched) {
++				setUnpatched(modelStack, knob.param, standardFromPanel(pos));
++			}
++			else {
++				setPatched(modelStack, knob.param, standardFromPanel(pos));
++			}
++			return true;
++		}
++		return false;
++	}
++	if (k.group == 7) {
++		if (drumEngine) {
++			const uint32_t param = drumShortcutParam(sound, k.x, k.y);
++			if (param >= deluge::modulation::params::kNumParams
++			    || deluge::dsp::drum_synth::drumSlotForParam(static_cast<int32_t>(param)) < 0) {
++				return false;
++			}
++			setPatched(modelStack, static_cast<int32_t>(param), DrumControls::fromKnob(controlKnobFromPanel(pos)));
++			return true;
++		}
++		if (tb303) {
++			for (const Tb303Knob& t : kTb303Knobs) {
++				if (t.x == k.x && t.y == k.y) {
++					setPatched(modelStack, t.param, standardFromPanel(pos));
++					return true;
++				}
++			}
++		}
++		return false;
++	}
++	if (k.group == 8) {
++		// Switches: pos is the choice, as PARAMS numbers them
++		if (drumEngine && isBrunoSound(sound)) {
++			auto& patch = sound->sources[0].drumPatch;
++			const bool chorus = sound->getModFXType() == ModFXType::BRUNO_CHORUS;
++			if (k.x == 2 && k.y == 2) {
++				patch.set(Patch::BRUNO_SAW, pos != 0);
++			}
++			else if (k.x == 3 && k.y == 2) {
++				patch.set(Patch::BRUNO_PULSE, pos != 0);
++			}
++			else if (k.x == 4 && k.y == 0) {
++				patch.set(Patch::BRUNO_HPF, std::min<int32_t>(pos, 3)); // As saved: FLAT, BOOST, 236, 754
++			}
++			else if (k.x == 4 && k.y == 1) {
++				// On in the mode it had (the panel's chorus switch does the rest)
++				applyPanel(modelStack, sound, params, PANEL_CHORUS,
++				           pos ? std::clamp<int32_t>(sound->modfx.brunoChorusMode, 1, 3) : 0);
++			}
++			else if (k.x == 4 && k.y == 2 && chorus) {
++				sound->modfx.brunoChorusMode = static_cast<uint8_t>(std::clamp<int32_t>(pos, 1, 3));
++			}
++			else {
++				return false;
++			}
++			return true;
++		}
++		if (tb303 && k.x == 5 && k.y == 5) {
++			// As the 303 filter menu: just the setting
++			sound->tb303FilterMode = static_cast<deluge::dsp::tb303::FilterMode>(std::clamp<int32_t>(pos, 0, 2));
++			return true;
++		}
++	}
++	return false;
++}
++
++void runPendingKnobs() {
++	const int32_t count = numPendingKnobs;
++	numPendingKnobs = 0;
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	// Not while a browser is open: loading a preset swaps the sound over several steps
++	if (count == 0 || browserIsOpen() || !currentSoundAndParams(sound, params)
++	    || params->getPatchedParamSet() == nullptr) {
++		return;
++	}
++	char memory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithThreeMainThings* modelStack = panelModelStack(memory, sound, params);
++	bool any = false;
++	for (int32_t k = 0; k < count; k++) {
++		any |= applyKnob(modelStack, sound, params, pendingKnobs[k]);
++	}
++	if (any) {
++		static_cast<Instrument*>(getCurrentClip()->output)->beenEdited();
++		// The gold knob lights and an open menu follow, as they do for automation
++		view.notifyParamAutomationOccurred(params);
++		uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 10); // Answer soon with where everything landed
++	}
++}
++
++/// Gold knobs: the turn a hand on the knob would make to get there, through the Deluge's own knob path (popups, kit
++/// affect all, notes held for parameter locks, MIDI follow feedback). A knob of another mod button selects that button
++/// first, as only the lit pair turns.
++void runPendingGold() {
++	const uint32_t mask = pendingGoldMask;
++	pendingGoldMask = 0;
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (mask == 0 || browserIsOpen() || !currentSoundAndParams(sound, params)
++	    || view.activeModControllableModelStack.modControllable != static_cast<ModControllable*>(sound)) {
++		return; // The gold knobs turn something other than the sound GOLD shows (the kit, with affect entire)
++	}
++	uint8_t* mode = sound->getModKnobMode();
++	if (mode == nullptr) {
++		return;
++	}
++	for (int32_t k = 0; k < kNumModButtons * 2; k++) {
++		if (!(mask & (1u << k))) {
++			continue;
++		}
++		const int32_t button = k >> 1;
++		const int32_t which = k & 1;
++		if (*mode != button) {
++			view.modButtonAction(button, true);
++			view.modButtonAction(button, false);
++			if (*mode != button) {
++				continue; // It didn't take
++			}
++		}
++		const int32_t now = view.companionModKnobPos(which);
++		if (now == INT32_MIN) {
++			continue;
++		}
++		const int32_t offset = pendingGold[k] - now;
++		if (offset != 0) {
++			view.modEncoderAction(which, offset);
++		}
++	}
++	uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 10);
++}
 +} // namespace
 +
 +void HIDSysex::requestState(MIDICable& cable, uint8_t* data, int32_t len) {
@@ -36509,6 +36729,24 @@ index 51a40bfd2..e2b5f64ad 100644
 +		if (len >= 6 && data[3] < kNumWavePanel) {
 +			pendingWave[data[3]] = (data[4] << 7) | data[5];
 +			pendingWaveMask |= uint64_t{1} << data[3];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 16) {
++		// 16 <group> <x> <y> <hi> <lo> = set that PARAMS knob to a 14-bit position (a switch: to that choice)
++		if (len >= 8 && data[3] <= 8 && data[4] < kDisplayWidth && data[5] < kDisplayHeight) {
++			queueKnob(data[3], data[4], data[5], (data[6] << 7) | data[7]);
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 17) {
++		// 17 <button> <knob> <hi> <lo> = turn that gold knob (1 upper, 0 lower) to a knob position, plus 8192
++		if (len >= 7 && data[3] < kNumModButtons && data[4] <= 1) {
++			const int32_t k = data[3] * 2 + data[4];
++			pendingGold[k] = std::clamp<int32_t>(((data[5] << 7) | data[6]) - 8192, -192, 64);
++			pendingGoldMask |= 1u << k;
 +			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
 +		}
 +		return;
@@ -36780,7 +37018,7 @@ index 51a40bfd2..e2b5f64ad 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3406,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +3613,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -36791,7 +37029,7 @@ index 51a40bfd2..e2b5f64ad 100644
  	default:
  		break;
  	}
-@@ -79,6 +3454,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +3661,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -36800,7 +37038,7 @@ index 51a40bfd2..e2b5f64ad 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +3613,227 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +3820,233 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -36875,16 +37113,22 @@ index 51a40bfd2..e2b5f64ad 100644
 +	if (sdRoutineLock) {
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
 +		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0 || pendingPanelMask != 0
-+		       || pendingBrophetMask != 0 || pendingWaveMask != 0;
++		       || pendingBrophetMask != 0 || pendingWaveMask != 0 || numPendingKnobs != 0 || pendingGoldMask != 0;
 +	}
 +	bool again = false;
 +	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0) {
 +		runPendingPanel();
 +	}
++	if (numPendingKnobs != 0) {
++		runPendingKnobs();
++	}
 +	if (pendingModButton >= 0) {
 +		view.modButtonAction(pendingModButton, true);
 +		view.modButtonAction(pendingModButton, false);
 +		pendingModButton = -1;
++	}
++	if (pendingGoldMask != 0) {
++		runPendingGold();
 +	}
 +	if (pendingMarkerType >= 0) {
 +		const int32_t type = pendingMarkerType;
