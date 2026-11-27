@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.42
+# BRIBELUGE: Deluge Bribes FW v1.43
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.42`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.42), the exact commit the bin was built from, and a full source download on the [v1.42 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.42). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.43`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.43), the exact commit the bin was built from, and a full source download on the [v1.43 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.43). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -45,6 +45,7 @@ What Bribeluge adds:
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
 31. **[Scrolling 7SEG text](#31-scrolling-7seg-text):** An option for 7-segment Deluges: every menu name and option shows its full name instead of four letters, flashing and then scrolling when it doesn't fit.
+32. **[Kit mixer](#32-kit-mixer):** A level fader for every kit row: hold **LEVEL/PAN** and press **KEYBOARD**, and each row's pads show and set its level. The same again brings the steps back, untouched.
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -58,9 +59,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.42.bin`](firmware/deluge-bribes-v1.42.bin)
+[`firmware/deluge-bribes-v1.43.bin`](firmware/deluge-bribes-v1.43.bin)
 
-SHA-256: `072099d35843108dcd70533910f4721cc91f03e35fa8af82b18091a6f7617289`
+SHA-256: `a006106de23edba4559693b6e1e63a6b39d4a98ecbdd372113e84b029d67806b`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -76,7 +77,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.42.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.43.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1458,6 +1459,28 @@ To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Feat
 
 [Back to top](#readme-top)
 
+## 32. Kit mixer
+
+Balancing a kit used to mean holding each row and turning its LEVEL knob, one row at a time, with nothing showing how the rows sat against each other. The kit mixer turns the grid into a fader per row.
+
+In a kit clip, hold the **LEVEL/PAN** gold knob button and press **KEYBOARD**. The display shows **MIX** (**Mixer** on OLED) and **KEYBOARD** blinks. Do the same again to go back to the steps (**STEP**).
+
+- **The bars:** each row's pads show its level, from the bottom of the LEVEL knob on the far left to the top on the far right. The brightest pad is where it sits now.
+- **Setting a level:** press a pad on the row. It does what turning that row's LEVEL gold knob would: the value pops up, undo takes it back and MIDI follow sends it.
+- **The bars keep up** when the level changes some other way: the gold knob, automation playing back, MIDI or the [companion](#27-bribeluge-companion).
+- **Mute and audition pads** work as normal. A muted row's bar goes grey.
+- **SHIFT + pad** shortcuts still open their menus.
+- Scroll up and down to reach more rows. Scrolling left and right does nothing, as there are no steps on screen.
+
+### Good to know
+
+- It works on every kit: the Bribeluge kits (TRIBE, Cycles, LXR, GIN) and your own, sample and synth rows included. MIDI and gate rows stay dark.
+- Notes, automation and parameter locks are never touched. While the bars show, the pads can't reach the steps, and the note editors and Euclidean edits stay closed.
+- Automation behaves as it does with the knob: a pad press holds the new level until the next automation point, or records it if you're recording.
+- Leaving the clip, or changing it from a kit to something else, brings the steps back.
+
+[Back to top](#readme-top)
+
 ## Quick reference
 
 | Control | What it does |
@@ -1528,6 +1551,7 @@ To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Feat
 | **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
 | **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
 | **SETTINGS > Community Features > 7SEG text** | **7SEG**: four letter names. **SCROLL**: full menu names and options, flashed then scrolled (**TEXT**, new in v1.42) |
+| **In a kit clip: hold LEVEL/PAN + press KEYBOARD** | Kit mixer: each row's pads show and set its level, left at the bottom of the knob, right at the top. The same again goes back to the steps (Kit mixer, new in v1.43) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + PAN pad, press again** | **Pan spread**: each poly note gets its own place in the stereo field. The pad blinks yellow; SELECT goes on to **Spread mode**: **ALT**, **KEY**, **RAND** or **PING** (Pan spread, new in v1.30) |
@@ -1554,6 +1578,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.43: Kit mixer.** In a kit clip, hold **LEVEL/PAN** and press **KEYBOARD**: each row's pads become a bar for its level, left at the bottom of the knob, right at the top. Press a pad to set it, as turning that row's gold knob would. The bars follow the level from the knob, automation, MIDI and the companion. The same again brings the steps back, untouched. Works on every kit. See [Kit mixer](#32-kit-mixer). *Why:* balancing a kit meant holding each row and turning a knob, one row at a time, with nothing showing how the rows sat against each other. *Learned:* the bars only had to be a different picture of the same knob. Setting the level the way the gold knob does brings undo, automation and MIDI follow along with it, and the notes are never in play.
 
 - **v1.42: Scrolling 7SEG text.** A new **Community Features** setting, **7SEG text** (**TEXT**): on **SCROLL**, the 7-segment display shows every menu name and option by its full name instead of four letters, flashing then scrolling when it doesn't fit, the way context menu options already did. On **7SEG**, the default, nothing changes. OLED Deluges don't see the setting. See [Scrolling 7SEG text](#31-scrolling-7seg-text). *Why:* four letter names are a code you have to learn, and the full names were already in the firmware for the OLED. *Learned:* the change is small because every name already exists in two versions: showing the OLED one on the 7SEG is a matter of which list the menu reads from.
 

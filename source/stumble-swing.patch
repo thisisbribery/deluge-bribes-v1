@@ -30223,7 +30223,7 @@ index 663b5da50..8b06dfd4d 100644
  	                                          int32_t numParams);
  	void getLastSelectedNonGlobalParamArrayPosition(Clip* clip);
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..f773c9017 100644
+index 75e1a7340..001963d21 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -17,15 +17,22 @@
@@ -30296,7 +30296,32 @@ index 75e1a7340..f773c9017 100644
  using namespace deluge::gui;
  
  PLACE_SDRAM_DATA InstrumentClipView instrumentClipView{};
-@@ -242,6 +258,11 @@ ActionResult InstrumentClipView::commandEnterScaleMode() {
+@@ -137,6 +153,9 @@ bool InstrumentClipView::opened() {
+ void InstrumentClipView::openedInBackground() {
+ 	bool rendering_to_store = (currentUIMode == UI_MODE_ANIMATION_FADE);
+ 
++	// Coming back to a clip from anywhere always shows the step grid
++	kitMixerClip = nullptr;
++
+ 	recalculateColours();
+ 
+ 	AudioEngine::routineWithClusterLoading();
+@@ -173,7 +192,13 @@ void InstrumentClipView::displayOrLanguageChanged() {
+ }
+ 
+ void InstrumentClipView::setLedStates() {
+-	indicator_leds::setLedState(IndicatorLED::KEYBOARD, false);
++	// Kit mixer: KEYBOARD blinks, as LEVEL/PAN + KEYBOARD goes back to the steps
++	if (kitMixerActive()) {
++		indicator_leds::blinkLed(IndicatorLED::KEYBOARD);
++	}
++	else {
++		indicator_leds::setLedState(IndicatorLED::KEYBOARD, false);
++	}
+ 	InstrumentClipMinder::setLedStates();
+ }
+ 
+@@ -242,6 +267,11 @@ ActionResult InstrumentClipView::commandEnterScaleMode() {
  }
  
  ActionResult InstrumentClipView::commandExitScaleMode() {
@@ -30308,7 +30333,7 @@ index 75e1a7340..f773c9017 100644
  	exitScaleMode();
  	return ActionResult::DEALT_WITH;
  }
-@@ -251,6 +272,12 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -251,6 +281,12 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  
  	maybeStartShortcutOverview(b, on);
  
@@ -30321,7 +30346,21 @@ index 75e1a7340..f773c9017 100644
  	// Scale mode button
  	if (b == SCALE_MODE && currentUIMode != UI_MODE_HOLDING_LOAD_BUTTON) {
  		return handleScaleButtonAction(on, inCardRoutine);
-@@ -543,16 +570,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -313,6 +349,13 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+ 	// Keyboard button
+ 	else if (b == KEYBOARD) {
+ 		if (on && currentUIMode == UI_MODE_NONE) {
++			// Kit mixer: LEVEL/PAN held + KEYBOARD swaps the step grid for level bars, and back
++			if (getCurrentOutputType() == OutputType::KIT
++			    && Buttons::isButtonPressed(deluge::hid::button::fromXY(modButtonX[0], modButtonY[0]))) {
++				toggleKitMixer();
++				return ActionResult::DEALT_WITH;
++			}
++
+ 			if (inCardRoutine) {
+ 				return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
+ 			}
+@@ -543,16 +586,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  
  			if (currentUIMode == UI_MODE_NONE) {
@@ -30346,7 +30385,7 @@ index 75e1a7340..f773c9017 100644
  				}
  			}
  			else if (currentUIMode == UI_MODE_ADDING_DRUM_NOTEROW || currentUIMode == UI_MODE_AUDITIONING) {
-@@ -575,6 +600,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -575,6 +616,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  		}
  	}
@@ -30370,7 +30409,7 @@ index 75e1a7340..f773c9017 100644
  	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
  		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
  		if (noteRow->drum->type == DrumType::SOUND) {
-@@ -615,6 +657,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -615,6 +673,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  						continue;
  					}
  
@@ -30385,7 +30424,7 @@ index 75e1a7340..f773c9017 100644
  					if (clip->isActiveOnOutput()) {
  						NoteRow* noteRow = clip->noteRows.getElement(noteRowIndex);
  						if (noteRow->drum) {
-@@ -688,7 +738,9 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -688,7 +754,9 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  				int32_t i;
  				for (i = clip->noteRows.getNumElements() - 1; i >= 0; i--) {
  					NoteRow* noteRow = clip->noteRows.getElement(i);
@@ -30396,7 +30435,7 @@ index 75e1a7340..f773c9017 100644
  						// If the row has not notes and is not the last one
  						clip->deleteNoteRow(modelStack, i);
  					}
-@@ -784,12 +836,19 @@ doCancelPopup:
+@@ -784,12 +852,19 @@ doCancelPopup:
  		// If holding notes down...
  		if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)) {
  			if (on) {
@@ -30416,7 +30455,7 @@ index 75e1a7340..f773c9017 100644
  				goto doCancelPopup;
  			}
  		}
-@@ -838,6 +897,14 @@ doCancelPopup:
+@@ -838,6 +913,14 @@ doCancelPopup:
  
  	else if (b == SELECT_ENC) {
  		if (on) {
@@ -30431,7 +30470,7 @@ index 75e1a7340..f773c9017 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -925,9 +992,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
+@@ -925,9 +1008,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
  	}
  	else {
  		// Button release
@@ -30442,7 +30481,7 @@ index 75e1a7340..f773c9017 100644
  		if (toggleScaleModeOnButtonRelease && isShortPress(scaleButtonPressTime)) {
  			toggleScaleModeOnButtonRelease = false;
  			if (inScaleMode) {
-@@ -955,6 +1020,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
+@@ -955,6 +1036,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
  		            == RuntimeFeatureStateToggle::On);
  	}
  
@@ -30474,7 +30513,7 @@ index 75e1a7340..f773c9017 100644
  	if (!isMIDIorCV && (is_fm || Buttons::isShiftButtonPressed())) {
  		return createNewInstrument(outputType, is_fm);
  	}
-@@ -1059,15 +1149,13 @@ ramError:
+@@ -1059,15 +1165,13 @@ ramError:
  
  void InstrumentClipView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
  
@@ -30497,7 +30536,7 @@ index 75e1a7340..f773c9017 100644
  		}
  	}
  	else {
-@@ -1114,7 +1202,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1114,7 +1218,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -30506,7 +30545,7 @@ index 75e1a7340..f773c9017 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1213,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1229,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -30517,7 +30556,7 @@ index 75e1a7340..f773c9017 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1385,8 @@ ramError:
+@@ -1297,8 +1401,8 @@ ramError:
  	}
  }
  
@@ -30528,7 +30567,7 @@ index 75e1a7340..f773c9017 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1711,11 +1799,107 @@ getOut: {}
+@@ -1711,11 +1815,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -30637,10 +30676,20 @@ index 75e1a7340..f773c9017 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1777,6 +1961,425 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
- 	return false;
- }
+@@ -1768,13 +1968,432 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  
+ 			ModelStackWithNoteRow* modelStackWithNoteRow = modelStack->addNoteRow(0, noteRow);
+ 
+-			enterDrumCreator(modelStackWithNoteRow);
++			enterDrumCreator(modelStackWithNoteRow);
++		}
++
++		return true;
++	}
++
++	return false;
++}
++
 +void InstrumentClipView::addRowToPresetKit(ModelStackWithTimelineCounter* modelStack, Kit* kit) {
 +	using deluge::dsp::drum_synth::PresetKit;
 +	const PresetKit type = deluge::preset_kit::typeOf(kit);
@@ -31048,9 +31097,12 @@ index 75e1a7340..f773c9017 100644
 +
 +		if (firstDrum == nullptr) {
 +			firstDrum = newDrum;
-+		}
-+	}
-+
+ 		}
+-
+-		return true;
+ 	}
+ 
+-	return false;
 +	kit->beenEdited();
 +	if (firstDrum != nullptr) {
 +		setSelectedDrum(firstDrum, true);
@@ -31058,12 +31110,22 @@ index 75e1a7340..f773c9017 100644
 +	display->consoleText(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NEW_MIDI_KIT_CREATED));
 +	uiNeedsRendering(this);
 +	return true;
-+}
-+
- bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
+ }
  
- 	if (getCurrentOutputType() == newOutputType) {
-@@ -1796,6 +2399,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+ bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
+@@ -1784,6 +2403,11 @@ bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
+ 	}
+ 
+ 	if (InstrumentClipMinder::changeOutputType(newOutputType)) {
++		// The kit mixer ends with the kit (the minder's LED update doesn't reach ours)
++		if (kitMixerClip != nullptr) {
++			kitMixerClip = nullptr;
++			setLedStates();
++		}
+ 		recalculateColours();
+ 		uiNeedsRendering(getRootUI());
+ 		return true;
+@@ -1796,6 +2420,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -31085,7 +31147,40 @@ index 75e1a7340..f773c9017 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2132,19 +2750,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -1883,6 +2522,9 @@ const uint32_t auditionPadActionUIModes[] = {UI_MODE_AUDITIONING,
+                                              UI_MODE_HOLDING_LOAD_BUTTON,
+                                              0};
+ 
++// Kit mixer pads work alone or while rows are auditioned
++static const uint32_t kitMixerPadUIModes[] = {UI_MODE_AUDITIONING, 0};
++
+ ActionResult InstrumentClipView::padAction(int32_t x, int32_t y, int32_t velocity) {
+ 
+ 	// Drum Randomizer
+@@ -1900,6 +2542,22 @@ ActionResult InstrumentClipView::padAction(int32_t x, int32_t y, int32_t velocit
+ 		}
+ 	}
+ 
++	// Kit mixer: the main pads are level faders, one per row. Nothing reaches the notes. SHIFT shortcuts still work.
++	if (x < kDisplayWidth && kitMixerActive()) {
++		if (sdRoutineLock) {
++			return ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE;
++		}
++		if (velocity) {
++			if (Buttons::isShiftButtonPressed()) {
++				soundEditor.potentialShortcutPadAction(x, y, velocity);
++			}
++			else if (isUIModeWithinRange(kitMixerPadUIModes)) {
++				kitMixerPadPress(x, y);
++			}
++		}
++		return ActionResult::DEALT_WITH;
++	}
++
+ 	// Edit pad action...
+ 	if (x < kDisplayWidth) {
+ 		if (sdRoutineLock) {
+@@ -2132,19 +2790,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  	if (path == &nothing) {
  		return ActionResult::NOT_DEALT_WITH;
  	}
@@ -31115,7 +31210,7 @@ index 75e1a7340..f773c9017 100644
  
  	// Select random audio file from directory
  	int32_t fileCount = 0;
-@@ -2164,10 +2787,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2164,10 +2827,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		soundDrum->killAllVoices();
  
  		afh->setAudioFile(nullptr);
@@ -31127,7 +31222,7 @@ index 75e1a7340..f773c9017 100644
  		afh->filePath.concatenate("/");
  		afh->filePath.concatenate(chosenFilename);
  		afh->loadFile(false, true, true, 1, nullptr, false);
-@@ -2179,7 +2799,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2179,7 +2839,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		}
  		soundDrum->drumName = chosenFilename;
  		kit->beenEdited();
@@ -31135,7 +31230,7 @@ index 75e1a7340..f773c9017 100644
  
  		// we've randomized a drum sample
  		return ActionResult::ACTIONED_AND_CAUSED_CHANGE;
-@@ -2607,9 +3226,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2607,9 +3266,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -31157,7 +31252,7 @@ index 75e1a7340..f773c9017 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -2631,10 +3262,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2631,10 +3302,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  					// Can only set the mod region after setting the selected drum! Otherwise the params' currentValues
  					// don't end up right
@@ -31172,7 +31267,7 @@ index 75e1a7340..f773c9017 100644
  
  					// Now that we're holding a note down, get set up for if the user wants to edit its MPE values.
  					for (int32_t t = 0; t < MPE_RECORD_LENGTH_FOR_NOTE_EDITING; t++) {
-@@ -2700,8 +3331,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2700,8 +3371,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  				int32_t wrapEditLevel = clip->getWrapEditLevel();
  
@@ -31202,7 +31297,7 @@ index 75e1a7340..f773c9017 100644
  
  				noteRow->clearMPEUpUntilNextNote(modelStackWithNoteRow, squareStart, wrapEditLevel, true);
  
-@@ -2775,6 +3425,10 @@ void InstrumentClipView::endAllEditPadPresses() {
+@@ -2775,6 +3465,10 @@ void InstrumentClipView::endAllEditPadPresses() {
  
  void InstrumentClipView::checkIfAllEditPadPressesEnded(bool mayRenderSidebar) {
  	if (numEditPadPresses == 0) {
@@ -31213,7 +31308,29 @@ index 75e1a7340..f773c9017 100644
  		view.setModRegion();
  		exitUIMode(UI_MODE_NOTES_PRESSED);
  		actionLogger.closeAction(ActionType::NOTE_EDIT);
-@@ -4957,6 +5611,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -3704,6 +4398,10 @@ ModelStackWithNoteRow* InstrumentClipView::get_note_edit_row(ModelStackWithTimel
+ }
+ 
+ bool InstrumentClipView::enterNoteEditor() {
++	// Kit mixer: its pads would edit notes that aren't on screen
++	if (kitMixerActive()) {
++		return false;
++	}
+ 	// check if you're holding one or more notes and we have a valid left-most note pressed
+ 	if (numEditPadPresses > 0 && getLeftMostNotePressed()) {
+ 		dontDeleteNotesOnDepress();
+@@ -3872,6 +4570,10 @@ ActionResult InstrumentClipView::handleNoteEditorButtonAction(deluge::hid::Butto
+ 
+ // if you've selected a single note row and pressed the select encoder, you can enter the note row editor menu
+ bool InstrumentClipView::enterNoteRowEditor() {
++	// Kit mixer: its pads would edit notes that aren't on screen
++	if (kitMixerActive()) {
++		return false;
++	}
+ 	if (getNumNoteRowsAuditioning() == 1) {
+ 		InstrumentClip* clip = getCurrentInstrumentClip();
+ 
+@@ -4957,6 +5659,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -31239,7 +31356,7 @@ index 75e1a7340..f773c9017 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5198,6 +5871,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+@@ -5198,6 +5919,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
  		}
  	}
  
@@ -31252,7 +31369,7 @@ index 75e1a7340..f773c9017 100644
  	if (shouldRedrawStuff) {
  		// make sure the clip we're displaying actually belongs to this kit
  		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
-@@ -5420,6 +6099,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5420,6 +6147,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -31264,7 +31381,7 @@ index 75e1a7340..f773c9017 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -5642,7 +6326,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
+@@ -5642,7 +6374,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
  // sub-function of AuditionPadAction
  // pad is released, end previous audition pad press
  void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack,
@@ -31273,7 +31390,7 @@ index 75e1a7340..f773c9017 100644
  	if (auditionPadIsPressed[yDisplay]) {
  		bool auditionNoteWasSounding = lastAuditionedVelocityOnScreen[yDisplay] != 255;
  		auditionPadIsPressed[yDisplay] = 0;
-@@ -5657,8 +6341,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
+@@ -5657,8 +6389,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
  			sendAuditionNote(false, yDisplay, 64, 0);
  		}
  	}
@@ -31284,7 +31401,7 @@ index 75e1a7340..f773c9017 100644
  	actionLogger.closeAction(ActionType::EUCLIDEAN_NUM_EVENTS_EDIT);
  	actionLogger.closeAction(ActionType::NOTEROW_ROTATE);
  }
-@@ -6312,6 +6996,11 @@ drawNormally:
+@@ -6312,6 +7044,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -31296,7 +31413,18 @@ index 75e1a7340..f773c9017 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6422,6 +7111,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6415,13 +7152,17 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+ 	// If encoder button pressed
+ 	else if (Buttons::isButtonPressed(deluge::hid::button::Y_ENC)) {
+ 		// User may be trying to move a noteCode...
++		// (not in the kit mixer, where the notes aren't on screen)
+ 		if (isUIModeActiveExclusively(UI_MODE_AUDITIONING)) {
+-			commandEuclidean(offset);
++			if (!kitMixerActive()) {
++				commandEuclidean(offset);
++			}
+ 		}
+ 
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -31304,7 +31432,7 @@ index 75e1a7340..f773c9017 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6437,6 +7127,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6437,6 +7178,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -31318,7 +31446,19 @@ index 75e1a7340..f773c9017 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -6849,8 +7546,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
+@@ -6720,6 +7468,11 @@ shiftAllColour:
+ static const uint32_t noteNudgeUIModes[] = {UI_MODE_NOTES_PRESSED, UI_MODE_HOLDING_HORIZONTAL_ENCODER_BUTTON, 0};
+ 
+ ActionResult InstrumentClipView::horizontalEncoderAction(int32_t offset) {
++	// Kit mixer: no steps on screen, so nothing to scroll, zoom or shift
++	if (kitMixerActive()) {
++		return ActionResult::DEALT_WITH;
++	}
++
+ 	exitedShortcutOverview = true;
+ 	uiNeedsRendering(this);
+ 	if (sdRoutineLock) {
+@@ -6849,8 +7602,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
  
  ActionResult InstrumentClipView::commandStopQuantize(int32_t y) {
  	ActionResult res;
@@ -31329,7 +31469,7 @@ index 75e1a7340..f773c9017 100644
  		InstrumentClip* clip = getCurrentInstrumentClip();
  		Output* output = clip->output;
  		OutputType outputType = output->type;
-@@ -7383,7 +8080,7 @@ abandonModRegion:
+@@ -7383,7 +8136,7 @@ abandonModRegion:
  		// view.setModRegion(newPos, max((uint32_t)distanceToNextNote + lastNote->pos - firstNote->pos,
  		// squareWidth));
  		// // This is what happens with initial press, kinda different...
@@ -31338,16 +31478,29 @@ index 75e1a7340..f773c9017 100644
  	}
  
  	uiNeedsRendering(this, 0xFFFFFFFF, 0);
-@@ -7408,6 +8105,8 @@ void InstrumentClipView::graphicsRoutine() {
+@@ -7408,13 +8161,20 @@ void InstrumentClipView::graphicsRoutine() {
  		return;
  	}
  
 +	animatePadGuidesGlow();
 +
++	const bool kitMixer = kitMixerActive();
++	if (kitMixer) {
++		refreshKitMixerIfChanged();
++	}
++
  	if (PadLEDs::flashCursor == FLASH_CURSOR_OFF) {
  		return;
  	}
-@@ -7587,6 +8286,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
+ 
+ 	int32_t newTickSquare;
+ 
+-	bool reallyNoTickSquare = (!playbackHandler.isEitherClockActive() || !currentSong->isClipActive(clip)
++	bool reallyNoTickSquare = (kitMixer || !playbackHandler.isEitherClockActive() || !currentSong->isClipActive(clip)
+ 	                           || currentUIMode == UI_MODE_EXPLODE_ANIMATION
+ 	                           || currentUIMode == UI_MODE_IMPLODE_ANIMATION || playbackHandler.ticksLeftInCountIn);
+ 
+@@ -7587,6 +8347,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -31369,7 +31522,7 @@ index 75e1a7340..f773c9017 100644
  	if (!image) {
  		return true;
  	}
-@@ -7596,6 +8310,8 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7596,14 +8371,23 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	}
  
  	if (maybeRenderShortcutsOverview(whichRows, image, occupancyMask, drawUndefinedArea)) {
@@ -31378,7 +31531,14 @@ index 75e1a7340..f773c9017 100644
  		return true;
  	}
  
-@@ -7604,6 +8320,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+ 	PadLEDs::renderingLock = true;
++	if (kitMixerActive()) {
++		renderKitMixer(whichRows, image, occupancyMask);
++		renderDrumSynthShiftGlow(whichRows, image);
++		PadLEDs::renderingLock = false;
++		return true;
++	}
+ 	performActualRender(whichRows, image[0], occupancyMask, currentSong->xScroll[NAVIGATION_CLIP],
  	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
  	                    drawUndefinedArea);
  	render_selected_note_pulse(whichRows, image);
@@ -31386,7 +31546,7 @@ index 75e1a7340..f773c9017 100644
  	PadLEDs::renderingLock = false;
  
  	return true;
-@@ -7646,6 +8363,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7646,6 +8430,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -31396,7 +31556,7 @@ index 75e1a7340..f773c9017 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7694,6 +8414,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7694,6 +8481,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -31409,7 +31569,7 @@ index 75e1a7340..f773c9017 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8415,3 +9141,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8415,3 +9208,380 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -31662,8 +31822,136 @@ index 75e1a7340..f773c9017 100644
 +	}
 +	display->displayPopup(text);
 +}
++
++// Kit mixer -----------------------------------------------------------------------------------------------------------
++// One level bar per kit row in place of its steps: column 0 is the bottom of the LEVEL knob, column 15 the top. A pad
++// sets the row's level exactly as turning its LEVEL gold knob would (undo, popup, MIDI follow, and automation recorded
++// only while recording), and the bars follow whatever else moves the level: the knob, automation, MIDI, the Companion.
++// Notes, automation and p-locks are never touched, and the steps come back as they were.
++
++bool InstrumentClipView::kitMixerActive() {
++	return kitMixerClip != nullptr && getRootUI() == this && kitMixerClip == getCurrentClip()
++	       && getCurrentOutputType() == OutputType::KIT;
++}
++
++void InstrumentClipView::toggleKitMixer() {
++	if (kitMixerActive()) {
++		kitMixerClip = nullptr;
++		display->displayPopup(display->haveOLED() ? "Steps" : "STEP");
++	}
++	else {
++		kitMixerClip = getCurrentClip();
++		memset(kitMixerShown, 255, sizeof(kitMixerShown));
++		display->displayPopup(display->haveOLED() ? "Mixer" : "MIX");
++	}
++	// The LEVEL/PAN pad blink would land on a fader
++	view.stopModButtonBlink();
++	setLedStates();
++	uiNeedsRendering(this, 0xFFFFFFFF, 0);
++}
++
++/// The LEVEL param of the sound row on screen at this row, or nullptr for an empty, MIDI or gate row
++ModelStackWithAutoParam* InstrumentClipView::kitMixerLevel(void* memory, int32_t yDisplay) {
++	InstrumentClip* clip = getCurrentInstrumentClip();
++	ModelStackWithTimelineCounter* modelStack = currentSong->setupModelStackWithCurrentClip(memory);
++	ModelStackWithNoteRow* withNoteRow = clip->getNoteRowOnScreen(yDisplay, modelStack);
++	NoteRow* noteRow = withNoteRow->getNoteRowAllowNull();
++	if (noteRow == nullptr || noteRow->drum == nullptr || noteRow->drum->type != DrumType::SOUND) {
++		return nullptr;
++	}
++	ModelStackWithAutoParam* withParam =
++	    withNoteRow->addOtherTwoThingsAutomaticallyGivenNoteRow()->getPatchedAutoParamFromId(
++	        deluge::modulation::params::GLOBAL_VOLUME_POST_FX);
++	if (withParam == nullptr || withParam->autoParam == nullptr) {
++		return nullptr;
++	}
++	return withParam;
++}
++
++/// The last lit column for this level now, plus 32 if the row is muted
++uint8_t InstrumentClipView::kitMixerBarFor(ModelStackWithAutoParam* modelStack) {
++	int32_t knobPos =
++	    modelStack->paramCollection->paramValueToKnobPos(modelStack->autoParam->getCurrentValue(), modelStack);
++	int32_t column = ((std::clamp<int32_t>(knobPos, -64, 64) + 64) * (kDisplayWidth - 1) + 64) / 128;
++	NoteRow* noteRow = modelStack->getNoteRowAllowNull();
++	return column + ((noteRow != nullptr && noteRow->muted) ? 32 : 0);
++}
++
++void InstrumentClipView::kitMixerPadPress(int32_t x, int32_t yDisplay) {
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithAutoParam* modelStack = kitMixerLevel(modelStackMemory, yDisplay);
++	if (modelStack == nullptr) {
++		return;
++	}
++	// Column 0 is the knob's bottom (-64), column 15 its top (+64)
++	int32_t knobPos = (x * 128 + (kDisplayWidth - 1) / 2) / (kDisplayWidth - 1) - 64;
++	auto kind = modelStack->paramCollection->getParamKind();
++	view.displayModEncoderValuePopup(kind, modelStack->paramId, knobPos);
++	int32_t newValue = modelStack->paramCollection->knobPosToParamValue(knobPos, modelStack);
++	modelStack->autoParam->setCurrentValueInResponseToUserInput(newValue, modelStack);
++	view.sendMidiFollowFeedback(modelStack, knobPos);
++	// The gold knob LEDs, if this row is the one they show
++	view.setKnobIndicatorLevels();
++	uiNeedsRendering(this, 1 << yDisplay, 0);
++}
++
++void InstrumentClipView::renderKitMixer(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
++                                        uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth]) {
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	for (int32_t yDisplay = 0; yDisplay < kDisplayHeight; yDisplay++) {
++		if (!(whichRows & (1 << yDisplay))) {
++			continue;
++		}
++		RGB* row = image[yDisplay];
++		std::fill(row, &row[kDisplayWidth], colours::black);
++		if (occupancyMask) {
++			memset(occupancyMask[yDisplay], 0, kDisplayWidth);
++		}
++		ModelStackWithAutoParam* modelStack = kitMixerLevel(modelStackMemory, yDisplay);
++		if (modelStack == nullptr) {
++			kitMixerShown[yDisplay] = 255;
++			continue;
++		}
++		uint8_t bar = kitMixerBarFor(modelStack);
++		kitMixerShown[yDisplay] = bar;
++		int32_t column = bar & 31;
++		bool muted = bar & 32;
++		RGB head = muted ? rowColour[yDisplay].greyOut(6291456) : rowColour[yDisplay];
++		RGB body = muted ? rowTailColour[yDisplay].greyOut(6291456) : rowTailColour[yDisplay];
++		for (int32_t x = 0; x <= column; x++) {
++			row[x] = (x == column) ? head : body;
++			if (occupancyMask) {
++				occupancyMask[yDisplay][x] = 64;
++			}
++		}
++	}
++}
++
++/// Redraws any bar whose level or mute has moved since it was drawn, about 30 times a second
++void InstrumentClipView::refreshKitMixerIfChanged() {
++	static uint32_t lastTime = 0;
++	if (AudioEngine::audioSampleTimer - lastTime < (kSampleRate / 32) || PadLEDs::renderingLock) {
++		return;
++	}
++	lastTime = AudioEngine::audioSampleTimer;
++	if (isUIModeActive(UI_MODE_VERTICAL_SCROLL) || isUIModeActive(UI_MODE_ANIMATION_FADE)) {
++		return;
++	}
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	uint32_t rows = 0;
++	for (int32_t yDisplay = 0; yDisplay < kDisplayHeight; yDisplay++) {
++		ModelStackWithAutoParam* modelStack = kitMixerLevel(modelStackMemory, yDisplay);
++		uint8_t bar = (modelStack == nullptr) ? 255 : kitMixerBarFor(modelStack);
++		if (bar != kitMixerShown[yDisplay]) {
++			rows |= 1 << yDisplay;
++		}
++	}
++	if (rows != 0) {
++		uiNeedsRendering(this, rows, 0);
++	}
++}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 091c51b57..4162d005b 100644
+index 091c51b57..9e23f1bef 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -17,7 +17,10 @@
@@ -31731,10 +32019,24 @@ index 091c51b57..4162d005b 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -352,6 +384,21 @@ public:
+@@ -351,7 +383,35 @@ public:
+ 
  	ModControllableAudio* getModControllableAudioOrNone() override;
  
++	// Kit mixer: LEVEL/PAN held + KEYBOARD swaps a kit clip's step grid for one level bar per row, and back
++	bool kitMixerActive();
++	void toggleKitMixer();
++
  private:
++	Clip* kitMixerClip{};                    // The kit clip showing level bars, or nullptr for the step grid
++	uint8_t kitMixerShown[kDisplayHeight]{}; // Each row's bar as last drawn (column, plus 32 if muted)
++	ModelStackWithAutoParam* kitMixerLevel(void* memory, int32_t yDisplay);
++	uint8_t kitMixerBarFor(ModelStackWithAutoParam* modelStack);
++	void kitMixerPadPress(int32_t x, int32_t yDisplay);
++	void renderKitMixer(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
++	                    uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth]);
++	void refreshKitMixerIfChanged();
++
 +	// Mono CV sequencer
 +	void adjustMonoOctave(int32_t offset);
 +	/// Turns slide on for the held notes, or off if they all slide already
@@ -31753,7 +32055,7 @@ index 091c51b57..4162d005b 100644
  	bool doneAnyNudgingSinceFirstEditPadPress{};
  	bool offsettingNudgeNumberDisplay{};
  
-@@ -395,11 +442,13 @@ private:
+@@ -395,11 +455,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -32872,7 +33174,7 @@ index bec64c015..ca12760e8 100644
  	uint32_t getMaxLength() override;
  	bool setupScroll(uint32_t oldScroll) override;
 diff --git a/src/deluge/gui/views/view.cpp b/src/deluge/gui/views/view.cpp
-index 1a20da07c..5231e60f4 100644
+index 1a20da07c..0fd32561c 100644
 --- a/src/deluge/gui/views/view.cpp
 +++ b/src/deluge/gui/views/view.cpp
 @@ -29,6 +29,7 @@
@@ -33104,7 +33406,7 @@ index 1a20da07c..5231e60f4 100644
  			}
  		}
  		else {
-@@ -1565,6 +1647,114 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
+@@ -1565,6 +1647,118 @@ void View::modButtonAction(uint8_t whichButton, bool on) {
  			    whichButton, false, (ParamManagerForTimeline*)activeModControllableModelStack.paramManager);
  		}
  	}
@@ -33175,6 +33477,10 @@ index 1a20da07c..5231e60f4 100644
 +void View::startModButtonBlink(uint8_t whichButton) {
 +	stopModButtonBlink();
 +	RootUI* rootUI = getRootUI();
++	// Kit mixer: the pad flash would land on a fader
++	if (rootUI == &instrumentClipView && instrumentClipView.kitMixerActive()) {
++		return;
++	}
 +	// Not while recording the arrangement: finding the params would clone the clip into it
 +	if (!runtimeFeatureSettings.isOn(RuntimeFeatureSettingType::PadGuides) || getCurrentUI() != rootUI
 +	    || rootUI == &performanceView || playbackHandler.recording == RecordingMode::ARRANGEMENT) {
@@ -33219,7 +33525,7 @@ index 1a20da07c..5231e60f4 100644
  }
  
  void View::setModLedStates() {
-@@ -1595,6 +1785,9 @@ void View::setModLedStates() {
+@@ -1595,6 +1789,9 @@ void View::setModLedStates() {
  		affectEntire = (uiContextType == UIType::INSTRUMENT_CLIP) ? ((InstrumentClip*)clip)->affectEntire : true;
  	}
  	indicator_leds::setLedState(IndicatorLED::AFFECT_ENTIRE, affectEntire);
@@ -33229,7 +33535,7 @@ index 1a20da07c..5231e60f4 100644
  
  	bool onAutomationClipView = false;
  
-@@ -2297,7 +2490,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
+@@ -2297,7 +2494,7 @@ void View::navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* cl
  }
  
  void View::navigateThroughPresetsForInstrumentClip(int32_t offset, ModelStackWithTimelineCounter* modelStack,
@@ -33238,7 +33544,7 @@ index 1a20da07c..5231e60f4 100644
  
  	AudioEngine::logAction("navigateThroughPresets");
  
-@@ -2521,7 +2714,7 @@ gotAnInstrument:
+@@ -2521,7 +2718,7 @@ gotAnInstrument:
  			}
  		}
  
@@ -33247,7 +33553,7 @@ index 1a20da07c..5231e60f4 100644
  
  		// Special case: when it is a saved MIDI preset (with a name), then we need to show the channel in a popup, as
  		// the name will print over the midi channel and we can't see it while changing it
-@@ -2543,8 +2736,8 @@ gotAnInstrument:
+@@ -2543,8 +2740,8 @@ gotAnInstrument:
  	// Or if we're on a Kit or Synth...
  	else {
  
@@ -33259,10 +33565,10 @@ index 1a20da07c..5231e60f4 100644
  getOut:
  			display->removeWorkingAnimation();
 diff --git a/src/deluge/gui/views/view.h b/src/deluge/gui/views/view.h
-index 823aee7b0..8c2558679 100644
+index 823aee7b0..dcefdd76a 100644
 --- a/src/deluge/gui/views/view.h
 +++ b/src/deluge/gui/views/view.h
-@@ -71,6 +71,9 @@ public:
+@@ -71,7 +71,12 @@ public:
  	void modEncoderAction(int32_t whichModEncoder, int32_t offset);
  	void modEncoderButtonAction(uint8_t whichModEncoder, bool on);
  	void modButtonAction(uint8_t whichButton, bool on);
@@ -33270,9 +33576,12 @@ index 823aee7b0..8c2558679 100644
 +	/// the bottom's. From the timer.
 +	void blinkModButtonPads();
  	void setKnobIndicatorLevels();
++	/// Stops the held gold knob button's pad flash (the kit mixer turns it off: it would land on a fader)
++	void stopModButtonBlink();
  	void setKnobIndicatorLevel(uint8_t whichModEncoder);
  	int32_t convertPatchCableKnobPosToIndicatorLevel(int32_t knobPos);
-@@ -85,8 +88,9 @@ public:
+ 	void setActiveModControllableTimelineCounter(TimelineCounter* playPositionCounter,
+@@ -85,8 +90,9 @@ public:
  	void displayAutomation();
  	void displayOutputName(Output* output, bool doBlink = true, Clip* clip = nullptr);
  	void instrumentChanged(ModelStackWithTimelineCounter* modelStack, Instrument* newInstrument);
@@ -33283,7 +33592,7 @@ index 823aee7b0..8c2558679 100644
  	void navigateThroughAudioOutputsForAudioClip(int32_t offset, AudioClip* clip, bool doBlink = false);
  	bool changeOutputType(OutputType newOutputType, ModelStackWithTimelineCounter* modelStack, bool doBlink = false);
  	void drawOutputNameFromDetails(OutputType outputType, int32_t slot, int32_t subSlot, char const* name,
-@@ -153,6 +157,9 @@ public:
+@@ -153,6 +159,9 @@ public:
  
  	int32_t calculateKnobPosForModEncoderTurn(deluge::modulation::params::Kind kind, int32_t knobPos, int32_t offset);
  
@@ -33293,13 +33602,12 @@ index 823aee7b0..8c2558679 100644
  private:
  	void pretendModKnobsUntouchedForAWhile();
  	void instrumentBeenEdited();
-@@ -172,6 +179,14 @@ private:
+@@ -172,6 +181,13 @@ private:
  	                                    ModelStackWithAutoParam* modelStackWithParam, bool noteTailsAllowedBefore);
  	ModelStackWithAutoParam* getModelStackWithParam(int32_t whichModEncoder, bool& noteTailsAllowedBefore);
  
 +	// Pad Guides: the held gold knob button, and its knobs' pads (bottom knob, then top), kNoSelection for none
 +	void startModButtonBlink(uint8_t whichButton);
-+	void stopModButtonBlink();
 +	int8_t blinkingModButton = -1;
 +	int32_t modButtonPadX[2] = {kNoSelection, kNoSelection};
 +	int32_t modButtonPadY[2] = {kNoSelection, kNoSelection};
