@@ -1508,7 +1508,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 - **It isn't built for everyone.** I haven't optimised it for widespread use.
 - **Backwards compatibility isn't the priority.** I haven't worried too much about songs made on earlier firmware. That said, I've tested a lot of older songs I've cut in the past and haven't found errors in any of them, so most of it seems to be backwards compatible.
-- **Eight deep tracks, not sixteen.** I'm not working towards an instrument with 16 or more tracks playing at once, or a multitrack mini DAW. I'm working towards a really refined 8-track machine, with an exceptional amount of capability within those 8 tracks.
+- **A studio in a box.** I'm not working towards an infinite canvas with a million different tracks playing at once, or a multitrack mini DAW. I'm working towards a curated collection of tracks: a handful of drum machines, synths and effects, each with an exceptional amount of capability. There's no track limit, and a song can still hold dozens of tracks.
 - **Performance first.** I'd rather it be super optimised and performance friendly, with the features I've been missing since the Deluge was first released, like sample start offset.
 
 [Back to top](#readme-top)
