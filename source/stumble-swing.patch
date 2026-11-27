@@ -78,10 +78,10 @@ index 1cbefef8a..12ea71e81 100644
    ${SHARED_INCLUDE}
 diff --git a/src/deluge/dsp/crusher.h b/src/deluge/dsp/crusher.h
 new file mode 100644
-index 000000000..71df91af7
+index 000000000..3dc0c110b
 --- /dev/null
 +++ b/src/deluge/dsp/crusher.h
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,428 @@
 +/*
 + * Copyright © 2026 thisisbribery
 + *
@@ -121,17 +121,20 @@ index 000000000..71df91af7
 +	ULAW,    // companded (mu-law style segments, after Mutable Instruments Clouds/Beads): quiet tails stay grainy
 +	JITTER,  // unstable clock and a dithered threshold: noisy, crackly, sputtering
 +	DECAY,   // a dying BBD chip: dark clock, level-riding grit, sputters, stutters and sags (from Seal Eggs)
-+	DATA,    // corrupted 16-bit words: bit rot, stalls, flipped bits, lost signs, swapped bytes
 +	NUM_TYPES,
 +};
 +
-+inline constexpr const char* kCrushTypeNames[] = {"classic", "hard", "vintage", "ulaw", "jitter", "decay", "data"};
++inline constexpr const char* kCrushTypeNames[] = {"classic", "hard", "vintage", "ulaw", "jitter", "decay"};
 +static_assert(std::size(kCrushTypeNames) == static_cast<size_t>(CrushType::NUM_TYPES));
 +
 +inline const char* crushTypeToString(CrushType type) {
 +	return kCrushTypeNames[static_cast<size_t>(type)];
 +}
 +inline CrushType stringToCrushType(const char* string) {
++	// DATA (v1.37 to v1.39.2) is gone. Its decimation was HARD's, so files saved with it load as HARD
++	if (!strcmp(string, "data")) {
++		return CrushType::HARD;
++	}
 +	for (size_t i = 0; i < std::size(kCrushTypeNames); i++) {
 +		if (!strcmp(string, kCrushTypeNames[i])) {
 +			return static_cast<CrushType>(i);
@@ -154,9 +157,9 @@ index 000000000..71df91af7
 +		float lpL = 0.f, lpR = 0.f;
 +		uint32_t rng = 0x9E3779B9u;
 +		bool active = false;
-+		// DECAY and DATA: the event generator (dropouts / corruption bursts)
++		// DECAY: the dropout generator
 +		uint32_t eventCountdown = 0;
-+		uint8_t eventState = 0; // DECAY: 0 idle, 1 on, 2 off between chops. DATA: the burst kind, 0 = none
++		uint8_t eventState = 0; // 0 idle, 1 on, 2 off between chops
 +		bool sag = false;
 +		uint8_t chops = 0;
 +		uint32_t flicker = 0;
@@ -164,10 +167,6 @@ index 000000000..71df91af7
 +		// DECAY: the tone path's filter and peak followers, and the clock's smoothing poles
 +		float svf1[2] = {}, svf2[2] = {}, peak[2] = {};
 +		float lp2L = 0.f, lp2R = 0.f;
-+		// DATA: words while stalled, the rot mask
-+		int32_t stallL = 0, stallR = 0;
-+		uint32_t rotMask = 0;
-+		uint32_t rotCountdown = 0;
 +	};
 +
 +	struct Config {
@@ -183,7 +182,7 @@ index 000000000..71df91af7
 +		float jitter = 0.f;   // +- fraction of the period
 +		float dither = 0.f;   // +- fraction of a step added before rounding
 +		float lpCoef = 1.f;   // VINTAGE output filter, DECAY clock smoothing
-+		float amount = 0.f;   // DECAY / DATA: the bitcrush knob
++		float amount = 0.f;   // DECAY: the bitcrush knob
 +		float inScale = 0.f;  // q31 -> 1 = normal peak
 +		float outScale = 0.f; // back to q31
 +	};
@@ -242,10 +241,8 @@ index 000000000..71df91af7
 +			c.jitter = 0.5f;
 +			c.dither = 0.4f;
 +		}
-+		if (type == CrushType::DECAY || type == CrushType::DATA) {
-+			c.amount = crush ? crushKnob : 0.f;
-+		}
 +		if (type == CrushType::DECAY) {
++			c.amount = crush ? crushKnob : 0.f;
 +			// A BBD clock rather than a sampler: 1x down to 32x (1.4 kHz), and two smoothing poles at 0.35 of it, so
 +			// it goes dark and woolly with only a little aliasing left
 +			c.period = std::exp2(5.f * std::pow(rateKnob, 1.4f));
@@ -269,8 +266,6 @@ index 000000000..71df91af7
 +			return run<CrushType::JITTER>(c, interleaved, numFrames, s);
 +		case CrushType::DECAY:
 +			return runDecay(c, interleaved, numFrames, s);
-+		case CrushType::DATA:
-+			return runData(c, interleaved, numFrames, s);
 +		default:
 +			return run<CrushType::HARD>(c, interleaved, numFrames, s);
 +		}
@@ -459,129 +454,6 @@ index 000000000..71df91af7
 +
 +			buf[2 * i] = toQ31(x[0] * c.outScale);
 +			buf[2 * i + 1] = toQ31(x[1] * c.outScale);
-+		}
-+	}
-+
-+	/// DATA: the signal as 16-bit words (normal peak = half scale), read at the decimation clock and damaged by
-+	/// the bitcrush knob: low bits rot (in proportion to the level, so silence stays silent), and bursts of stalled
-+	/// words, flipped high bits, lost signs and byte-swapped words get more frequent and longer.
-+	enum DataBurst : uint8_t { NONE, STALL, FLIP, RECTIFY, SWAP };
-+
-+	/// rot: how many low bits rot; top: the highest bit the signal's level reaches
-+	static int32_t dataCorrupt(int32_t w, int32_t rot, int32_t top, uint8_t burst, State& s) {
-+		// rot: XOR the low bits with a mask that changes every few ms
-+		if (rot > 0) {
-+			w ^= static_cast<int32_t>(s.rotMask & ((1u << rot) - 1u));
-+		}
-+		switch (burst) {
-+		case FLIP: // flips one of the four bits just under the level's top bit (so silence stays silent)
-+			if (top >= 4 && u01(s.rng) < 0.3f) {
-+				const int32_t bit = std::min<int32_t>(top - 3 + static_cast<int32_t>(u01(s.rng) * 3.99f), 14);
-+				w ^= 1 << bit;
-+			}
-+			break;
-+		case RECTIFY:
-+			w = std::abs(w);
-+			break;
-+		case SWAP: {
-+			const uint16_t u = static_cast<uint16_t>(w);
-+			w = static_cast<int16_t>(static_cast<uint16_t>((u << 8) | (u >> 8)));
-+			break;
-+		}
-+		default:
-+			break;
-+		}
-+		return std::clamp<int32_t>(w, -32768, 32767);
-+	}
-+
-+	static void runData(const Config& c, int32_t* buf, size_t numFrames, State& s) {
-+		const float amt = c.amount;
-+		for (size_t i = 0; i < numFrames; i++) {
-+			const float l = static_cast<float>(buf[2 * i]) * c.inScale;
-+			const float r = static_cast<float>(buf[2 * i + 1]) * c.inScale;
-+
-+			bool grab = true;
-+			if (c.decimate) {
-+				s.countdown -= 1.f;
-+				grab = s.countdown <= 0.f;
-+				if (grab) {
-+					s.countdown += c.period;
-+					if (s.countdown < 0.f) {
-+						s.countdown = c.period;
-+					}
-+				}
-+			}
-+
-+			// the burst generator runs in real time, whatever the clock
-+			uint8_t burst = NONE;
-+			if (amt > 0.f) {
-+				if (s.eventCountdown != 0) {
-+					s.eventCountdown--;
-+					burst = s.eventState;
-+				}
-+				else if (s.eventState != NONE) { // burst over: a random gap
-+					s.eventState = NONE;
-+					const float u = u01(s.rng);
-+					s.eventCountdown = static_cast<uint32_t>(700.f * kSamplesPerMs / (1.f + 14.f * amt * amt)
-+					                                         * (0.08f + 1.84f * u * u));
-+				}
-+				else { // a new burst, longer with the amount
-+					const float kind = u01(s.rng);
-+					const float len = 0.3f + 0.7f * amt;
-+					if (kind < 0.35f) {
-+						s.eventState = STALL;
-+						s.eventCountdown = static_cast<uint32_t>((1.f + 39.f * u01(s.rng)) * len * kSamplesPerMs);
-+						s.stallL = s.stallR = INT32_MIN; // take the next word
-+					}
-+					else if (kind < 0.65f || amt < 0.4f) {
-+						s.eventState = FLIP;
-+						s.eventCountdown = static_cast<uint32_t>((2.f + 28.f * u01(s.rng)) * len * kSamplesPerMs);
-+					}
-+					else if (kind < 0.85f) {
-+						s.eventState = RECTIFY;
-+						s.eventCountdown = static_cast<uint32_t>((5.f + 55.f * u01(s.rng)) * len * kSamplesPerMs);
-+					}
-+					else {
-+						s.eventState = SWAP;
-+						s.eventCountdown = static_cast<uint32_t>((0.5f + 3.5f * u01(s.rng)) * len * kSamplesPerMs);
-+					}
-+					burst = s.eventState;
-+				}
-+				if (s.rotCountdown == 0) {
-+					s.rotMask = static_cast<uint32_t>(u01(s.rng) * 65535.f);
-+					s.rotCountdown = static_cast<uint32_t>((2.f + 6.f * u01(s.rng)) * kSamplesPerMs);
-+				}
-+				s.rotCountdown--;
-+			}
-+
-+			if (grab) {
-+				int32_t w[2] = {static_cast<int32_t>(std::clamp(l * 16384.f, -32768.f, 32767.f)),
-+				                static_cast<int32_t>(std::clamp(r * 16384.f, -32768.f, 32767.f))};
-+				if (amt > 0.f) {
-+					// how many low bits rot: from 1/32 of the level up to 1/4 of it
-+					const float pk = std::max(std::fabs(l), std::fabs(r)) * 16384.f;
-+					s.env = std::max(pk, s.env * 0.9995f);
-+					const int32_t level = static_cast<int32_t>(s.env);
-+					const int32_t top = level > 0 ? 31 - std::countl_zero(static_cast<uint32_t>(level)) : -1;
-+					const int32_t rot = top - 6 + static_cast<int32_t>(4.f * amt);
-+					for (int32_t ch = 0; ch < 2; ch++) {
-+						if (burst == STALL) {
-+							int32_t& held = ch == 0 ? s.stallL : s.stallR;
-+							if (held == INT32_MIN) {
-+								held = w[ch];
-+							}
-+							w[ch] = held;
-+						}
-+						else {
-+							w[ch] = dataCorrupt(w[ch], rot, top, burst, s);
-+						}
-+					}
-+				}
-+				s.heldL = static_cast<float>(w[0]) * (1.f / 16384.f);
-+				s.heldR = static_cast<float>(w[1]) * (1.f / 16384.f);
-+			}
-+			buf[2 * i] = toQ31(s.heldL * c.outScale);
-+			buf[2 * i + 1] = toQ31(s.heldR * c.outScale);
 +		}
 +	}
 +
@@ -20689,7 +20561,7 @@ index 000000000..2ddbac357
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..c06285465 100644
+index 683a26648..dc5bea128 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -20975,7 +20847,7 @@ index 683a26648..c06285465 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1217,155 @@
+@@ -997,9 +1217,154 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -21090,7 +20962,6 @@ index 683a26648..c06285465 100644
 +    "STRING_FOR_CLIP_TANH": "Tanh",
 +    "STRING_FOR_CLIP_LIMIT": "Limit",
 +    "STRING_FOR_CRUSH_DECAY": "Decay",
-+    "STRING_FOR_CRUSH_DATA": "Data",
 +    "STRING_FOR_TRIBE_KIT": "TRIBE",
 +    "STRING_FOR_NEW_TRIBE_KIT_CREATED": "New TRIBE kit created",
 +    "STRING_FOR_TRIBE_KICK": "TRIBE KICK",
@@ -21133,7 +21004,7 @@ index 683a26648..c06285465 100644
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..9321949b3 100644
+index 0032e81ac..46d3c060e 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -21419,7 +21290,7 @@ index 0032e81ac..9321949b3 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1230,156 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1230,155 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -21533,7 +21404,6 @@ index 0032e81ac..9321949b3 100644
 +        {STRING_FOR_CLIP_TANH, "Tanh"},
 +        {STRING_FOR_CLIP_LIMIT, "Limit"},
 +        {STRING_FOR_CRUSH_DECAY, "Decay"},
-+        {STRING_FOR_CRUSH_DATA, "Data"},
 +        {STRING_FOR_TRIBE_KIT, "TRIBE"},
 +        {STRING_FOR_NEW_TRIBE_KIT_CREATED, "New TRIBE kit created"},
 +        {STRING_FOR_TRIBE_KICK, "TRIBE KICK"},
@@ -21577,7 +21447,7 @@ index 0032e81ac..9321949b3 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..82a2d05ad 100644
+index 2024bd2f7..1b7b7967d 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -21821,7 +21691,7 @@ index 2024bd2f7..82a2d05ad 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +776,154 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +776,153 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -21933,7 +21803,6 @@ index 2024bd2f7..82a2d05ad 100644
 +        {STRING_FOR_CLIP_TANH, "TANH"},
 +        {STRING_FOR_CLIP_LIMIT, "LIMT"},
 +        {STRING_FOR_CRUSH_DECAY, "DECY"},
-+        {STRING_FOR_CRUSH_DATA, "DATA"},
 +        {STRING_FOR_TRIBE_KIT, "TRIBE"},
 +        {STRING_FOR_NEW_TRIBE_KIT_CREATED, "TRIBE"},
 +        {STRING_FOR_TRIBE_KICK, "TRIBE KICK"},
@@ -22072,7 +21941,7 @@ index 63586cdc2..9963afd88 100644
 +int32_t recentLookupByContent(std::string_view text, size_t depth = 16);
  } // namespace deluge::l10n
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..f2f2011bd 100644
+index bc5dd6c8c..f35e42b06 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,43 @@
@@ -22329,7 +22198,7 @@ index bc5dd6c8c..f2f2011bd 100644
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +831,155 @@
+@@ -605,9 +831,154 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -22444,7 +22313,6 @@ index bc5dd6c8c..f2f2011bd 100644
 +        "STRING_FOR_CLIP_TANH": "TANH",
 +        "STRING_FOR_CLIP_LIMIT": "LIMT",
 +        "STRING_FOR_CRUSH_DECAY": "DECY",
-+        "STRING_FOR_CRUSH_DATA": "DATA",
 +        "STRING_FOR_TRIBE_KIT": "TRIBE",
 +        "STRING_FOR_NEW_TRIBE_KIT_CREATED": "TRIBE",
 +        "STRING_FOR_TRIBE_KICK": "TRIBE KICK",
@@ -22487,7 +22355,7 @@ index bc5dd6c8c..f2f2011bd 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..b30da83be 100644
+index 2039f041f..8e3f94a97 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -22782,7 +22650,7 @@ index 2039f041f..b30da83be 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1367,152 @@ enum class String : size_t {
+@@ -1145,6 +1367,151 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -22892,7 +22760,6 @@ index 2039f041f..b30da83be 100644
 +	STRING_FOR_CLIP_TANH,
 +	STRING_FOR_CLIP_LIMIT,
 +	STRING_FOR_CRUSH_DECAY,
-+	STRING_FOR_CRUSH_DATA,
 +	STRING_FOR_TRIBE_KIT,
 +	STRING_FOR_NEW_TRIBE_KIT_CREATED,
 +	STRING_FOR_TRIBE_KICK,
@@ -24993,10 +24860,10 @@ index 51b360b01..40c661abc 100644
  };
  
 diff --git a/src/deluge/gui/menu_item/fx/clipping.h b/src/deluge/gui/menu_item/fx/crush_type.h
-similarity index 59%
+similarity index 60%
 rename from src/deluge/gui/menu_item/fx/clipping.h
 rename to src/deluge/gui/menu_item/fx/crush_type.h
-index 500789c93..4d6c4f176 100644
+index 500789c93..b93198753 100644
 --- a/src/deluge/gui/menu_item/fx/clipping.h
 +++ b/src/deluge/gui/menu_item/fx/crush_type.h
 @@ -1,5 +1,5 @@
@@ -25006,7 +24873,7 @@ index 500789c93..4d6c4f176 100644
   *
   * This file is part of The Synthstrom Audible Deluge Firmware.
   *
-@@ -15,45 +15,47 @@
+@@ -15,45 +15,46 @@
   * If not, see <https://www.gnu.org/licenses/>.
   */
  #pragma once
@@ -25064,8 +24931,7 @@ index 500789c93..4d6c4f176 100644
 +		using enum l10n::String;
 +		return {l10n::getView(STRING_FOR_CRUSH_CLASSIC), l10n::getView(STRING_FOR_CRUSH_HARD),
 +		        l10n::getView(STRING_FOR_CRUSH_VINTAGE), l10n::getView(STRING_FOR_CRUSH_ULAW),
-+		        l10n::getView(STRING_FOR_CRUSH_JITTER),  l10n::getView(STRING_FOR_CRUSH_DECAY),
-+		        l10n::getView(STRING_FOR_CRUSH_DATA)};
++		        l10n::getView(STRING_FOR_CRUSH_JITTER),  l10n::getView(STRING_FOR_CRUSH_DECAY)};
 +	}
  };
  

@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.39.2
+# BRIBELUGE: Deluge Bribes FW v1.39.3
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.2`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.2), the exact commit the bin was built from, and a full source download on the [v1.39.2 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.2). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.3`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.3), the exact commit the bin was built from, and a full source download on the [v1.39.3 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.3). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -36,7 +36,7 @@ What Bribeluge adds:
 20. **[MIDI loop tracks](#20-midi-loop-tracks):** LOOP tracks and ECHO turn the Deluge into a MIDI looper for synths with their local control on.
 21. **[BRIBERING MODE](#21-bribering-mode):** A resonator synth engine after Mutable Instruments Rings: five models, and Bow to keep it sounding. On synths and kit rows.
 22. **[Feedback](#22-feedback):** Feeds each synth voice's filter output back into its input: thicker, driven low end, and self-oscillation from patch cables.
-23. **[Crush types](#23-crush-types):** Bitcrush and Decimation that sound like real low bit depths and sample rates: Hard, Vintage, u-Law and Jitter, Decay (a dying BBD chip) and Data (corrupted digital words), plus the original.
+23. **[Crush types](#23-crush-types):** Bitcrush and Decimation that sound like real low bit depths and sample rates: Hard, Vintage, u-Law and Jitter, and Decay (a dying BBD chip), plus the original.
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
@@ -57,9 +57,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.39.2.bin`](firmware/deluge-bribes-v1.39.2.bin)
+[`firmware/deluge-bribes-v1.39.3.bin`](firmware/deluge-bribes-v1.39.3.bin)
 
-SHA-256: `492d08c5d79c5490aec1184519b05166279071622e7d7a651f7896c3811802d9`
+SHA-256: `e832aef6d14683e90d97fb2bf8b887bfa1c7b4574c6d2924c7af61199168f6d3`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -75,7 +75,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.39.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.39.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1042,7 +1042,7 @@ Poly sets the sound's Max voices to match (4 or 2), so a note past the limit let
 
 ## 23. Crush types
 
-The Deluge's own Bitcrush and Decimation sound more like filters than crushers. Decimation draws a line from each sample it keeps to the next, which smooths the top end away instead of aliasing. Bitcrush jumps through eight steps, adds a DC offset and drops the volume near the top. **Crush type** sets how both of them sound: four types that hold each sample flat and sweep smoothly, two that break the sound in other ways (a dying BBD chip and corrupted digital words), and the original kept as Classic.
+The Deluge's own Bitcrush and Decimation sound more like filters than crushers. Decimation draws a line from each sample it keeps to the next, which smooths the top end away instead of aliasing. Bitcrush jumps through eight steps, adds a DC offset and drops the volume near the top. **Crush type** sets how both of them sound: four types that hold each sample flat and sweep smoothly, one that breaks the sound another way (a dying BBD chip), and the original kept as Classic.
 
 ### Where it is
 
@@ -1059,15 +1059,15 @@ The type only changes the sound once **Bitcrush** or **Decimation** is turned up
 | **u-Law** | **ULAW** | Companded: every octave of level gets the same number of steps, so quiet tails stay grainy instead of dropping out. The top of the knob gets properly broken. | As Hard. |
 | **Jitter** | **JITR** | A noisy threshold: crackles and sputters. | The clock wobbles by up to half a sample period each time: noisy and broken rather than tonal. |
 | **Decay** | **DECY** | A dying BBD chip: grit that rides the level, pushed around by the sound's own 1 kHz band, then irregular sputters, stutter bursts and flickering sags in the level. More of all of it, more often, as you turn up. | A BBD clock instead of a sampler: 1x down to 32x (about 1.4 kHz), smoothed after, so it goes dark and woolly with only a little aliasing. |
-| **Data** | **DATA** | The sound as 16-bit words, getting corrupted: the low bits rot in proportion to the level, and bursts of stalled words, flipped high bits, lost signs (octave-up fuzz) and byte-swapped noise come more often and last longer as you turn up. | Sample and hold, as Hard, with the corruption on the held words. |
 | **Classic** | **CLAS** | The original. | The original. |
 
 ### Good to know
 
-- The level stays put as you turn either control up, with no DC offset. Jitter and Data get a little louder at the top.
-- Decay and Data keep silence silent: nothing is left once the sound has stopped.
-- Decay's sputters and Data's bursts run on their own random timing, not synced to the tempo.
+- The level stays put as you turn either control up, with no DC offset. Jitter gets a little louder at the top.
+- Decay keeps silence silent: nothing is left once the sound has stopped.
+- Decay's sputters run on their own random timing, not synced to the tempo.
 - New sounds, kits, audio clips and songs start on **Hard**. Songs and presets from the stock firmware, or saved before v1.27, load as **Classic**, so they sound the same, even where Bitcrush or Decimation only comes up later from a knob or automation.
+- The **Data** type (v1.37 to v1.39.2) was removed in v1.39.3. Songs and presets saved with it load as **Hard**: Decimation sounds the same, and Bitcrush becomes Hard's bit depth.
 - Bitcrush and Decimation are still parameters: gold knobs, automation, MIDI learn and parameter locks work as before, and the type changes how they sound.
 - Songs and presets save it (`crushType`). Other firmware ignores it and plays the original.
 - It costs a few operations per sample, only while Bitcrush or Decimation is on.
@@ -1450,7 +1450,7 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 | **Hold a row's audition pad + turn the lower gold knob** | Set that row's voltage (Mono sequencer, CV CUSTOM) |
 | **RECORD while playing** | Start recording an empty playing clip with no loop limit (Endless Record on) |
 | **RECORD again** | Stop recording at the next bar. RECORD blinks until then; press it again to keep going (Endless Record on) |
-| **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR**, **DECY**, **DATA** or **CLAS** (Crush types) |
+| **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR**, **DECY** or **CLAS** (Crush types) |
 | **SELECT in song view > MASTER > MASTER CLIP** | Clip or limit the song's output: **SOFT**, **TANH**, **HARD**, **TAPE**, **FOLD** or **LIMT**, with **CLIP DRIVE** and **CEILING** (Master clip) |
 | **MOD FX > SHIFT** | Three-band frequency shifter: Depth is the amount, Rate the glide, Feedback, Offset morphs between two sets of shifts (SHIFT) |
 | **SHIFT + KIT** | New kit: choose **Kit** (samples), **Cycles** (the six Cyc engines), **LXR** (the seven LXR voices), **GIN** (eight GIN sounds), or **ULTRAKIK** or **XIA** on the selected row only |
@@ -1526,6 +1526,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.39.3: Data crush type removed.** The **Data** crush type from v1.37 is gone. Its Bitcrush knob mostly added clicks, not the looping, corrupted sound it was meant to have. **Crush type** now offers Hard, Vintage, u-Law, Jitter, Decay and Classic (see [Crush types](#23-crush-types)). Songs and presets saved with Data load as **Hard**: Decimation sounds the same, and Bitcrush becomes Hard's bit depth. The other types sound exactly as they did. *Why:* a type that isn't worth using is one more stop in a menu you scroll with one knob. *Learned:* Decay came over from Seal Eggs already tuned by ear on hardware, and Data was designed from scratch for this build without that. It showed.
+
 - **v1.39.2: Persistent overlay for Bribesynths and kits.** Hold **SHIFT** and the pink pads on a Bribeluge kit row and the purple pads on a Bribesynth (BRINGS, BROPHET, BRUNO106) now pulse, and they stay whatever the community firmware's **Shortcut Overlay** is set to: Off, Menu Only or Menu + Clip. With the overlay up they pulse at full brightness over its dimmed colours. With it off they fade in and out of the notes underneath. The pulse is the two-beat breath synth tracks have on their section pads in song view (see [Persistent overlay](#persistent-overlay)). *Fixed:* with the overlay on Menu + Clip, the Bribeluge pads didn't show in a clip at all, and in a sound menu they came out dim and mixed with the stock colour. *Why:* the overlay repaints every pad with the stock shortcut colours and dims the lot, which left no way to see where Bribeluge puts its own settings. *Learned:* a colour can't mark a pad on a grid that's already colour coded, as the stock FM pads are purple too. Movement can.
 
 - **v1.39.1: OLED and overlay fixes.** *Fixed:* on a Deluge with the OLED screen, choosing **Bribering sympathetic** as the synth mode froze the Deluge. With Shortcut Overlay set to On - Menu + Clip, pressing **SHIFT** in a clip on a drum engine sound (a TRIBE, Cycles, LXR or GIN row, or a BRIBERING, BROPHET or BRUNO106 synth) froze it too, until a sound menu had been opened. *New:* in the drum synth pad editor, **SCALE** and **CROSS SCREEN** step to the setting on the left and right, as they page through the OLED's menus. Both are lit while the editor is open. *Why:* the OLED's notification bar shortens the title until the value fits beside it, and that name is too long to ever fit, so it never stopped. The overlay asked each shortcut pad about its setting through a part of the sound menu that isn't set up until a menu has been opened. *Learned:* my Deluge has the 7-segment display and the overlay off, so neither showed up here. Thanks to the beta testers who reported them.
@@ -1536,7 +1538,7 @@ Newest first: what changed in each release, why, and what it taught me.
 
 - **v1.38: Stability.** No new features: this one is about older songs and staying up. It takes in the community's 18 fixes since 1.3.0, among them the freeze when a menu refuses to open, the undo crash in the note editor, crashes around deleted clips and stuck MIDI notes. It's now built as a release candidate, not a developer build, so the extra internal checks that stopped the Deluge with an error code on some older songs are left out, as on the official release. Older songs' delays work as they did: feedback follows the amount, automation included, until you set the feedback, and the delay stays on its single, lighter path. Older songs that use Bitcrush or Decimation always load as Classic. *Fixed:* switching from BRUNO CHORUS to another chorus, flanger, warble or dimension could burst; a modulated sample start offset stuttered on looping samples; deleting a kit clip during an Autofill could crash; the companion rebuilt everything it shows on every screen redraw, which could take longer than an audio buffer, and now does it at most 40 times a second. *Why:* reports of crashes, clicks and older songs sounding different. *Learned:* a developer build halts on checks the official release skips, so some of the crashes were the Deluge stopping itself.
 
-- **v1.37: Master clip, SHIFT, Decay and Data.** Things from my other firmware, brought over. **Master clip** puts a clipper or limiter at the very end of the song (Soft, Tanh, Hard, Tape, Fold or Limit, with drive and a ceiling), with the curves from KALI SMASH's SQUASH section. **SHIFT** is KALI SMASH's three-band frequency shifter as a Mod FX type. Two new crush types: **Decay**, the dying BBD chip from Seal Eggs' BBD character, on a BBD-style clock, and **Data**, new for this build, which corrupts the sound as 16-bit words. *Why:* the Deluge's output had nothing between a clean mix and a harsh digital clip, and these had already proved themselves on the Kali and the Sealegs. *Learned:* a clipper's filters start from silence, and the processed sound runs a little late, so switching it on mid-song clicked; now the filters are primed with the last samples that went past, every type has the same latency, and on and off crossfade.
+- **v1.37: Master clip, SHIFT, Decay and Data.** Things from my other firmware, brought over. **Master clip** puts a clipper or limiter at the very end of the song (Soft, Tanh, Hard, Tape, Fold or Limit, with drive and a ceiling), with the curves from KALI SMASH's SQUASH section. **SHIFT** is KALI SMASH's three-band frequency shifter as a Mod FX type. Two new crush types: **Decay**, the dying BBD chip from Seal Eggs' BBD character, on a BBD-style clock, and **Data**, new for this build, which corrupts the sound as 16-bit words (removed in v1.39.3). *Why:* the Deluge's output had nothing between a clean mix and a harsh digital clip, and these had already proved themselves on the Kali and the Sealegs. *Learned:* a clipper's filters start from silence, and the processed sound runs a little late, so switching it on mid-song clicked; now the filters are primed with the last samples that went past, every type has the same latency, and on and off crossfade.
 
 - **v1.36: WAVE panel.** With a wavetable synth selected, the companion draws the table as a stack of its frames, with the position knob's frame lit and every playing note moving through it, envelope and LFO sweeps included (see [WAVE panel](#wave-panel)). Drag on it to move the position; a 3D / 2D switch flattens it to one cycle. The oscillators' position, sweep amounts, level and pitch sit beside it, envelope 2, filter, amp envelope, fold, feedback, volume and reverb underneath, both ways like the other panels. The WAVE presets' **CUSTOM 3** is LFO 1's sweep of the position again, not Feedback: with the position on CUSTOM 2, the pair reads as where and how much. *Fixed:* 128 BROPHET programs and 9 DX7 voices played off C (BROPHET where the original's osc A sat on another note, DX7 where the transpose or the carriers did); each now plays C on C, its intervals kept. *Why:* a wavetable is a picture of the sound, so you should be able to see where you are in it. *Learned:* the 3D view was slow on a tablet because it drew all 64 frames, and a blurred glow, every time a note moved; now the stack is drawn once and only the moving lines after it.
 
@@ -1615,7 +1617,7 @@ The additions described here were designed by [thisisbribery](https://github.com
 - **BROPHET's** oscillators, poly mod, mixer and filter are ported from [Pro-54](https://github.com/cmajor-lang/cmajor/tree/main/examples/patches/Pro54) by Cmajor Software (GPL-3.0), which opened up Native Instruments' Pro-53; its copyright and licence notice are kept in the source. The 512 programs come from the preset bank Pro-54 ships, converted for the Deluge. The Deluge integration, controls, drive and the 24 BRIB presets were made for this build.
 - **BRUNO106's** DCO, IR3109 filter, HPF with bass boost and BBD chorus are ported from [Ultramaster KR-106](https://github.com/kayrockscreenprinting/ultramaster_kr106) by Karl LaRocca (GPL-3.0); its copyright and licence notice are kept in the source. The filter's stages run without their per-stage saturation, and the chorus leaves out KR-106's modelled noise, clicks and hum. The Deluge integration, controls, BRUNO CHORUS as a Mod FX type and 13 of the presets were made for this build; the other 199 are converted from the preset data KR-106 ships (its factory bank and David Churcher's patch library), under the same GPL-3.0.
 - **Master clip** and **SHIFT** are ported from KALI SMASH, my own firmware for the dsp.coffee Kali, and relicensed under GPL-3.0 for this build: the clip curves from its SQUASH section, run here at twice the sample rate, and the frequency shifter from its MOTION section, rebuilt for 44.1 kHz. Its Hilbert pair is Olli Niemitalo's published allpass design. The limiter, the click-free switching and the Deluge integration were made for this build.
-- **The Decay crush type's** sputters, stutters and sags and its level-riding grit come from the BBD character in Seal Eggs, my own firmware for the Sealegs, relicensed under GPL-3.0 for this build; its BBD clock and the Data crush type are original designs for this build.
+- **The Decay crush type's** sputters, stutters and sags and its level-riding grit come from the BBD character in Seal Eggs, my own firmware for the Sealegs, relicensed under GPL-3.0 for this build; its BBD clock is an original design for this build.
 - **Crush types** are an original design for this build. u-Law uses the segmented μ-law companding of the G.711 telephone standard, the scheme Mutable Instruments Clouds and Beads use for their lo-fi modes.
 - **The WAVE presets** were made for this build and play the free [BVKER Custom Wavetables](https://bvker.com/free-serum-wavetables/) pack, which isn't included here: all credit for the wavetables goes to BVKER. The BRINGS presets were made for this build.
 - **The DX7 presets** are voices from the DX7 patch collection on [Dave Benson's DX7 page](https://homepages.abdn.ac.uk/d.j.benson/pages/html/dx7.html), converted for the Deluge's DX7 engine. The first are Yamaha's original DX7 ROM cartridges, and the sounds belong to Yamaha and the collection's patch authors. The picker's DX7 init was made for this build.
