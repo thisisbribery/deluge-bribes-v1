@@ -2,9 +2,15 @@
 
 # BRIBELUGE: Deluge Bribes FW v1.39
 
-> **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though!
+> **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
-Unofficial firmware for the Synthstrom Deluge, rebased on the latest official community firmware release (CFW v1.3.0, Derbyshire). It adds things for people who want more wonk, more destruction, more speed, moarrrrr:
+Unofficial firmware for the Synthstrom Deluge, rebased on the latest official community firmware release (CFW v1.3.0, Derbyshire) from [delugecommunity.com](https://delugecommunity.com/), with thanks to [everyone who has contributed to the community firmware](https://github.com/SynthstromAudible/DelugeFirmware/graphs/contributors).
+
+**Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
+
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39), the exact commit the bin was built from, and a full source download on the [v1.39 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39). See [Source code](#source-code).
+
+Bribeluge adds things for people who want more wonk, more destruction, more speed, moarrrrr:
 
 1. **[Stumble swing](#1-stumble-swing):** Four extra swing styles (HOPP, DEEP, SQEZ, FOLD), seven levels each, on SHIFT + TEMPO. New songs start on Stumble SQEZ.
 2. **[Kit pattern mode](#2-kit-pattern-mode):** 24 saved patterns for each of a kit's bottom six rows. Step a row through them or load a whole bank.
@@ -36,8 +42,6 @@ Unofficial firmware for the Synthstrom Deluge, rebased on the latest official co
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
-
-**Source code (GPL-3.0):** the complete source for this release is in [`source/DelugeFirmware`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39), pinned to the exact commit the bin was built from, and as a full source download on the [v1.39 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39). See [Source code](#source-code).
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -1577,7 +1581,9 @@ Newest first: what changed in each release, why, and what it taught me.
 
 ## Design and credit
 
-Everything here was designed by [thisisbribery](https://github.com/thisisbribery).
+Bribeluge stands on other people's work. The Deluge and its firmware were made by Rohan Hill and Synthstrom Audible, who open sourced the firmware. The [Deluge Community Firmware](https://delugecommunity.com/) this build is based on was written by [its contributors](https://github.com/SynthstromAudible/DelugeFirmware/graphs/contributors): volunteers who spent years getting the code to a point where additions like these are possible. Everything in the firmware that isn't described here is theirs.
+
+The additions described here were designed by [thisisbribery](https://github.com/thisisbribery), on these sources:
 
 - **The swing styles** came out of a swing visualiser built to study and sketch shuffle timings ([stolperbeats_v2](https://www.thisisbribery.com/stolperbeats/visualiser/)). DEEP, SQEZ and FOLD are original designs. HOPP follows the well-known MPC and Linn swing ladder (around 54, 58, 62, 66 and 71%), placed on whole ticks the way a 96 PPQN drum machine would.
 - **Autofill's five fills** were first designed and played as an experimental mod on my own Stolperbeats module, then ported here.
@@ -1625,8 +1631,8 @@ The Deluge firmware is free software under the GNU General Public License v3, an
 
 The complete source of every release is published in three places:
 
+- **The source repo:** [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware/tree/bribes), a fork of the community firmware that keeps its full history and contributors. This is the link to share as Bribeluge's source. Branch `bribes` has every change since the first release as separate commits, and each release is tagged (`bribes-v1.32` onwards). Compare it with the community repo: [all Bribes changes against v1.3.0](https://github.com/SynthstromAudible/DelugeFirmware/compare/v1.3.0...thisisbribery:DelugeFirmware:bribes).
 - **In this repo:** [`source/DelugeFirmware`](source/DelugeFirmware) is a git submodule pinned to the exact commit each bin was built from. Clone with `git clone --recursive https://github.com/thisisbribery/deluge-bribes-v1.git` to get it all.
-- **Browsable:** [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware/tree/bribes), a fork of the community firmware. Branch `bribes` has every change since the first release as separate commits, and each release is tagged (`bribes-v1.32` onwards). Compare it with the community repo: [all Bribes changes against v1.3.0](https://github.com/SynthstromAudible/DelugeFirmware/compare/v1.3.0...thisisbribery:DelugeFirmware:bribes).
 - **Download:** the full source tree as a `.tar.gz`, next to the bin on each [release](https://github.com/thisisbribery/deluge-bribes-v1/releases).
 
 The same changes as a single patch on the official firmware:
