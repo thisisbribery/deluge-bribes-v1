@@ -23401,10 +23401,10 @@ index 000000000..466e7dab2
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 000000000..9e893ca55
+index 000000000..01b3f5301
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
-@@ -0,0 +1,398 @@
+@@ -0,0 +1,426 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -23430,8 +23430,10 @@ index 000000000..9e893ca55
 +#include "gui/menu_item/selection.h"
 +#include "gui/ui/sound_editor.h"
 +#include "gui/ui/ui.h"
++#include "hid/buttons.h"
 +#include "hid/display/display.h"
 +#include "hid/display/oled.h"
++#include "hid/led/indicator_leds.h"
 +#include "hid/led/pad_leds.h"
 +#include "processing/sound/drum_synth_params.h"
 +#include "processing/sound/sound.h"
@@ -23598,6 +23600,10 @@ index 000000000..9e893ca55
 +
 +void Editor::beginSession(MenuItem* navigatedBackwardFrom) {
 +	clampSelectedColumn();
++	// SCALE and CROSS SCREEN step through the controls: lit, as on the OLED's menu pages
++	const bool hasColumns = layout().size() > 1;
++	indicator_leds::setLedState(IndicatorLED::SCALE_MODE, hasColumns);
++	indicator_leds::setLedState(IndicatorLED::CROSS_SCREEN_EDIT, hasColumns);
 +	PadLEDs::reassessGreyout();
 +	uiNeedsRendering(&soundEditor, 0xFFFFFFFF, 0);
 +	readValueAgain();
@@ -23605,6 +23611,8 @@ index 000000000..9e893ca55
 +
 +void Editor::endSession() {
 +	MenuItem::endSession();
++	indicator_leds::setLedState(IndicatorLED::SCALE_MODE, false);
++	indicator_leds::setLedState(IndicatorLED::CROSS_SCREEN_EDIT, false);
 +	PadLEDs::reassessGreyout();
 +	uiNeedsRendering(&soundEditor, 0xFFFFFFFF, 0);
 +}
@@ -23669,11 +23677,31 @@ index 000000000..9e893ca55
 +		return;
 +	}
 +	selectedColumn_ = std::clamp<int32_t>(selectedColumn_ + offset, 0, size - 1);
++	showSelectedColumn();
++}
++
++void Editor::showSelectedColumn() {
 +	if (display->have7SEG()) {
 +		display->displayPopup(std::string{layout()[selectedColumn_].item->getName()}.c_str());
 +	}
 +	uiNeedsRendering(&soundEditor, 0xFFFFFFFF, 0);
 +	readValueAgain();
++}
++
++ActionResult Editor::buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) {
++	using namespace deluge::hid::button;
++	// With SHIFT held the grid is the shortcut pads' and the buttons keep their own jobs
++	if ((b == SCALE_MODE || b == CROSS_SCREEN_EDIT) && !Buttons::isShiftButtonPressed()) {
++		const int32_t size = static_cast<int32_t>(layout().size());
++		if (on && size > 1) {
++			// Round the ends, as the OLED's menu pages go
++			clampSelectedColumn();
++			selectedColumn_ = (selectedColumn_ + ((b == CROSS_SCREEN_EDIT) ? 1 : size - 1)) % size;
++			showSelectedColumn();
++		}
++		return ActionResult::DEALT_WITH;
++	}
++	return MenuItem::buttonAction(b, on, inCardRoutine);
 +}
 +
 +// Drawing -------------------------------------------------------------------------------------------------------------
@@ -23805,10 +23833,10 @@ index 000000000..9e893ca55
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.h b/src/deluge/gui/menu_item/drum_synth/editor.h
 new file mode 100644
-index 000000000..51a85d343
+index 000000000..103c0824b
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.h
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,104 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -23857,9 +23885,9 @@ index 000000000..51a85d343
 +};
 +
 +/// The drum synth's fast editor. While it's open the 16 x 8 pad grid shows one setting per column as a level meter:
-+/// tap a pad to set that level, turn SELECT to fine tune the last column touched, and turn the horizontal encoder to
-+/// move between columns. The audition pads still play the row. SELECT press opens the full drum synth menu, BACK goes
-+/// up to the normal sound menu.
++/// tap a pad to set that level, turn SELECT to fine tune the last column touched, and turn the horizontal encoder (or
++/// press SCALE and CROSS SCREEN, lit while it's open) to move between columns. The audition pads still play the row.
++/// SELECT press opens the full drum synth menu, BACK goes up to the normal sound menu.
 +class Editor final : public MenuItem {
 +public:
 +	using Layout = std::span<const Column>;
@@ -23876,6 +23904,8 @@ index 000000000..51a85d343
 +	void readValueAgain() override;
 +	void selectEncoderAction(int32_t offset) override;
 +	void horizontalEncoderAction(int32_t offset) override;
++	/// SCALE and CROSS SCREEN step to the control on the left and right, as they page through the OLED's menus
++	ActionResult buttonAction(deluge::hid::Button b, bool on, bool inCardRoutine) override;
 +	bool selectEncoderActionEditsInstrument() override { return true; }
 +	MenuItem* selectButtonPress() override { return fullMenu_; }
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override;
@@ -23892,6 +23922,7 @@ index 000000000..51a85d343
 +private:
 +	[[nodiscard]] Layout layout() const;
 +	void clampSelectedColumn();
++	void showSelectedColumn();
 +	int32_t readColumn(const Column& column);
 +	void writeColumn(const Column& column, int32_t value);
 +	static int32_t lowest(const Column& column);
@@ -27334,7 +27365,7 @@ index f4e341a9b..0063cf875 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..03d4c096b 100644
+index 7bbd559f6..e8a3973e5 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -27662,7 +27693,7 @@ index 7bbd559f6..03d4c096b 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1556,839 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1556,844 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -28400,8 +28431,13 @@ index 7bbd559f6..03d4c096b 100644
 +	if (usual == reinterpret_cast<MenuItem*>(0xFFFFFFFF)) {
 +		return nullptr;
 +	}
-+	if (usual != nullptr && usual->getParamKind() == params::Kind::PATCHED
-+	    && deluge::dsp::drum_synth::drumSlotForParam(usual->getParamIndex()) >= 0) {
++	// A stock pad whose patched param carries a drum control is left empty. The param comes from the pad's entry in
++	// the patched param table, never from the item: this is also asked from clip view (the SHIFT shortcut overlay,
++	// the mod button pad blink), where an unpatched item's getParamKind() would read the sound editor's param
++	// manager, unset until a menu has been opened and left over from the last one after that.
++	const uint32_t patchedParam = params::patchedParamShortcuts[x][y];
++	if (usual != nullptr && patchedParam != params::kNoParamID
++	    && deluge::dsp::drum_synth::drumSlotForParam(static_cast<int32_t>(patchedParam)) >= 0) {
 +		return nullptr;
 +	}
 +	return usual;
@@ -28502,7 +28538,7 @@ index 7bbd559f6..03d4c096b 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2430,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2435,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -28514,7 +28550,7 @@ index 7bbd559f6..03d4c096b 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2459,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2464,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -28523,7 +28559,7 @@ index 7bbd559f6..03d4c096b 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2468,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2473,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -28534,7 +28570,7 @@ index 7bbd559f6..03d4c096b 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2498,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2503,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -28542,7 +28578,7 @@ index 7bbd559f6..03d4c096b 100644
      },
  };
  
-@@ -1668,8 +2588,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2593,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -28556,7 +28592,7 @@ index 7bbd559f6..03d4c096b 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2622,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2627,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -28573,7 +28609,7 @@ index 7bbd559f6..03d4c096b 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2642,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2647,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -28582,7 +28618,7 @@ index 7bbd559f6..03d4c096b 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2764,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2769,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -28591,7 +28627,7 @@ index 7bbd559f6..03d4c096b 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2815,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2820,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -28606,7 +28642,7 @@ index 7bbd559f6..03d4c096b 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2843,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2848,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -28614,7 +28650,7 @@ index 7bbd559f6..03d4c096b 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2860,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2865,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -28623,7 +28659,7 @@ index 7bbd559f6..03d4c096b 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1943,7 +2878,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1943,7 +2883,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	&stutterDirectionMenu},
@@ -28632,7 +28668,7 @@ index 7bbd559f6..03d4c096b 100644
      {nullptr,	        &voice::polyphonicVoiceCountMenu, nullptr,  nullptr,	        &unison::stereoSpreadMenu,  &compRatio,	nullptr,	nullptr              },
      {&env3ReleaseMenu,	&env3SustainMenu,	    &env3DecayMenu,	    &env3AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
      {&env4ReleaseMenu,	&env4SustainMenu,	    &env4DecayMenu,	    &env4AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
-@@ -1951,10 +2886,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2891,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -28666,7 +28702,7 @@ index 7bbd559f6..03d4c096b 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2957,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2962,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -28675,7 +28711,7 @@ index 7bbd559f6..03d4c096b 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2981,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +2986,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -33052,7 +33088,7 @@ index 63fad2517..f2227cc74 100644
 +	int16_t companionString = -1;
  };
 diff --git a/src/deluge/hid/display/oled.cpp b/src/deluge/hid/display/oled.cpp
-index 005cba944..2f330e262 100644
+index 005cba944..504937cce 100644
 --- a/src/deluge/hid/display/oled.cpp
 +++ b/src/deluge/hid/display/oled.cpp
 @@ -678,6 +678,7 @@ void OLED::drawPermanentPopupLookingText(char const* text) {
@@ -33063,6 +33099,52 @@ index 005cba944..2f330e262 100644
  
  	TextLineBreakdown textLineBreakdown;
  	textLineBreakdown.maxCharsPerLine = 19;
+@@ -832,12 +833,26 @@ void OLED::displayNotification(std::string_view param_title, std::optional<std::
+ 	const int32_t value_width =
+ 	    param_value.has_value() ? popup.getStringWidthInPixels(param_value.value().data(), kTextSpacingY) : 0;
+ 
++	// A value too wide to sit beside any of the title (20 characters up, such as "Bribering sympathetic") is shown
++	// by itself, cut to the bar
++	bool value_only = false;
++	DEF_STACK_STRING_BUF(valueBuf, 32);
++
+ 	if (value_width > 0) {
+-		// Truncate the title string until we have space to display the value
+-		while (title_width + padding_left + value_width > OLED_MAIN_WIDTH_PIXELS - 7) {
++		// Truncate the title string until we have space to display the value. Stop once nothing is left of it: with
++		// a value that wide this never ended, and the Deluge hung.
++		while (titleBuf.size() > 0 && title_width + padding_left + value_width > OLED_MAIN_WIDTH_PIXELS - 7) {
+ 			titleBuf.truncate(titleBuf.size() - 1);
+ 			title_width = popup.getStringWidthInPixels(titleBuf.data(), kTextSpacingY);
+ 		}
++		if (titleBuf.size() == 0) {
++			value_only = true;
++			valueBuf.append(param_value.value());
++			while (valueBuf.size() > 0
++			       && popup.getStringWidthInPixels(valueBuf.data(), kTextSpacingY) > OLED_MAIN_WIDTH_PIXELS - 2) {
++				valueBuf.truncate(valueBuf.size() - 1);
++			}
++		}
+ 	}
+ 
+ 	setupPopup(PopupType::NOTIFICATION, width - 1, height, start_x, start_y);
+@@ -846,9 +861,14 @@ void OLED::displayNotification(std::string_view param_title, std::optional<std::
+ 	const bool no_inversion = FlashStorage::accessibilityMenuHighlighting == MenuHighlighting::NO_INVERSION;
+ 	constexpr uint8_t title_start_x = padding_left;
+ 	const uint8_t title_start_y = no_inversion ? start_y : start_y + 1;
+-	popup.drawString(titleBuf.data(), title_start_x, title_start_y, kTextSpacingX, kTextSpacingY);
++	if (value_only) {
++		popup.drawString(valueBuf.data(), 1, title_start_y, kTextSpacingX, kTextSpacingY);
++	}
++	else {
++		popup.drawString(titleBuf.data(), title_start_x, title_start_y, kTextSpacingX, kTextSpacingY);
++	}
+ 
+-	if (value_width > 0) {
++	if (value_width > 0 && !value_only) {
+ 		popup.drawChar(':', title_start_x + title_width, title_start_y, kTextSpacingX, kTextSpacingY);
+ 		popup.drawString(param_value.value().data(), title_start_x + title_width + 8, title_start_y, kTextSpacingX,
+ 		                 kTextSpacingY);
 diff --git a/src/deluge/hid/display/seven_segment.cpp b/src/deluge/hid/display/seven_segment.cpp
 index 3bbeaefde..72a1a64a6 100644
 --- a/src/deluge/hid/display/seven_segment.cpp
@@ -47884,7 +47966,7 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..7966d489c
+index 000000000..afd494223
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
 @@ -0,0 +1,520 @@
@@ -47958,7 +48040,7 @@ index 000000000..7966d489c
 +
 +- **Tap a pad** to set that column to that level. The screen shows the setting's name and value.
 +- **Turn SELECT** to fine tune the column you last touched.
-+- **Turn the horizontal encoder** to move between columns without changing anything.
++- **Turn the horizontal encoder**, or press **SCALE** (left) and **CROSS SCREEN** (right), to move between columns without changing anything. Both buttons are lit while the pad editor is open, and they go round the ends.
 +- **Audition pads** still play the row, so you can hold one and tap settings while you listen.
 +- **SELECT press** opens the full drum synth menu below, with Load preset.
 +- **BACK** goes up to the normal sound menu. The pad editor is its first item, **Drum synth**.

@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.39
+# BRIBELUGE: Deluge Bribes FW v1.39.1
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39), the exact commit the bin was built from, and a full source download on the [v1.39 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.1`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.1), the exact commit the bin was built from, and a full source download on the [v1.39.1 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.1). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -55,9 +55,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
-[`firmware/deluge-bribes-v1.39.bin`](firmware/deluge-bribes-v1.39.bin)
+[`firmware/deluge-bribes-v1.39.1.bin`](firmware/deluge-bribes-v1.39.1.bin)
 
-SHA-256: `22db3316687da71debad8d1b12e09d4ebb9dad28dde51a1e67158aa595399713`
+SHA-256: `b0a64a39c1ba3de8947bd136bb111103d2dc1ad4a96ea5fc4ef3e9219c5c18e5`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -73,7 +73,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.39.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.39.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -528,7 +528,7 @@ Its twelve continuous settings (everything on MOD1 and MOD2 except Pitch, Click 
 
 ### Good to know
 
-- The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
+- The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). In the pad editor, turn the horizontal encoder or press **SCALE** (left) and **CROSS SCREEN** (right) to move between settings; both buttons are lit while it's open (new in v1.39.1). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
 - **Settings > Defaults > High CPU Indicator** (**CPU**) set to **ON** makes the **PLAY** button blink whenever the Deluge runs out of CPU and cuts notes to keep up (voice stealing). It's off until you turn it on.
 - **From v1.17** each hit ends once it's 72 dB down (it was 100 dB, 80 on GIN). The Cyc engines fade out over the last few samples. When the CPU runs short, a hit that's 40 dB down is cut before notes you can still hear. See [New in v1.17](#readme-top) at the top.
@@ -1518,6 +1518,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.39.1: OLED and overlay fixes.** *Fixed:* on a Deluge with the OLED screen, choosing **Bribering sympathetic** as the synth mode froze the Deluge. With Shortcut Overlay set to On - Menu + Clip, pressing **SHIFT** in a clip on a drum engine sound (a TRIBE, Cycles, LXR or GIN row, or a BRIBERING, BROPHET or BRUNO106 synth) froze it too, until a sound menu had been opened. *New:* in the drum synth pad editor, **SCALE** and **CROSS SCREEN** step to the setting on the left and right, as they page through the OLED's menus. Both are lit while the editor is open. *Why:* the OLED's notification bar shortens the title until the value fits beside it, and that name is too long to ever fit, so it never stopped. The overlay asked each shortcut pad about its setting through a part of the sound menu that isn't set up until a menu has been opened. *Learned:* my Deluge has the 7-segment display and the overlay off, so neither showed up here. Thanks to the beta testers who reported them.
 
 - **v1.39: TRIBE.** A new drum engine: an 808 / 909 drum machine with eight voices, each running from the 808 to the 909 on one knob, every other knob centred on the real machine, extras after Hexinverter's Mutant BD9 and Mutant Snare, and eleven kits. Built on v1.38.1. *Why:* one engine for every 808 and 909 sound on the Cycles layout, as close to the real machines as possible, and never heavier than the Cyc engines. *Learned:* the published numbers were off in places. Measured against recordings, the 808 kick sweeps rather than steps and sighs down two semitones as it rings, the 909's TUNE only sets how fast its sweep falls, and both kicks settle at 49 Hz.
 
