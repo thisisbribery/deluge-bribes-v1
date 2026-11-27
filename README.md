@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.41
+# BRIBELUGE: Deluge Bribes FW v1.42
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.41`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.41), the exact commit the bin was built from, and a full source download on the [v1.41 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.41). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.42`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.42), the exact commit the bin was built from, and a full source download on the [v1.42 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.42). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -44,6 +44,7 @@ What Bribeluge adds:
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
+31. **[Scrolling 7SEG text](#31-scrolling-7seg-text):** An option for 7-segment Deluges: every menu name and option shows its full name instead of four letters, flashing and then scrolling when it doesn't fit.
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -57,9 +58,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.41.bin`](firmware/deluge-bribes-v1.41.bin)
+[`firmware/deluge-bribes-v1.42.bin`](firmware/deluge-bribes-v1.42.bin)
 
-SHA-256: `a66469ce23370ffaa84112df32bc5037707bc11c2569a069f386004126852f32`
+SHA-256: `072099d35843108dcd70533910f4721cc91f03e35fa8af82b18091a6f7617289`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -75,7 +76,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.41.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.42.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1438,6 +1439,25 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 
 [Back to top](#readme-top)
 
+## 31. Scrolling 7SEG text
+
+Four letters don't say much. With **7SEG text** set to **SCROLL**, the 7-segment display shows the full name of every menu item and option instead: **Crush type** rather than **CTYP**, **Elektron P-locks** rather than **ELEK**.
+
+To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Features** (**FEAT**) and set **7SEG text** (**TEXT**) to **SCROLL**. It starts on **7SEG**, the four letter names, as before.
+
+- **Menu names:** a name that fits shows still, with its dot, as before. A longer one flashes twice, then scrolls back and forth until you move on.
+- **Options:** a setting's choices show their full names and scroll when they don't fit, with no flashing, so turning SELECT reads straight away.
+- **Context menus:** their options show full names too, flashing then scrolling as they already did.
+- Turning SELECT replaces the text at once. You never wait for a scroll to finish.
+
+### Good to know
+
+- The setting only shows on a 7-segment display, real or emulated. OLED Deluges don't change.
+- A few menus still show four letters: those that build their own display text, such as DX7 parameters and MIDI channels, and option names inside Community Features such as **SCAL** and **FILL**.
+- Some letters (M, W, K, X, V) are rough on seven segments, as with any scrolling name on the Deluge.
+
+[Back to top](#readme-top)
+
 ## Quick reference
 
 | Control | What it does |
@@ -1507,6 +1527,7 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 | **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
 | **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
 | **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
+| **SETTINGS > Community Features > 7SEG text** | **7SEG**: four letter names. **SCROLL**: full menu names and options, flashed then scrolled (**TEXT**, new in v1.42) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
 | **SHIFT + PAN pad, press again** | **Pan spread**: each poly note gets its own place in the stereo field. The pad blinks yellow; SELECT goes on to **Spread mode**: **ALT**, **KEY**, **RAND** or **PING** (Pan spread, new in v1.30) |
@@ -1533,6 +1554,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.42: Scrolling 7SEG text.** A new **Community Features** setting, **7SEG text** (**TEXT**): on **SCROLL**, the 7-segment display shows every menu name and option by its full name instead of four letters, flashing then scrolling when it doesn't fit, the way context menu options already did. On **7SEG**, the default, nothing changes. OLED Deluges don't see the setting. See [Scrolling 7SEG text](#31-scrolling-7seg-text). *Why:* four letter names are a code you have to learn, and the full names were already in the firmware for the OLED. *Learned:* the change is small because every name already exists in two versions: showing the OLED one on the 7SEG is a matter of which list the menu reads from.
 
 - **v1.41: Every companion knob works both ways.** On the [companion](#27-bribeluge-companion), every knob it shows now turns from the screen, not just the BRUNO106, BROPHET and WAVE panels: the main settings (oscillators, filters, envelopes, voice, effects, LFOs), each drum engine's controls, the 303's knobs and the gold knobs. Drag up or down with a finger or the mouse and the Deluge follows; turn a knob on the Deluge and the screen follows. A tap still opens the setting on the Deluge, and a tap on a switch (BRUNO106 saw, pulse, HPF and chorus, the 303 filter) steps it. Gold knob moves go through the Deluge's own knob, so popups, affect all and parameter locks behave as on the hardware. A gold knob on a patch cable now shows its whole range, -50 to +50; a negative amount used to show as 0. *Why:* the panels showed that two-way control works, and a screen of knobs you can't turn is half a control surface. *Learned:* turning a gold knob from the screen is best done as the turn a hand would make to get there, not by writing the value, so everything the Deluge does around a knob turn still happens.
 

@@ -19094,10 +19094,23 @@ index adbcbc904..25b0e108a 100644
  
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/context_menu.cpp b/src/deluge/gui/context_menu/context_menu.cpp
-index c102f75f3..642fe453f 100644
+index c102f75f3..0b33ae863 100644
 --- a/src/deluge/gui/context_menu/context_menu.cpp
 +++ b/src/deluge/gui/context_menu/context_menu.cpp
-@@ -200,7 +200,7 @@ void ContextMenu::drawCurrentOption() {
+@@ -18,6 +18,7 @@
+ #include "gui/context_menu/context_menu.h"
+ #include "definitions_cxx.hpp"
+ #include "extern.h"
++#include "gui/l10n/full_text.h"
+ #include "gui/ui/ui.h"
+ #include "hid/display/display.h"
+ #include "hid/display/oled.h"
+@@ -197,10 +198,12 @@ probablyAcceptCurrentOption:
+ }
+ 
+ void ContextMenu::drawCurrentOption() {
++	// 7SEG text = SCROLL: the option's full name
++	deluge::l10n::FullTextLookup fullText;
  	const auto options = getOptions();
  	if (display->have7SEG()) {
  		indicator_leds::ledBlinkTimeout(0, true);
@@ -20579,7 +20592,7 @@ index 000000000..2ddbac357
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..bb25c26cd 100644
+index 683a26648..ad2379f7f 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -20867,7 +20880,7 @@ index 683a26648..bb25c26cd 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1219,154 @@
+@@ -997,9 +1219,155 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -20888,6 +20901,7 @@ index 683a26648..bb25c26cd 100644
 +    "STRING_FOR_MIDI_KIT_NEEDS_EMPTY_CLIP": "Clip must be empty",
 +    "STRING_FOR_CV2_LOCK": "Lock (semitones)",
 +    "STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS": "Elektron P-locks",
++    "STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT": "7SEG text",
 +    "STRING_FOR_MIDI_ECHO": "Echo input",
 +    "STRING_FOR_MIDI_ECHO_REC": "Off while recording",
 +    "STRING_FOR_MIDI_LOOP_TRACK": "Loop track",
@@ -21023,8 +21037,71 @@ index 683a26648..bb25c26cd 100644
 +    "STRING_FOR_TR_CRUSH": "Crush"
    }
  }
+diff --git a/src/deluge/gui/l10n/full_text.h b/src/deluge/gui/l10n/full_text.h
+new file mode 100644
+index 000000000..87187d520
+--- /dev/null
++++ b/src/deluge/gui/l10n/full_text.h
+@@ -0,0 +1,57 @@
++/*
++ * Copyright © 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "gui/l10n/language.h"
++#include "hid/display/display.h"
++#include "model/settings/runtime_feature_settings.h"
++
++namespace deluge::l10n {
++
++/// Community Features > 7SEG text = SCROLL, on a 7SEG display (real or emulated): menus show full names
++inline bool sevenSegFullText() {
++	return display->have7SEG()
++	       && runtimeFeatureSettings.get(RuntimeFeatureSettingType::SevenSegText)
++	              == RuntimeFeatureStateSevenSegText::Scroll;
++}
++
++/// While one of these is alive and full text is on, string lookups give the full (OLED) English text instead of the
++/// 4-letter 7SEG text. The views it hands out stay valid afterwards: they point into the built-in tables.
++class FullTextLookup {
++public:
++	FullTextLookup() : saved_(chosenLanguage), on_(sevenSegFullText()) {
++		if (on_) {
++			chosenLanguage = &built_in::english;
++		}
++	}
++	~FullTextLookup() {
++		if (on_) {
++			chosenLanguage = saved_;
++		}
++	}
++	FullTextLookup(const FullTextLookup&) = delete;
++	FullTextLookup& operator=(const FullTextLookup&) = delete;
++
++	[[nodiscard]] bool on() const { return on_; }
++
++private:
++	const Language* saved_;
++	bool on_;
++};
++
++} // namespace deluge::l10n
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..d72d20168 100644
+index 0032e81ac..06ade8192 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -21312,7 +21389,7 @@ index 0032e81ac..d72d20168 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1232,155 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1232,156 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -21332,6 +21409,7 @@ index 0032e81ac..d72d20168 100644
 +        {STRING_FOR_MIDI_KIT_NEEDS_EMPTY_CLIP, "Clip must be empty"},
 +        {STRING_FOR_CV2_LOCK, "Lock (semitones)"},
 +        {STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS, "Elektron P-locks"},
++        {STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT, "7SEG text"},
 +        {STRING_FOR_MIDI_ECHO, "Echo input"},
 +        {STRING_FOR_MIDI_ECHO_REC, "Off while recording"},
 +        {STRING_FOR_MIDI_LOOP_TRACK, "Loop track"},
@@ -21469,7 +21547,7 @@ index 0032e81ac..d72d20168 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..dd58c8fd2 100644
+index 2024bd2f7..74151ee17 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
 @@ -323,6 +323,44 @@ PLACE_SDRAM_DATA Language seven_segment{
@@ -21715,7 +21793,7 @@ index 2024bd2f7..dd58c8fd2 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +778,153 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +778,154 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -21733,6 +21811,7 @@ index 2024bd2f7..dd58c8fd2 100644
 +        {STRING_FOR_MIDI_KIT_NEEDS_EMPTY_CLIP, "CANT"},
 +        {STRING_FOR_CV2_LOCK, "LOCK"},
 +        {STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS, "ELEK"},
++        {STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT, "TEXT"},
 +        {STRING_FOR_MIDI_ECHO, "ECHO"},
 +        {STRING_FOR_MIDI_ECHO_REC, "REC"},
 +        {STRING_FOR_MIDI_LOOP_TRACK, "LOOP"},
@@ -21965,7 +22044,7 @@ index 63586cdc2..9963afd88 100644
 +int32_t recentLookupByContent(std::string_view text, size_t depth = 16);
  } // namespace deluge::l10n
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..ea4710ab4 100644
+index bc5dd6c8c..b203b4596 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
 @@ -334,6 +334,44 @@
@@ -22224,7 +22303,7 @@ index bc5dd6c8c..ea4710ab4 100644
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +833,154 @@
+@@ -605,9 +833,155 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -22245,6 +22324,7 @@ index bc5dd6c8c..ea4710ab4 100644
 +        "STRING_FOR_MIDI_KIT_NEEDS_EMPTY_CLIP": "CANT",
 +        "STRING_FOR_CV2_LOCK": "LOCK",
 +        "STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS": "ELEK",
++        "STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT": "TEXT",
 +        "STRING_FOR_MIDI_ECHO": "ECHO",
 +        "STRING_FOR_MIDI_ECHO_REC": "REC",
 +        "STRING_FOR_MIDI_LOOP_TRACK": "LOOP",
@@ -22381,7 +22461,7 @@ index bc5dd6c8c..ea4710ab4 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..6adf7ce83 100644
+index 2039f041f..478899f50 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -22678,7 +22758,7 @@ index 2039f041f..6adf7ce83 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1369,151 @@ enum class String : size_t {
+@@ -1145,6 +1369,152 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -22692,6 +22772,7 @@ index 2039f041f..6adf7ce83 100644
 +	STRING_FOR_MIDI_KIT_NEEDS_EMPTY_CLIP,
 +	STRING_FOR_CV2_LOCK,
 +	STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS,
++	STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT,
 +	STRING_FOR_MIDI_ECHO,
 +	STRING_FOR_MIDI_ECHO_REC,
 +	STRING_FOR_MIDI_LOOP_TRACK,
@@ -25207,6 +25288,31 @@ index 000000000..d837bc9d6
 +};
 +
 +} // namespace deluge::gui::menu_item
+diff --git a/src/deluge/gui/menu_item/menu_item.cpp b/src/deluge/gui/menu_item/menu_item.cpp
+index 014f2b624..f6c95a3e5 100644
+--- a/src/deluge/gui/menu_item/menu_item.cpp
++++ b/src/deluge/gui/menu_item/menu_item.cpp
+@@ -17,6 +17,7 @@
+ 
+ #include "menu_item.h"
+ #include "deluge/model/settings/runtime_feature_settings.h"
++#include "gui/l10n/full_text.h"
+ #include "gui/ui/sound_editor.h"
+ #include "hid/display/display.h"
+ #include "hid/display/oled.h" //todo: this probably shouldn't be needed
+@@ -41,6 +42,12 @@ void MenuItem::renderOLED() {
+ }
+ 
+ void MenuItem::drawName() {
++	// 7SEG text = SCROLL: the full name, flashed then scrolled when it doesn't fit
++	deluge::l10n::FullTextLookup fullText;
++	if (fullText.on()) {
++		display->setFlashScrollText(getName(), shouldDrawDotOnName());
++		return;
++	}
+ 	display->setText(getName(), false, shouldDrawDotOnName());
+ }
+ 
 diff --git a/src/deluge/gui/menu_item/midi/drum_row.h b/src/deluge/gui/menu_item/midi/drum_row.h
 new file mode 100644
 index 000000000..42682d946
@@ -25710,10 +25816,24 @@ index cadefabaf..32f08f524 100644
  
  	// send midi follow feedback
 diff --git a/src/deluge/gui/menu_item/runtime_feature/settings.cpp b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-index 5fe8738f7..611453da2 100644
+index 5fe8738f7..b796397cf 100644
 --- a/src/deluge/gui/menu_item/runtime_feature/settings.cpp
 +++ b/src/deluge/gui/menu_item/runtime_feature/settings.cpp
-@@ -56,6 +56,10 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
+@@ -36,6 +36,13 @@ public:
+ 	bool isRelevant(ModControllableAudio*, int32_t) const override { return display->haveOLED(); }
+ };
+ 
++// A Setting only shown while the display is 7SEG, real or emulated
++class SevenSegOnlySetting final : public Setting {
++public:
++	using Setting::Setting;
++	bool isRelevant(ModControllableAudio*, int32_t) const override { return display->have7SEG(); }
++};
++
+ // The RoundedCorners toggle additionally pushes its value into the Canvas drawing flag,
+ // so the low-level primitives don't have to read runtime feature settings themselves.
+ class RoundedCornersSettingToggle final : public OledOnlySettingToggle {
+@@ -56,6 +63,10 @@ SettingToggle menuCatchNotes(RuntimeFeatureSettingType::CatchNotes);
  SettingToggle menuDeleteUnusedKitRows(RuntimeFeatureSettingType::DeleteUnusedKitRows);
  SettingToggle menuAltGoldenKnobDelayParams(RuntimeFeatureSettingType::AltGoldenKnobDelayParams);
  Setting menuSyncScalingAction(RuntimeFeatureSettingType::SyncScalingAction);
@@ -25724,7 +25844,22 @@ index 5fe8738f7..611453da2 100644
  DevSysexSetting menuDevSysexAllowed(RuntimeFeatureSettingType::DevSysexAllowed);
  SettingToggle menuHighlightIncomingNotes(RuntimeFeatureSettingType::HighlightIncomingNotes);
  SettingToggle menuDisplayNornsLayout(RuntimeFeatureSettingType::DisplayNornsLayout);
-@@ -96,6 +100,10 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
+@@ -63,6 +74,7 @@ ShiftIsSticky menuShiftIsSticky{};
+ SettingToggle menuLightShiftLed(RuntimeFeatureSettingType::LightShiftLed);
+ SettingToggle menuEnableDX7Engine(RuntimeFeatureSettingType::EnableDX7Engine);
+ EmulatedDisplay menuEmulatedDisplay{};
++SevenSegOnlySetting menuSevenSegText(RuntimeFeatureSettingType::SevenSegText);
+ SettingToggle menuEnableKeyboardViewSidebarMenuExit(RuntimeFeatureSettingType::EnableKeyboardViewSidebarMenuExit);
+ SettingToggle menuEnableLaunchEventPlayhead(RuntimeFeatureSettingType::EnableLaunchEventPlayhead);
+ SettingToggle menuDisplayChordLayout(RuntimeFeatureSettingType::DisplayChordKeyboard);
+@@ -90,12 +102,17 @@ std::array<MenuItem*, RuntimeFeatureSettingType::MaxElement - kNonTopLevelSettin
+     &menuLightShiftLed,
+     &menuEnableDX7Engine,
+     &menuEmulatedDisplay,
++    &menuSevenSegText,
+     &menuEnableKeyboardViewSidebarMenuExit,
+     &menuEnableLaunchEventPlayhead,
+     &menuDisplayChordLayout,
      &menuAlternativePlaybackStartBehaviour,
      &menuEnableGridViewLoopPads,
      &menuAlternativeTapTempoBehaviour,
@@ -25856,6 +25991,25 @@ index 000000000..abf8a6d4c
 +	uint8_t source_id_;
 +};
 +} // namespace deluge::gui::menu_item::sample
+diff --git a/src/deluge/gui/menu_item/selection.cpp b/src/deluge/gui/menu_item/selection.cpp
+index 4f1b80d85..2b45e863e 100644
+--- a/src/deluge/gui/menu_item/selection.cpp
++++ b/src/deluge/gui/menu_item/selection.cpp
+@@ -1,4 +1,5 @@
+ #include "selection.h"
++#include "gui/l10n/full_text.h"
+ #include "gui/menu_item/menu_item.h"
+ #include "gui/ui/sound_editor.h"
+ #include "hid/display/display.h"
+@@ -10,6 +11,8 @@ void Selection::drawValue() {
+ 		renderUIsForOled();
+ 	}
+ 	if (display->have7SEG()) {
++		// 7SEG text = SCROLL: the option's full name (it scrolls when it doesn't fit, as always)
++		deluge::l10n::FullTextLookup fullText;
+ 		const auto options = this->getOptions();
+ 		display->setScrollingText(options[this->getValue()].data());
+ 	}
 diff --git a/src/deluge/gui/menu_item/song/master_clip.h b/src/deluge/gui/menu_item/song/master_clip.h
 new file mode 100644
 index 000000000..9f79503bf
@@ -33214,10 +33368,10 @@ index 21f193b96..7253d3624 100644
  			else {
  				UI* currentUI = getCurrentUI();
 diff --git a/src/deluge/hid/display/display.h b/src/deluge/hid/display/display.h
-index 2480febb7..4adc2575a 100644
+index 2480febb7..53a4cd7ea 100644
 --- a/src/deluge/hid/display/display.h
 +++ b/src/deluge/hid/display/display.h
-@@ -103,6 +103,11 @@ public:
+@@ -103,6 +103,16 @@ public:
  	virtual void setTextWithMultipleDots(std::string_view newText, std::vector<uint8_t> dotPositions,
  	                                     bool alignRight = false, bool doBlink = false, uint8_t* newBlinkMask = nullptr,
  	                                     bool blinkImmediately = false) {}
@@ -33225,6 +33379,11 @@ index 2480febb7..4adc2575a 100644
 +	/// and forth until it's replaced
 +	virtual void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) {
 +		setText(newText, false, 255, true);
++	}
++	/// A menu name: on 7SEG, one that fits shows still (with its dot), one too long blinks `flashes` times and then
++	/// scrolls back and forth until it's replaced
++	virtual void setFlashScrollText(std::string_view newText, uint8_t drawDot = 255, int32_t flashes = 2) {
++		setText(newText, false, drawDot);
 +	}
  	virtual NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0,
  	                                                    int32_t initialDelay = 600, int count = -1,
@@ -33302,7 +33461,7 @@ index 005cba944..504937cce 100644
  		popup.drawString(param_value.value().data(), title_start_x + title_width + 8, title_start_y, kTextSpacingX,
  		                 kTextSpacingY);
 diff --git a/src/deluge/hid/display/seven_segment.cpp b/src/deluge/hid/display/seven_segment.cpp
-index 3bbeaefde..72a1a64a6 100644
+index 3bbeaefde..d8ecbbd32 100644
 --- a/src/deluge/hid/display/seven_segment.cpp
 +++ b/src/deluge/hid/display/seven_segment.cpp
 @@ -181,6 +181,7 @@ void SevenSegment::innerSetText(std::string_view newText, bool alignRight, std::
@@ -33321,22 +33480,38 @@ index 3bbeaefde..72a1a64a6 100644
  
  	newLayer->length = encodeText(newText, newLayer->text, false, {}, false);
  
-@@ -253,6 +255,37 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
+@@ -253,6 +255,53 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
  	return newLayer;
  }
  
 +void SevenSegment::setBlinkingScrollingText(std::string_view newText, int32_t flashes) {
++	blinkThenScroll(newText, flashes, true, 255);
++}
++
++void SevenSegment::setFlashScrollText(std::string_view newText, uint8_t drawDot, int32_t flashes) {
++	blinkThenScroll(newText, flashes, false, drawDot);
++}
++
++void SevenSegment::blinkThenScroll(std::string_view newText, int32_t flashes, bool blinkWhenShort, uint8_t drawDot) {
 +	void* layerSpace = GeneralMemoryAllocator::get().allocLowSpeed(sizeof(NumericLayerScrollingText));
 +	if (!layerSpace) {
-+		setText(newText, false, 255, true);
++		setText(newText, false, drawDot, blinkWhenShort);
 +		return;
 +	}
 +	auto* scrolling = new (layerSpace) NumericLayerScrollingText(255);
 +	HIDSysex::companionCopyText(scrolling->companionText, newText, scrolling->companionString);
 +	scrolling->length = encodeText(newText, scrolling->text, false, {}, false);
 +
++	if (scrolling->length <= kNumericDisplayLength && !blinkWhenShort) {
++		// Fits: show it still, like a stock menu name
++		scrolling->~NumericLayerScrollingText();
++		delugeDealloc(scrolling);
++		setText(newText, false, drawDot);
++		return;
++	}
++
 +	// Blink it like any menu option
-+	setText(newText, false, 255, true);
++	setText(newText, false, (scrolling->length <= kNumericDisplayLength) ? drawDot : 255, true);
 +
 +	NumericLayer* blinking = topLayer;
 +	while (blinking && blinking->next) {
@@ -33359,7 +33534,7 @@ index 3bbeaefde..72a1a64a6 100644
  void SevenSegment::replaceBottomLayer(NumericLayer* newLayer) {
  	NumericLayer** prevPointer = &topLayer;
  	while ((*prevPointer)->next) {
-@@ -588,6 +621,7 @@ void SevenSegment::setNextTransitionDirection(int8_t thisDirection) {
+@@ -588,6 +637,7 @@ void SevenSegment::setNextTransitionDirection(int8_t thisDirection) {
  
  void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool alignRight, uint8_t drawDot,
                                  int32_t blinkSpeed, PopupType type) {
@@ -33367,7 +33542,7 @@ index 3bbeaefde..72a1a64a6 100644
  	encodeText(newText, popup.segments, alignRight, {drawDot});
  	memset(&popup.blinkedSegments, 0, kNumericDisplayLength);
  	if (numFlashes == 0) {
-@@ -606,6 +640,22 @@ void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool ali
+@@ -606,6 +656,22 @@ void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool ali
  	render();
  }
  
@@ -33391,14 +33566,15 @@ index 3bbeaefde..72a1a64a6 100644
  	if (popupActive) {
  		uiTimerManager.unsetTimer(TimerName::DISPLAY);
 diff --git a/src/deluge/hid/display/seven_segment.h b/src/deluge/hid/display/seven_segment.h
-index 8ba4446a9..7e9ff894c 100644
+index 8ba4446a9..ca26b545e 100644
 --- a/src/deluge/hid/display/seven_segment.h
 +++ b/src/deluge/hid/display/seven_segment.h
-@@ -54,12 +54,18 @@ public:
+@@ -54,12 +54,19 @@ public:
  	void removeTopLayer();
  	NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0, int32_t initialDelay = 600,
  	                                            int count = -1, uint8_t fixedDot = 255) override;
 +	void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) override;
++	void setFlashScrollText(std::string_view newText, uint8_t drawDot = 255, int32_t flashes = 2) override;
  	int32_t getEncodedPosFromLeft(int32_t textPos, char const* text, bool* andAHalf) override;
  	void render();
  	void displayLoadingAnimation(bool delayed = false, bool transparent = false);
@@ -33413,6 +33589,14 @@ index 8ba4446a9..7e9ff894c 100644
  	bool hasPopup() override { return this->popupActive; }
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
+@@ -85,6 +92,7 @@ public:
+ 	void disableLowercase() { use_lowercase = false; }
+ 
+ private:
++	void blinkThenScroll(std::string_view newText, int32_t flashes, bool blinkWhenShort, uint8_t drawDot);
+ 	NumericLayerBasicText popup;
+ 	NumericLayer* topLayer = nullptr;
+ 	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
 index 51a40bfd2..25cc0b015 100644
 --- a/src/deluge/hid/hid_sysex.cpp
@@ -40967,7 +41151,7 @@ index 2791a5cac..7c8e181cb 100644
 +	bool hasStartOffset{false};       // Start offset shifted the playback window (Voices only)
  };
 diff --git a/src/deluge/model/settings/runtime_feature_settings.cpp b/src/deluge/model/settings/runtime_feature_settings.cpp
-index 962255e86..159b492c5 100644
+index 962255e86..18046d623 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.cpp
 +++ b/src/deluge/model/settings/runtime_feature_settings.cpp
 @@ -75,6 +75,28 @@ static void SetupSyncScalingActionSetting(RuntimeFeatureSetting& setting, deluge
@@ -41008,7 +41192,7 @@ index 962255e86..159b492c5 100644
  
  	// EmulatedDisplay
  	SetupEmulatedDisplaySetting(settings[RuntimeFeatureSettingType::EmulatedDisplay],
-@@ -181,6 +203,25 @@ void RuntimeFeatureSettings::init() {
+@@ -181,6 +203,40 @@ void RuntimeFeatureSettings::init() {
  	                  STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "enableGridViewLoopPads",
  	                  RuntimeFeatureStateToggle::Off);
  
@@ -41031,14 +41215,29 @@ index 962255e86..159b492c5 100644
 +	SetupOnOffSetting(settings[RuntimeFeatureSettingType::ElektronLocks], STRING_FOR_COMMUNITY_FEATURE_ELEKTRON_LOCKS,
 +	                  "elektronLocks", RuntimeFeatureStateToggle::Off);
 +
++	// SevenSegText: on 7SEG, menu names and options show their full names, flashed then scrolled
++	settings[RuntimeFeatureSettingType::SevenSegText].displayName = STRING_FOR_COMMUNITY_FEATURE_SEVEN_SEG_TEXT;
++	settings[RuntimeFeatureSettingType::SevenSegText].xmlName = "sevenSegText";
++	settings[RuntimeFeatureSettingType::SevenSegText].value = RuntimeFeatureStateSevenSegText::Short;
++	settings[RuntimeFeatureSettingType::SevenSegText].options = {
++	    {
++	        .displayName = "7SEG",
++	        .value = RuntimeFeatureStateSevenSegText::Short,
++	    },
++	    {
++	        .displayName = "SCROLL",
++	        .value = RuntimeFeatureStateSevenSegText::Scroll,
++	    },
++	};
++
  	// AlternativeTapTempoBehaviour
  	SetupOnOffSetting(settings[RuntimeFeatureSettingType::AlternativeTapTempoBehaviour],
  	                  STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "alternativeTapTempoBehaviour",
 diff --git a/src/deluge/model/settings/runtime_feature_settings.h b/src/deluge/model/settings/runtime_feature_settings.h
-index a39f698ae..e7a14fe11 100644
+index a39f698ae..28cb341de 100644
 --- a/src/deluge/model/settings/runtime_feature_settings.h
 +++ b/src/deluge/model/settings/runtime_feature_settings.h
-@@ -37,7 +37,10 @@ class DevSysexSetting;
+@@ -37,10 +37,16 @@ class DevSysexSetting;
  enum RuntimeFeatureStateToggle : uint32_t { Off = 0, On = 1 };
  
  // Declare additional enums for specific multi state settings (e.g. like RuntimeFeatureStateTrackLaunchStyle)
@@ -41050,7 +41249,13 @@ index a39f698ae..e7a14fe11 100644
  
  enum RuntimeFeatureStateEmulatedDisplay : uint32_t { Hardware = 0, Toggle = 1, OnBoot = 2 };
  
-@@ -71,6 +74,10 @@ enum RuntimeFeatureSettingType : uint32_t {
++/// 7SEG menu text: the short 4-letter names, or the full names flashed then scrolled
++enum RuntimeFeatureStateSevenSegText : uint32_t { Short = 0, Scroll = 1 };
++
+ // Keep the former On value as MenuOnly to preserve existing settings.
+ enum class RuntimeFeatureStateShortcutOverlay : uint32_t { Off = 0, MenuOnly = 1, MenuAndClip = 2 };
+ 
+@@ -71,6 +77,11 @@ enum RuntimeFeatureSettingType : uint32_t {
  	ShowBatteryLevel,
  	RoundedCorners,
  	ShortcutOverlay,
@@ -41058,10 +41263,11 @@ index a39f698ae..e7a14fe11 100644
 +	EndlessRecord,
 +	PadGuides,
 +	ElektronLocks,
++	SevenSegText,
  	MaxElement // Keep as boundary
  };
  
-@@ -98,7 +105,13 @@ public:
+@@ -98,7 +109,13 @@ public:
  	RuntimeFeatureSettings();
  
  	// Traded type safety for option values for code simplicity and size, use enum from above to compare
