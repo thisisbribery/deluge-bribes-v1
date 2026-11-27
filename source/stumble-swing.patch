@@ -30175,10 +30175,14 @@ index 663b5da50..8b06dfd4d 100644
  	                                          int32_t numParams);
  	void getLastSelectedNonGlobalParamArrayPosition(Clip* clip);
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..3235c85da 100644
+index 75e1a7340..1626339b6 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
-@@ -20,12 +20,18 @@
+@@ -17,15 +17,22 @@
+ 
+ #include "gui/views/instrument_clip_view.h"
+ #include "definitions_cxx.hpp"
++#include "drivers/pic/pic.h"
  #include "extern.h"
  #include "fatfs.hpp"
  #include "gui/colour/colour.h"
@@ -30197,7 +30201,7 @@ index 75e1a7340..3235c85da 100644
  #include "gui/ui/audio_recorder.h"
  #include "gui/ui/browser/sample_browser.h"
  #include "gui/ui/keyboard/keyboard_screen.h"
-@@ -34,10 +40,12 @@
+@@ -34,10 +41,13 @@
  #include "gui/ui/rename/rename_drum_ui.h"
  #include "gui/ui/sample_marker_editor.h"
  #include "gui/ui/save/save_kit_row_ui.h"
@@ -30207,10 +30211,11 @@ index 75e1a7340..3235c85da 100644
  #include "gui/ui_timer_manager.h"
  #include "gui/views/automation_view.h"
 +#include "gui/views/kit_pattern_mode.h"
++#include "gui/views/session_view.h"
  #include "gui/views/timeline_view.h"
  #include "gui/views/view.h"
  #include "hid/buttons.h"
-@@ -62,9 +70,11 @@
+@@ -62,9 +72,11 @@
  #include "model/consequence/consequence_note_row_length.h"
  #include "model/drum/drum.h"
  #include "model/drum/midi_drum.h"
@@ -30222,7 +30227,7 @@ index 75e1a7340..3235c85da 100644
  #include "model/model_stack.h"
  #include "model/note/copied_note_row.h"
  #include "model/note/note.h"
-@@ -73,6 +83,7 @@
+@@ -73,6 +85,7 @@
  #include "model/settings/runtime_feature_settings.h"
  #include "model/song/song.h"
  #include "modulation/automation/auto_param.h"
@@ -30230,15 +30235,20 @@ index 75e1a7340..3235c85da 100644
  #include "modulation/params/param_manager.h"
  #include "modulation/params/param_node.h"
  #include "modulation/params/param_set.h"
-@@ -100,6 +111,7 @@
+@@ -98,8 +111,11 @@
+ #include <string.h>
+ #include <vector>
  
- extern "C" {}
+-extern "C" {}
++extern "C" {
++#include "RZA1/uart/sio_char.h"
++}
  
 +extern deluge::gui::menu_item::SynthModeSelection synthModeMenu;
  using namespace deluge::gui;
  
  PLACE_SDRAM_DATA InstrumentClipView instrumentClipView{};
-@@ -242,6 +254,11 @@ ActionResult InstrumentClipView::commandEnterScaleMode() {
+@@ -242,6 +258,11 @@ ActionResult InstrumentClipView::commandEnterScaleMode() {
  }
  
  ActionResult InstrumentClipView::commandExitScaleMode() {
@@ -30250,7 +30260,7 @@ index 75e1a7340..3235c85da 100644
  	exitScaleMode();
  	return ActionResult::DEALT_WITH;
  }
-@@ -251,6 +268,12 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -251,6 +272,12 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  
  	maybeStartShortcutOverview(b, on);
  
@@ -30263,7 +30273,7 @@ index 75e1a7340..3235c85da 100644
  	// Scale mode button
  	if (b == SCALE_MODE && currentUIMode != UI_MODE_HOLDING_LOAD_BUTTON) {
  		return handleScaleButtonAction(on, inCardRoutine);
-@@ -543,16 +566,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -543,16 +570,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  
  			if (currentUIMode == UI_MODE_NONE) {
@@ -30288,7 +30298,7 @@ index 75e1a7340..3235c85da 100644
  				}
  			}
  			else if (currentUIMode == UI_MODE_ADDING_DRUM_NOTEROW || currentUIMode == UI_MODE_AUDITIONING) {
-@@ -575,6 +596,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+@@ -575,6 +600,23 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
  			}
  		}
  	}
@@ -30312,7 +30322,7 @@ index 75e1a7340..3235c85da 100644
  	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
  		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
  		if (noteRow->drum->type == DrumType::SOUND) {
-@@ -784,12 +822,19 @@ doCancelPopup:
+@@ -784,12 +826,19 @@ doCancelPopup:
  		// If holding notes down...
  		if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)) {
  			if (on) {
@@ -30332,7 +30342,7 @@ index 75e1a7340..3235c85da 100644
  				goto doCancelPopup;
  			}
  		}
-@@ -838,6 +883,14 @@ doCancelPopup:
+@@ -838,6 +887,14 @@ doCancelPopup:
  
  	else if (b == SELECT_ENC) {
  		if (on) {
@@ -30347,7 +30357,7 @@ index 75e1a7340..3235c85da 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -925,9 +978,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
+@@ -925,9 +982,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
  	}
  	else {
  		// Button release
@@ -30358,7 +30368,7 @@ index 75e1a7340..3235c85da 100644
  		if (toggleScaleModeOnButtonRelease && isShortPress(scaleButtonPressTime)) {
  			toggleScaleModeOnButtonRelease = false;
  			if (inScaleMode) {
-@@ -955,6 +1006,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
+@@ -955,6 +1010,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
  		            == RuntimeFeatureStateToggle::On);
  	}
  
@@ -30390,7 +30400,7 @@ index 75e1a7340..3235c85da 100644
  	if (!isMIDIorCV && (is_fm || Buttons::isShiftButtonPressed())) {
  		return createNewInstrument(outputType, is_fm);
  	}
-@@ -1059,15 +1135,13 @@ ramError:
+@@ -1059,15 +1139,13 @@ ramError:
  
  void InstrumentClipView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
  
@@ -30413,7 +30423,7 @@ index 75e1a7340..3235c85da 100644
  		}
  	}
  	else {
-@@ -1114,7 +1188,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1114,7 +1192,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -30422,7 +30432,7 @@ index 75e1a7340..3235c85da 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1199,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1203,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -30433,7 +30443,7 @@ index 75e1a7340..3235c85da 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1371,8 @@ ramError:
+@@ -1297,8 +1375,8 @@ ramError:
  	}
  }
  
@@ -30444,7 +30454,7 @@ index 75e1a7340..3235c85da 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1711,11 +1785,107 @@ getOut: {}
+@@ -1711,11 +1789,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -30553,7 +30563,7 @@ index 75e1a7340..3235c85da 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1777,6 +1947,273 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1777,6 +1951,383 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -30638,22 +30648,63 @@ index 75e1a7340..3235c85da 100644
 +	return true;
 +}
 +
-+/// Pad Guides: while SHIFT is held on a drum synth (the synth, or the kit's selected row), the pads of its layout glow,
-+/// blended over whatever is on them so notes still show: soft pink on a drum engine, purple on a synth engine (RINGS,
-+/// BROPHET)
-+void renderDrumSynthShiftGlow(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth]) {
++/// What the Pad Guides glow last drew, so the pulse can redraw just those pads between renders
++struct PadGuidesGlowState {
++	const Sound* sound; ///< Compared, never read: nullptr while nothing glows
++	deluge::dsp::drum_synth::Engine engine;
++	bool overOverlay; ///< Drawn over the SHIFT shortcut overlay, not over the clip
++	bool onPads;      ///< Drawn in the image the pads show, not in a transition's store
++	uint8_t level;    ///< The pulse level the pads were last drawn at
++	RGB glow;
++	uint16_t pads[kDisplayHeight];           ///< Bit x of pads[y]: that pad glows
++	RGB base[kDisplayHeight][kDisplayWidth]; ///< What is under each glowing pad
++};
++PLACE_SDRAM_BSS PadGuidesGlowState padGuidesGlow;
++
++/// A glowing pad at one point of the pulse. Over the shortcut overlay the pad is all glow, dim to full. Over the clip
++/// the glow fades in and out of what is on the pad, so notes still show.
++RGB padGuidesPulseColour(const PadGuidesGlowState& state, RGB base) {
++	if (state.overOverlay) {
++		return state.glow.adjust(state.level, 1);
++	}
++	return RGB::blend(state.glow, base, state.level * 180); // 14% to 70% glow
++}
++
++/// Pad Guides: while SHIFT is held on a drum synth (the synth, or the kit's selected row), the pads of its layout glow
++/// and pulse: soft pink on a drum engine, purple on a synth engine (RINGS, BROPHET, BRUNO106). The pulse is the one a
++/// synth track's section pad has in song view (see beatPulseBrightness), and tells these pads from the stock shortcut
++/// colours when the SHIFT shortcut overlay is on: there the glow is drawn over the overlay (overOverlay) and left out
++/// of its greyout (see isPadGuidesGlowPad). With no overlay it is blended over the clip.
++void renderDrumSynthShiftGlow(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
++                              bool overOverlay = false) {
++	PadGuidesGlowState& state = padGuidesGlow;
 +	const Sound* sound = InstrumentClipView::padGuidesGlowSound();
 +	if (sound == nullptr) {
++		state.sound = nullptr;
 +		return;
 +	}
-+	// In the sound editor the layout's columns are left out of its greyout (see SoundEditor::getGreyoutColsAndRows),
-+	// so grey their pads without a setting here, as the rest of the grid is
-+	const bool inSoundEditor = getCurrentUI() == &soundEditor;
++	constexpr uint32_t kAllRows = (1 << kDisplayHeight) - 1;
 +	constexpr int32_t kFullGreyout = 6500000;
 +	constexpr RGB kDrumGlow{255, 40, 90};
 +	constexpr RGB kSynthGlow{150, 40, 255};
 +	const auto engine = sound->sources[0].drumPatch.engine();
-+	const RGB glow = isSynthLayout(engine) ? kSynthGlow : kDrumGlow;
++	const bool sameAsBefore = state.sound == sound && state.engine == engine && state.overOverlay == overOverlay
++	                          && state.onPads == (image == PadLEDs::image);
++	if (!sameAsBefore) {
++		memset(state.pads, 0, sizeof(state.pads));
++	}
++	// Rows drawn on their own join the pulse where the other rows are
++	if (!sameAsBefore || (whichRows & kAllRows) == kAllRows) {
++		state.level = beatPulseBrightness();
++	}
++	state.sound = sound;
++	state.engine = engine;
++	state.overOverlay = overOverlay;
++	state.onPads = image == PadLEDs::image;
++	state.glow = isSynthLayout(engine) ? kSynthGlow : kDrumGlow;
++	// In the sound editor the layout's columns are left out of its greyout (see SoundEditor::getGreyoutColsAndRows),
++	// so grey their empty pads without a setting here, as the rest of the grid is. The overlay greys every pad itself.
++	const bool greyEmptyPads = !overOverlay && getCurrentUI() == &soundEditor;
 +	for (int32_t x = 0; x < kDisplayWidth; x++) {
 +		if (!drumLayoutColumn(engine, x)) {
 +			continue;
@@ -30663,10 +30714,15 @@ index 75e1a7340..3235c85da 100644
 +				continue;
 +			}
 +			if (drumLayoutItemAt(engine, x, y) != nullptr) {
-+				image[y][x] = RGB::blend(glow, image[y][x], 32768);
++				state.base[y][x] = overOverlay ? deluge::gui::colours::black : image[y][x];
++				state.pads[y] |= (1 << x);
++				image[y][x] = padGuidesPulseColour(state, state.base[y][x]);
 +			}
-+			else if (inSoundEditor) {
-+				image[y][x] = image[y][x].greyOut(kFullGreyout);
++			else {
++				state.pads[y] &= ~(1 << x);
++				if (greyEmptyPads) {
++					image[y][x] = image[y][x].greyOut(kFullGreyout);
++				}
 +			}
 +		}
 +	}
@@ -30674,7 +30730,69 @@ index 75e1a7340..3235c85da 100644
 +} // namespace
 +
 +void InstrumentClipView::renderPadGuidesGlow(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth]) {
-+	renderDrumSynthShiftGlow(whichRows, image);
++	renderDrumSynthShiftGlow(whichRows, image, true);
++}
++
++bool InstrumentClipView::isPadGuidesGlowPad(int32_t x, int32_t y) {
++	const PadGuidesGlowState& state = padGuidesGlow;
++	return state.sound != nullptr && x >= 0 && x < kDisplayWidth && y >= 0 && y < kDisplayHeight
++	       && (state.pads[y] & (1 << x)) != 0 && padGuidesGlowSound() == state.sound;
++}
++
++// Pad Guides pulse (see renderDrumSynthShiftGlow). Redraws only the glowing pads, from the graphics routine, which
++// only runs while the pads' UART has room, so it can't hold up anything else.
++void InstrumentClipView::animatePadGuidesGlow() {
++	PadGuidesGlowState& state = padGuidesGlow;
++	if (state.sound == nullptr || !state.onPads || PadLEDs::renderingLock) {
++		return;
++	}
++	// Every other routine (about 30 a second) is smooth enough
++	static uint32_t lastTime = 0;
++	if (AudioEngine::audioSampleTimer - lastTime < (kSampleRate / 32)) {
++		return;
++	}
++	// Scrolls, zooms and transitions draw the pads from their own images
++	if (isUIModeActive(UI_MODE_HORIZONTAL_SCROLL) || isUIModeActive(UI_MODE_HORIZONTAL_ZOOM)
++	    || isUIModeActive(UI_MODE_VERTICAL_SCROLL) || isUIModeActive(UI_MODE_NOTEROWS_EXPANDING_OR_COLLAPSING)
++	    || isUIModeActive(UI_MODE_INSTRUMENT_CLIP_EXPANDING) || isUIModeActive(UI_MODE_EXPLODE_ANIMATION)
++	    || isUIModeActive(UI_MODE_ANIMATION_FADE)) {
++		return;
++	}
++	// Nothing to pulse once SHIFT is up or the sound has changed: the render that follows clears it
++	const Sound* sound = padGuidesGlowSound();
++	if (sound != state.sound || sound->sources[0].drumPatch.engine() != state.engine) {
++		return;
++	}
++	// The layouts sit in columns 2 to 5: two column messages
++	if (uartGetTxBufferSpace(UART_ITEM_PIC_PADS) <= kNumBytesInColUpdateMessage * 3) {
++		return;
++	}
++	lastTime = AudioEngine::audioSampleTimer;
++
++	const uint8_t level = beatPulseBrightness();
++	if (level == state.level) {
++		return;
++	}
++	state.level = level;
++	bool anySent = false;
++	for (int32_t pair = 0; pair < kDisplayWidth; pair += 2) {
++		bool any = false;
++		for (int32_t y = 0; y < kDisplayHeight; y++) {
++			for (int32_t x = pair; x < pair + 2; x++) {
++				if ((state.pads[y] & (1 << x)) != 0) {
++					PadLEDs::image[y][x] = padGuidesPulseColour(state, state.base[y][x]);
++					any = true;
++				}
++			}
++		}
++		if (any) {
++			PadLEDs::sortLedsForCol(pair);
++			anySent = true;
++		}
++	}
++	if (anySent) {
++		PIC::flush();
++	}
 +}
 +
 +const Sound* InstrumentClipView::padGuidesGlowSound() {
@@ -30685,7 +30803,9 @@ index 75e1a7340..3235c85da 100644
 +	// setting is edited. Not over the drum synth pad editor, which draws its own grid.
 +	UI* currentUI = getCurrentUI();
 +	if (currentUI == &instrumentClipView) {
-+		if (!Buttons::isButtonPressed(deluge::hid::button::SHIFT)) {
++		// SHIFT held, or the shortcut overlay up: sticky SHIFT keeps that up with the button let go
++		if (!Buttons::isButtonPressed(deluge::hid::button::SHIFT)
++		    && !instrumentClipView.shouldRenderShortcutsOverview()) {
 +			return nullptr;
 +		}
 +	}
@@ -30827,7 +30947,7 @@ index 75e1a7340..3235c85da 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1796,6 +2233,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1796,6 +2347,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -30849,7 +30969,7 @@ index 75e1a7340..3235c85da 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2132,19 +2584,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2132,19 +2698,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  	if (path == &nothing) {
  		return ActionResult::NOT_DEALT_WITH;
  	}
@@ -30879,7 +30999,7 @@ index 75e1a7340..3235c85da 100644
  
  	// Select random audio file from directory
  	int32_t fileCount = 0;
-@@ -2164,10 +2621,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2164,10 +2735,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		soundDrum->killAllVoices();
  
  		afh->setAudioFile(nullptr);
@@ -30891,7 +31011,7 @@ index 75e1a7340..3235c85da 100644
  		afh->filePath.concatenate("/");
  		afh->filePath.concatenate(chosenFilename);
  		afh->loadFile(false, true, true, 1, nullptr, false);
-@@ -2179,7 +2633,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2179,7 +2747,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		}
  		soundDrum->drumName = chosenFilename;
  		kit->beenEdited();
@@ -30899,7 +31019,7 @@ index 75e1a7340..3235c85da 100644
  
  		// we've randomized a drum sample
  		return ActionResult::ACTIONED_AND_CAUSED_CHANGE;
-@@ -2607,9 +3060,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2607,9 +3174,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -30921,7 +31041,7 @@ index 75e1a7340..3235c85da 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -2631,10 +3096,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2631,10 +3210,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  					// Can only set the mod region after setting the selected drum! Otherwise the params' currentValues
  					// don't end up right
@@ -30936,7 +31056,7 @@ index 75e1a7340..3235c85da 100644
  
  					// Now that we're holding a note down, get set up for if the user wants to edit its MPE values.
  					for (int32_t t = 0; t < MPE_RECORD_LENGTH_FOR_NOTE_EDITING; t++) {
-@@ -2700,8 +3165,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2700,8 +3279,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  				int32_t wrapEditLevel = clip->getWrapEditLevel();
  
@@ -30966,7 +31086,7 @@ index 75e1a7340..3235c85da 100644
  
  				noteRow->clearMPEUpUntilNextNote(modelStackWithNoteRow, squareStart, wrapEditLevel, true);
  
-@@ -2775,6 +3259,10 @@ void InstrumentClipView::endAllEditPadPresses() {
+@@ -2775,6 +3373,10 @@ void InstrumentClipView::endAllEditPadPresses() {
  
  void InstrumentClipView::checkIfAllEditPadPressesEnded(bool mayRenderSidebar) {
  	if (numEditPadPresses == 0) {
@@ -30977,7 +31097,7 @@ index 75e1a7340..3235c85da 100644
  		view.setModRegion();
  		exitUIMode(UI_MODE_NOTES_PRESSED);
  		actionLogger.closeAction(ActionType::NOTE_EDIT);
-@@ -4957,6 +5445,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4957,6 +5559,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -31003,7 +31123,7 @@ index 75e1a7340..3235c85da 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5198,6 +5705,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+@@ -5198,6 +5819,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
  		}
  	}
  
@@ -31016,7 +31136,7 @@ index 75e1a7340..3235c85da 100644
  	if (shouldRedrawStuff) {
  		// make sure the clip we're displaying actually belongs to this kit
  		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
-@@ -5420,6 +5933,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5420,6 +6047,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -31028,7 +31148,7 @@ index 75e1a7340..3235c85da 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -5642,7 +6160,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
+@@ -5642,7 +6274,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
  // sub-function of AuditionPadAction
  // pad is released, end previous audition pad press
  void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack,
@@ -31037,7 +31157,7 @@ index 75e1a7340..3235c85da 100644
  	if (auditionPadIsPressed[yDisplay]) {
  		bool auditionNoteWasSounding = lastAuditionedVelocityOnScreen[yDisplay] != 255;
  		auditionPadIsPressed[yDisplay] = 0;
-@@ -5657,8 +6175,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
+@@ -5657,8 +6289,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
  			sendAuditionNote(false, yDisplay, 64, 0);
  		}
  	}
@@ -31048,7 +31168,7 @@ index 75e1a7340..3235c85da 100644
  	actionLogger.closeAction(ActionType::EUCLIDEAN_NUM_EVENTS_EDIT);
  	actionLogger.closeAction(ActionType::NOTEROW_ROTATE);
  }
-@@ -6312,6 +6830,11 @@ drawNormally:
+@@ -6312,6 +6944,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -31060,7 +31180,7 @@ index 75e1a7340..3235c85da 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6422,6 +6945,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6422,6 +7059,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -31068,7 +31188,7 @@ index 75e1a7340..3235c85da 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6437,6 +6961,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6437,6 +7075,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -31082,7 +31202,7 @@ index 75e1a7340..3235c85da 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -6849,8 +7380,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
+@@ -6849,8 +7494,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
  
  ActionResult InstrumentClipView::commandStopQuantize(int32_t y) {
  	ActionResult res;
@@ -31093,7 +31213,7 @@ index 75e1a7340..3235c85da 100644
  		InstrumentClip* clip = getCurrentInstrumentClip();
  		Output* output = clip->output;
  		OutputType outputType = output->type;
-@@ -7383,7 +7914,7 @@ abandonModRegion:
+@@ -7383,7 +8028,7 @@ abandonModRegion:
  		// view.setModRegion(newPos, max((uint32_t)distanceToNextNote + lastNote->pos - firstNote->pos,
  		// squareWidth));
  		// // This is what happens with initial press, kinda different...
@@ -31102,7 +31222,16 @@ index 75e1a7340..3235c85da 100644
  	}
  
  	uiNeedsRendering(this, 0xFFFFFFFF, 0);
-@@ -7587,6 +8118,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7408,6 +8053,8 @@ void InstrumentClipView::graphicsRoutine() {
+ 		return;
+ 	}
+ 
++	animatePadGuidesGlow();
++
+ 	if (PadLEDs::flashCursor == FLASH_CURSOR_OFF) {
+ 		return;
+ 	}
+@@ -7587,6 +8234,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -31124,7 +31253,16 @@ index 75e1a7340..3235c85da 100644
  	if (!image) {
  		return true;
  	}
-@@ -7604,6 +8150,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7596,6 +8258,8 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+ 	}
+ 
+ 	if (maybeRenderShortcutsOverview(whichRows, image, occupancyMask, drawUndefinedArea)) {
++		// Pad Guides: the drum synth's pads pulse over the shortcut overlay
++		renderDrumSynthShiftGlow(whichRows, image, true);
+ 		return true;
+ 	}
+ 
+@@ -7604,6 +8268,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
  	                    drawUndefinedArea);
  	render_selected_note_pulse(whichRows, image);
@@ -31132,7 +31270,7 @@ index 75e1a7340..3235c85da 100644
  	PadLEDs::renderingLock = false;
  
  	return true;
-@@ -7646,6 +8193,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7646,6 +8311,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -31142,7 +31280,7 @@ index 75e1a7340..3235c85da 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7694,6 +8244,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7694,6 +8362,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -31155,7 +31293,7 @@ index 75e1a7340..3235c85da 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8415,3 +8971,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8415,3 +9089,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -31409,7 +31547,7 @@ index 75e1a7340..3235c85da 100644
 +	display->displayPopup(text);
 +}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 091c51b57..005d99a67 100644
+index 091c51b57..c34c035c9 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -17,7 +17,10 @@
@@ -31433,7 +31571,7 @@ index 091c51b57..005d99a67 100644
  	void enterScaleMode(uint8_t yDisplay = 255);
  	void exitScaleMode();
  	void drawMuteSquare(NoteRow* thisNoteRow, RGB thisImage[], uint8_t thisOccupancyMask[]);
-@@ -223,6 +227,21 @@ public:
+@@ -223,6 +227,26 @@ public:
  	uint32_t getSquareWidth(int32_t square, int32_t effectiveLength);
  	void drawNoteCode(uint8_t yDisplay);
  	bool createNewInstrument(OutputType instrumentType, bool is_fm = false);
@@ -31447,15 +31585,20 @@ index 091c51b57..005d99a67 100644
 +	static bool presetKitHasAddedRows(Kit* kit);
 +	/// Pad Guides: the drum synth whose standard layout pads glow right now, or nullptr
 +	static const Sound* padGuidesGlowSound();
-+	/// Pad Guides: tint the glowing pads in an image the sound editor drew (its SHIFT shortcut overlay)
++	/// Pad Guides: draw the glowing pads over an image the sound editor drew (its SHIFT shortcut overlay)
 +	static void renderPadGuidesGlow(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth]);
++	/// Pad Guides: whether a pad glows right now. Such a pad is left out of any greyout, so it shows at full
++	/// brightness over the greyed shortcut overlay.
++	static bool isPadGuidesGlowPad(int32_t x, int32_t y);
++	/// Pad Guides: move the glowing pads along their pulse
++	static void animatePadGuidesGlow();
 +	/// Add a row to a preset kit at the empty row being auditioned, starting on the kit's first engine, and open SYNTH
 +	/// MODE on it to choose what it is
 +	void addRowToPresetKit(ModelStackWithTimelineCounter* modelStack, Kit* kit);
  	bool changeOutputType(OutputType newOutputType);
  	Sound* getSoundForNoteRow(NoteRow* noteRow, ParamManagerForTimeline** getParamManager);
  	void someAuditioningHasEnded(bool recalculateLastAuditionedNoteOnScreen);
-@@ -311,7 +330,13 @@ public:
+@@ -311,7 +335,13 @@ public:
  	bool handleNoteRowEditorPadAction(int32_t x, int32_t y, int32_t on);
  	bool handleNoteRowEditorMainPadAction(int32_t x, int32_t y, int32_t on);
  	void handleNoteRowEditorAuditionPadAction(int32_t y);
@@ -31470,7 +31613,7 @@ index 091c51b57..005d99a67 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -352,6 +377,21 @@ public:
+@@ -352,6 +382,21 @@ public:
  	ModControllableAudio* getModControllableAudioOrNone() override;
  
  private:
@@ -31492,7 +31635,7 @@ index 091c51b57..005d99a67 100644
  	bool doneAnyNudgingSinceFirstEditPadPress{};
  	bool offsettingNudgeNumberDisplay{};
  
-@@ -395,11 +435,13 @@ private:
+@@ -395,11 +440,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -32375,7 +32518,7 @@ index 000000000..4bbd4cbd8
 +
 +} // namespace deluge::gui::kit_pattern
 diff --git a/src/deluge/gui/views/session_view.cpp b/src/deluge/gui/views/session_view.cpp
-index d571c07f2..32044e819 100644
+index d571c07f2..33f0a4ce3 100644
 --- a/src/deluge/gui/views/session_view.cpp
 +++ b/src/deluge/gui/views/session_view.cpp
 @@ -59,6 +59,7 @@
@@ -32436,7 +32579,7 @@ index d571c07f2..32044e819 100644
  bool SessionView::renderSidebar(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                  uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth]) {
  	if (!image) {
-@@ -1558,6 +1584,43 @@ void SessionView::drawStatusSquare(uint8_t yDisplay, RGB thisImage[]) {
+@@ -1558,6 +1584,50 @@ void SessionView::drawStatusSquare(uint8_t yDisplay, RGB thisImage[]) {
  	}
  }
  
@@ -32457,6 +32600,16 @@ index d571c07f2..32044e819 100644
 +	return (period == 0) ? 0 : static_cast<uint32_t>((position % period) * 256 / period);
 +}
 +
++} // namespace
++
++uint8_t beatPulseBrightness() {
++	constexpr uint32_t kLow = 50;
++	const uint32_t phase = beatPhase(2);
++	const uint32_t triangle = (phase < 128) ? phase * 2 : (255 - phase) * 2;
++	return kLow + (triangle * triangle / 255) * (255 - kLow) / 255; // Eased, so it breathes
++}
++
++namespace {
 +/// Section pads move with the type of track: kits flash on the beat, synths pulse gently, MIDI pings bright and fades
 +/// over each beat (a sawtooth), CV and audio stay solid
 +uint8_t trackTypeBrightness(OutputType type) {
@@ -32464,11 +32617,8 @@ index d571c07f2..32044e819 100644
 +	switch (type) {
 +	case OutputType::KIT:
 +		return (beatPhase(1) < 40) ? 255 : kLow;
-+	case OutputType::SYNTH: {
-+		const uint32_t phase = beatPhase(2);
-+		const uint32_t triangle = (phase < 128) ? phase * 2 : (255 - phase) * 2;
-+		return kLow + (triangle * triangle / 255) * (255 - kLow) / 255; // Eased, so it breathes
-+	}
++	case OutputType::SYNTH:
++		return beatPulseBrightness();
 +	case OutputType::MIDI_OUT:
 +		return 255 - beatPhase(1) * (255 - kLow) / 255;
 +	default:
@@ -32480,7 +32630,7 @@ index d571c07f2..32044e819 100644
  void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
  	RGB& thisColour = thisImage[kDisplayWidth + 1];
  
-@@ -1580,6 +1643,9 @@ void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
+@@ -1580,6 +1650,9 @@ void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
  			    && view.learnedThing == &currentSong->sections[clip->section].launchMIDICommand) {
  				thisColour = thisColour.dim();
  			}
@@ -32490,7 +32640,7 @@ index d571c07f2..32044e819 100644
  		}
  	}
  }
-@@ -1587,34 +1653,41 @@ void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
+@@ -1587,34 +1660,41 @@ void SessionView::drawSectionSquare(uint8_t yDisplay, RGB thisImage[]) {
  // Will now look in subfolders too if need be.
  Error setPresetOrNextUnlaunchedOne(InstrumentClip* clip, OutputType outputType, bool* instrumentAlreadyInSong,
                                     bool copyDrumsFromClip = true) {
@@ -32554,7 +32704,7 @@ index d571c07f2..32044e819 100644
  	}
  
  	if (display->haveOLED()) {
-@@ -2218,6 +2291,9 @@ void SessionView::graphicsRoutine() {
+@@ -2218,6 +2298,9 @@ void SessionView::graphicsRoutine() {
  	if (view.potentiallyRenderVUMeter(PadLEDs::image)) {
  		PadLEDs::sendOutSidebarColours();
  	}
@@ -32564,7 +32714,7 @@ index d571c07f2..32044e819 100644
  
  	if (display->haveOLED()) {
  		displayPotentialTempoChange(this);
-@@ -4886,10 +4962,11 @@ Output* SessionView::getOutputFromPad(int32_t x, int32_t y) {
+@@ -4886,10 +4969,11 @@ Output* SessionView::getOutputFromPad(int32_t x, int32_t y) {
  	if (currentSong->sessionLayout == SessionLayoutType::SessionLayoutTypeGrid) {
  		return gridTrackFromX(x, gridTrackCount());
  	}
@@ -32581,10 +32731,21 @@ index d571c07f2..32044e819 100644
  
  Cartesian SessionView::gridXYFromClip(Clip& clip) {
 diff --git a/src/deluge/gui/views/session_view.h b/src/deluge/gui/views/session_view.h
-index bec64c015..abdbee639 100644
+index bec64c015..ca12760e8 100644
 --- a/src/deluge/gui/views/session_view.h
 +++ b/src/deluge/gui/views/session_view.h
-@@ -70,6 +70,7 @@ public:
+@@ -41,6 +41,10 @@ extern float getTransitionProgress();
+ 
+ constexpr uint32_t kGridHeight = kDisplayHeight;
+ 
++/// The gentle two-beat pulse a synth track's section pad moves with, 50 to 255: on the playhead while playing, else at
++/// the song's tempo. Pad Guides pulse on it too.
++uint8_t beatPulseBrightness();
++
+ class SessionView final : public ClipNavigationTimelineView {
+ public:
+ 	SessionView();
+@@ -70,6 +74,7 @@ public:
  	int32_t getClipPlaceOnScreen(Clip* clip);
  	void drawStatusSquare(uint8_t yDisplay, RGB thisImage[]);
  	void drawSectionSquare(uint8_t yDisplay, RGB thisImage[]);
@@ -36934,6 +37095,22 @@ index 1bb0b8a2b..2eb78e0ab 100644
 +/// Run what the tablet tapped (picker option or browser action), from the COMPANION_PICK UI timer
 +void runPendingPick();
  } // namespace HIDSysex
+diff --git a/src/deluge/hid/led/pad_leds.cpp b/src/deluge/hid/led/pad_leds.cpp
+index bda2ea2da..6ca8445f8 100644
+--- a/src/deluge/hid/led/pad_leds.cpp
++++ b/src/deluge/hid/led/pad_leds.cpp
+@@ -295,8 +295,10 @@ RGB prepareColour(int32_t x, int32_t y, RGB colourSource) {
+ 		}
+ 	}
+ 
++	// Pad Guides: a pulsing drum synth pad stays lit through a greyout (the SHIFT shortcut overlay greys every pad)
+ 	if ((greyoutRows || greyoutCols)
+-	    && ((greyoutRows & (1 << y)) || (greyoutCols & (1 << (kDisplayWidth + kSideBarWidth - 1 - x))))) {
++	    && ((greyoutRows & (1 << y)) || (greyoutCols & (1 << (kDisplayWidth + kSideBarWidth - 1 - x))))
++	    && !InstrumentClipView::isPadGuidesGlowPad(x, y)) {
+ 		return colourSource.greyOut(greyProportion);
+ 	}
+ 	return colourSource;
 diff --git a/src/deluge/io/midi/midi_engine.cpp b/src/deluge/io/midi/midi_engine.cpp
 index 18956ec02..6f6c58f74 100644
 --- a/src/deluge/io/midi/midi_engine.cpp
@@ -47966,7 +48143,7 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..afd494223
+index 000000000..dce96f329
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
 @@ -0,0 +1,520 @@
@@ -48213,7 +48390,7 @@ index 000000000..afd494223
 +
 +**Pad Guides** (**GUID**) is a Community Features setting, on by default (new in v1.16).
 +
-+- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** tints the MOD1 / MOD2 pads that have a setting soft pink (and ULTRAKIK's OSC1 pads), blended over the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
++- **SHIFT glow.** In a clip on a drum synth (the synth, or the kit's selected row), holding **SHIFT** makes the MOD1 / MOD2 pads that have a setting pulse soft pink (and ULTRAKIK's OSC1 pads); purple on the synth engines' OSC and FM MOD pads. The pulse is the slow two-beat breath a synth track's section pad has in song view. It shows whatever **Shortcut Overlay** is set to (changed in v1.39.2): with the overlay up, the pads pulse at full brightness over its dimmed colours, which is how to tell them from the stock shortcuts; with it off, they fade in and out of the pad's own colour so notes still show. Press one and the pads stay lit while you edit the setting in the sound menu. Release SHIFT on the clip and they go back. There's no glow with AFFECT ENTIRE on in a kit, where SHIFT + pad edits the kit's FX.
 +- **Gold knobs.** Drum synth rows use the layout above.
 +- **Mod button pads.** Holding any gold knob button still shows its two settings' names, and now also flashes their shortcut pads: red for the top knob's, yellow for the bottom's. This works on every sound type, and on kit, audio clip and song FX. A setting with no pad (a learned MIDI CC, most patch cables) just shows its name. The flashing stops when you let go.
 +- **Shortcut pad knob LED (new in v1.29).** The other way round: press a shortcut pad (SHIFT or audition + pad) and, if that setting sits on a gold knob, that knob's mod button LED blinks four times. LPF FREQ or RES blinks CUTOFF / RES, the delay feedback and tone pads blink DELAY (SHIFT + the delay knobs edit them). It reads the sound's own knob layout, so learned knobs, the 303 and the drum and synth engines' knobs count, and kit FX (AFFECT ENTIRE) and audio clips use theirs. One LED covers both knobs, so it shows the pair, not top or bottom.

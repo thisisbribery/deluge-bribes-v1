@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.39.1
+# BRIBELUGE: Deluge Bribes FW v1.39.2
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.1`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.1), the exact commit the bin was built from, and a full source download on the [v1.39.1 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.1). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.2`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.2), the exact commit the bin was built from, and a full source download on the [v1.39.2 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.2). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -25,7 +25,7 @@ What Bribeluge adds:
 9. **[303 synth](#9-303-synth):** A TB-303 voice from Open303 with accent and slide from the mono sequencer, three filters (303, LP18, DIRT) and an overdrive after them.
 10. **[Delay feedback and tone](#10-delay-feedback-and-tone):** Delay amount and feedback on separate controls, plus a DJ filter in the loop, one SHIFT layer down.
 11. **[Affect all](#11-affect-all):** SHIFT + AFFECT ENTIRE snapshots any kit: every knob moves all its sound rows (drum synths, samples and synths), and it snaps back on the next bar.
-12. **[Pad Guides](#12-pad-guides):** SHIFT lights a drum synth's setting pads (purple on BRINGS, BROPHET and BRUNO106), gold knob buttons flash theirs, shortcut pads blink their gold knob's button, and a held shortcut pad scrolls its name on the 7-segment display.
+12. **[Pad Guides](#12-pad-guides):** SHIFT makes a drum synth's setting pads pulse pink (purple on BRINGS, BROPHET and BRUNO106), with the Shortcut Overlay on or off, gold knob buttons flash theirs, shortcut pads blink their gold knob's button, and a held shortcut pad scrolls its name on the 7-segment display.
 13. **[Synth browser](#13-synth-browser):** SHIFT + SYNTH: pick a type (SUBT, FM, WAVE, RING, BRINGS, DX7, BROPHET, BRUNO106, 303, INIT), then a category, then play through the presets. The audition pads play each type's init synth (or your own patch) the whole way. 99 wavetable, 288 DX7, 37 BRINGS, 536 BROPHET and 212 BRUNO106 presets included.
 14. **[Instrument Picker](#14-instrument-picker):** The kit and synth type every new track starts as, on its top preset.
 15. **[Gate out](#15-gate-out):** A kit's bottom four rows fire the four gate outputs. GATE and MIDI out sit at the top of each row's menu.
@@ -57,9 +57,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.39.1.bin`](firmware/deluge-bribes-v1.39.1.bin)
+[`firmware/deluge-bribes-v1.39.2.bin`](firmware/deluge-bribes-v1.39.2.bin)
 
-SHA-256: `b0a64a39c1ba3de8947bd136bb111103d2dc1ad4a96ea5fc4ef3e9219c5c18e5`
+SHA-256: `492d08c5d79c5490aec1184519b05166279071622e7d7a651f7896c3811802d9`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -75,7 +75,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.39.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.39.2.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -699,13 +699,18 @@ A performance snapshot for any kit: push every row around at once, then drop bac
 
 Visual guides to what each pad and gold knob does. **Pad Guides** (**GUID**) is in **Community Features** and starts on.
 
-### SHIFT glow
+### Persistent overlay
 
-- In a clip on a drum synth (a synth, or the kit's selected row), hold **SHIFT**. The MOD1 and MOD2 pads that hold a setting glow soft pink, blended over whatever is on them, so notes still show.
-- Press one and the pads stay lit while you edit that setting, with SHIFT still held or let go (fixed in v1.16.2: holding SHIFT in the menu hid them). Empty pads in those columns grey out with the rest of the grid.
-- Let go of SHIFT on the clip and the pads go straight back. Select another row with SHIFT held and the glow follows it.
-- On the synth engines, [BRINGS](#21-bribering-mode) and [BROPHET](#24-brophet), the glow is **purple**, and it lights their pads on the OSC1, OSC2, FM MOD 1 and FM MOD 2 columns (new in v1.28).
-- No glow with **AFFECT ENTIRE** on in a kit, where SHIFT + pad edits the kit's FX.
+Bribeluge's own overlay for its kits and synths: the pads where a drum engine or a Bribesynth keeps its settings. It was the SHIFT glow before v1.39.2.
+
+- In a clip on a drum synth (a synth, or the kit's selected row), hold **SHIFT**. The MOD1 and MOD2 pads that hold a setting pulse soft pink, on the slow two-beat breath a synth track's section pad has in song view: in time with the song while it plays, at its tempo when stopped.
+- It stays whatever **Community Features > Shortcut Overlay** is set to (new in v1.39.2; the overlay used to hide it):
+  - **Overlay up** (SHIFT in a sound menu, or SHIFT in the clip with **On - Menu + Clip**): the pads pulse at full brightness over the overlay's dimmed colours. The pulse is how to tell them from the stock shortcuts, some of which are purple too.
+  - **Overlay off, or not shown in the clip:** the pads fade in and out of whatever is on them, so notes still show.
+- Press one and the pads stay lit while you edit that setting, with SHIFT still held or let go. Empty pads in those columns grey out with the rest of the grid.
+- Let go of SHIFT on the clip and the pads go straight back. Select another row with SHIFT held and the pulse follows it.
+- On the synth engines, [BRINGS](#21-bribering-mode), [BROPHET](#24-brophet) and [BRUNO106](#26-bruno106), the pulse is **purple**, and it lights their pads on the OSC1, OSC2, FM MOD 1 and FM MOD 2 columns.
+- No pulse with **AFFECT ENTIRE** on in a kit, where SHIFT + pad edits the kit's FX.
 
 ### Gold knob pads
 
@@ -981,7 +986,7 @@ A new BRIBERING sound starts at the note played (no transpose), with envelope 1 
 | **Model** | **MODL** | OSC1 TYPE (row 3) | | **MODA**, **SYMP**, **STRG**, **FM** or **CHRD** |
 | **Poly** | **POLY** | FM MOD 2 row 3 | | Sympathetic and chord only: **4** voices or **2** (see below) |
 
-From v1.28 the pads follow the Deluge's own labels, as on any synth: **OSC1 LEVEL** is the level and **OSC1 TRANSPOSE** the pitch, and the resonator is on FM MOD 1. Hold **SHIFT** and they glow purple.
+From v1.28 the pads follow the Deluge's own labels, as on any synth: **OSC1 LEVEL** is the level and **OSC1 TRANSPOSE** the pitch, and the resonator is on FM MOD 1. Hold **SHIFT** and they pulse purple.
 
 They're all in the sound menu under **Drum synth**, and in the drum synth pad editor (BRIBERING has its own page: the model, poly, its knobs, then transpose, release and the filters). Every one except Model and Poly is a Deluge parameter, so it can be parameter locked (hold a step and turn), automated, MIDI learned and modulated from the mod matrix: an LFO on Position, an envelope on Brightness, velocity on Structure.
 
@@ -1080,7 +1085,7 @@ A two-oscillator polyphonic synth engine: the voice of Pro-54, Cmajor's open sou
 
 ### Controls
 
-The pads follow the Deluge's own labels: osc A on OSC1, osc B on OSC2, and only what has no pad of its own on FM MOD 1 and 2. Hold **SHIFT** and they glow purple.
+The pads follow the Deluge's own labels: osc A on OSC1, osc B on OSC2, and only what has no pad of its own on FM MOD 1 and 2. Hold **SHIFT** and they pulse purple.
 
 | Control | Display | Pad (SHIFT + pad) | Gold knob | What it does |
 |---|---|---|---|---|
@@ -1176,7 +1181,7 @@ A Juno-style polyphonic synth engine: the voice of Ultramaster KR-106, Karl LaRo
 
 ### Controls
 
-The pads follow the Deluge's own labels: the DCO on OSC1, its pulse and sub on OSC2, and the HPF and chorus on FM MOD 1. Hold **SHIFT** and they glow purple.
+The pads follow the Deluge's own labels: the DCO on OSC1, its pulse and sub on OSC2, and the HPF and chorus on FM MOD 1. Hold **SHIFT** and they pulse purple.
 
 | Control | Display | Pad (SHIFT + pad) | Gold knob | What it does |
 |---|---|---|---|---|
@@ -1457,7 +1462,7 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 | **Attack / Release gold knobs** | Drive / Decay (drum synth rows and the 303) |
 | **Mod rate / Mod depth gold knobs** | Pitch envelope speed / amount: Contour / Sweep on the Cyc engines, the filter envelope's Decay / Env mod on the 303, vibrato on BROPHET and BRUNO106 |
 | **CUSTOM 2 / CUSTOM 3 gold knobs** | Character A / B: Color / Shape on the Cyc engines, Mix / Noise freq on GIN, Accent / Saw-square on the 303. Hold a step and turn to parameter lock |
-| **Hold SHIFT on a drum synth** | Its setting pads glow pink, and stay lit while you edit one; purple on BRINGS, BROPHET and BRUNO106 (Pad Guides) |
+| **Hold SHIFT on a drum synth** | Its setting pads pulse pink, and stay lit while you edit one; purple on BRINGS, BROPHET and BRUNO106. Shows with the Shortcut Overlay on or off (Pad Guides) |
 | **Hold a gold knob button** | Its two settings' pads flash: red for the top knob, yellow for the bottom (Pad Guides) |
 | **SHIFT + a shortcut pad** | If the setting is on a gold knob, that knob's button LED blinks (Pad Guides, new in v1.29) |
 | **Hold SHIFT + hold a shortcut pad** | The 7-segment display scrolls that setting's full name; let go to see its value (Pad names, new in v1.20) |
@@ -1520,6 +1525,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.39.2: Persistent overlay for Bribesynths and kits.** Hold **SHIFT** and the pink pads on a Bribeluge kit row and the purple pads on a Bribesynth (BRINGS, BROPHET, BRUNO106) now pulse, and they stay whatever the community firmware's **Shortcut Overlay** is set to: Off, Menu Only or Menu + Clip. With the overlay up they pulse at full brightness over its dimmed colours. With it off they fade in and out of the notes underneath. The pulse is the two-beat breath synth tracks have on their section pads in song view (see [Persistent overlay](#persistent-overlay)). *Fixed:* with the overlay on Menu + Clip, the Bribeluge pads didn't show in a clip at all, and in a sound menu they came out dim and mixed with the stock colour. *Why:* the overlay repaints every pad with the stock shortcut colours and dims the lot, which left no way to see where Bribeluge puts its own settings. *Learned:* a colour can't mark a pad on a grid that's already colour coded, as the stock FM pads are purple too. Movement can.
 
 - **v1.39.1: OLED and overlay fixes.** *Fixed:* on a Deluge with the OLED screen, choosing **Bribering sympathetic** as the synth mode froze the Deluge. With Shortcut Overlay set to On - Menu + Clip, pressing **SHIFT** in a clip on a drum engine sound (a TRIBE, Cycles, LXR or GIN row, or a BRIBERING, BROPHET or BRUNO106 synth) froze it too, until a sound menu had been opened. *New:* in the drum synth pad editor, **SCALE** and **CROSS SCREEN** step to the setting on the left and right, as they page through the OLED's menus. Both are lit while the editor is open. *Why:* the OLED's notification bar shortens the title until the value fits beside it, and that name is too long to ever fit, so it never stopped. The overlay asked each shortcut pad about its setting through a part of the sound menu that isn't set up until a menu has been opened. *Learned:* my Deluge has the 7-segment display and the overlay off, so neither showed up here. Thanks to the beta testers who reported them.
 
