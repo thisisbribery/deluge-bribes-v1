@@ -55,6 +55,8 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 ## Download
 
+**Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
+
 [`firmware/deluge-bribes-v1.39.1.bin`](firmware/deluge-bribes-v1.39.1.bin)
 
 SHA-256: `b0a64a39c1ba3de8947bd136bb111103d2dc1ad4a96ea5fc4ef3e9219c5c18e5`
