@@ -25,6 +25,11 @@ firmware's init kit (erica-synths/lxr-desktop-app, Core/Src/Preset/initKit.c, Co
 Synths, GPL-3.0-only) with new per-voice settings. They are also valid LXR-02 kits (designed-snd/*.SND).
 Not yet listened to on hardware.
 
+Row 8, PERC (all kits, from Deluge Bribes v1.40)
+------------------------------------------------
+Every kit's eighth row is its own HTOM row a fifth up with a shorter decay, added by tools/add_perc_rows.py
+(thisisbribery/deluge-bribes-v1 tools/, GPL-3.0). It is not in the LXR-02 kit the rest was converted from.
+
 Tools
 -----
 tools/lxr_to_deluge.py and tools/lxr02_params.json: the Bribes converter (thisisbribery/deluge-bribes-v1 tools/,

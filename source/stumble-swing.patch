@@ -3716,10 +3716,10 @@ index 000000000..245b810c1
 +} // namespace deluge::dsp::drum_synth::cyc
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.cpp b/src/deluge/dsp/drum_synth/drum_synth.cpp
 new file mode 100644
-index 000000000..ef00549ec
+index 000000000..ee99d0d78
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.cpp
-@@ -0,0 +1,2104 @@
+@@ -0,0 +1,2118 @@
 +/*
 + * Drum synth voices for the Deluge, ported from the drum, snare, cymbal and hi-hat voices of the LXR-02 firmware.
 + *
@@ -3939,6 +3939,18 @@ index 000000000..ef00549ec
 +		params_[FM2_AMOUNT] = 70;
 +		params_[TRANS_MODE] = kTransientOffset;
 +		params_[TRANS_VOLUME] = 10;
++		break;
++
++	case Preset::PERC:
++		// A short, woody block above the toms: the modulator off the harmonic series, a quick drop and a click
++		params_[MOD_COARSE] = 64 + 16;
++		params_[FM_AMOUNT] = 52;
++		params_[PITCH_DECAY] = 40;
++		params_[PITCH_SLOPE] = 40;
++		params_[PITCH_AMOUNT] = 18;
++		params_[TRANS_MODE] = kTransientSampleFirst + 2;
++		params_[TRANS_VOLUME] = 50;
++		params_[TRANS_PITCH] = 80;
 +		break;
 +
 +	default:
@@ -4540,6 +4552,8 @@ index 000000000..ef00549ec
 +		return lxrRow(-17, 95, -1, false); // G2
 +	case Preset::HIGH_TOM:
 +		return lxrRow(-10, 92, -1, false); // D3
++	case Preset::PERC:
++		return lxrRow(2, 72, -1, false); // D4, about 294 Hz
 +	default:
 +		return lxrRow(8, 109, 26, false); // Cymbal, G#4
 +	}
@@ -5826,7 +5840,7 @@ index 000000000..ef00549ec
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/dsp/drum_synth/drum_synth.h b/src/deluge/dsp/drum_synth/drum_synth.h
 new file mode 100644
-index 000000000..f874c0605
+index 000000000..adcfab609
 --- /dev/null
 +++ b/src/deluge/dsp/drum_synth/drum_synth.h
 @@ -0,0 +1,729 @@
@@ -6108,10 +6122,10 @@ index 000000000..f874c0605
 +enum class NoiseFilter : uint8_t { LOW_PASS, HIGH_PASS, BAND_PASS, OFF, NUM_FILTERS };
 +
 +/// Starting points for a drum synth row, in the order a new drum synth kit lays them out
-+enum class Preset : uint8_t { KICK, SNARE, CLOSED_HAT, OPEN_HAT, LOW_TOM, HIGH_TOM, CYMBAL, NUM_PRESETS };
++enum class Preset : uint8_t { KICK, SNARE, CLOSED_HAT, OPEN_HAT, LOW_TOM, HIGH_TOM, CYMBAL, PERC, NUM_PRESETS };
 +
 +/// The kits SHIFT + KIT makes. Each row of one remembers which it came from (saved with the row), so its audition pad
-+/// can be tinted and the kit can't be swapped for another once rows have been added to it.
++/// can be tinted, and a preset or another preset kit swapped in fills those rows only, not rows added to the kit.
 +enum class PresetKit : uint8_t { NONE, LXR, CYCLES, GIN, TRIBE, NUM_KITS };
 +
 +/// How a drum synth row sits in a kit, besides the engine's own settings: the same whether it came from a preset kit
@@ -19094,7 +19108,7 @@ index c102f75f3..642fe453f 100644
  
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
-index 000000000..de76e6cc9
+index 000000000..89f4dde5f
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.cpp
 @@ -0,0 +1,354 @@
@@ -19146,13 +19160,13 @@ index 000000000..de76e6cc9
 +	readPresetList();
 +
 +	InstrumentClip* clip = getCurrentInstrumentClip();
-+	numRows_ = 0;
-+	for (int32_t i = 0; i < clip->noteRows.getNumElements() && numRows_ < kMaxRows; i++) {
-+		Drum* drum = clip->noteRows.getElement(i)->drum;
-+		if (drum != nullptr && drum->type == DrumType::SOUND && static_cast<SoundDrum*>(drum)->presetKit == kit) {
-+			rows_[numRows_++] = i;
-+		}
++	// A kit saved before every preset kit had eight rows gets the rest of them first, so a preset fills them too
++	if (preset_kit::topUp(getCurrentKit(), clip)) {
++		actionLogger.deleteAllLogs();
++		instrumentClipView.recalculateColours();
++		uiNeedsRendering(&instrumentClipView);
 +	}
++	numRows_ = preset_kit::presetRowsOf(clip, kit, rows_);
 +	if (numRows_ == 0) {
 +		return false;
 +	}
@@ -19727,10 +19741,10 @@ index 000000000..67be2399e
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/new_kit_type.cpp b/src/deluge/gui/context_menu/new_kit_type.cpp
 new file mode 100644
-index 000000000..bad32174a
+index 000000000..06134fd7b
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/new_kit_type.cpp
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,154 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -19856,8 +19870,9 @@ index 000000000..bad32174a
 +		return true;
 +	}
 +
-+	// A preset kit with rows added to it can't be swapped for another kit: the added rows would lose their sounds
-+	if (current != PresetKit::NONE && InstrumentClipView::presetKitHasAddedRows(getCurrentKit())) {
++	// A preset kit with rows added to it can't be swapped for a sample kit: the added rows would lose their sounds
++	if (current != PresetKit::NONE && chosen == PresetKit::NONE
++	    && InstrumentClipView::presetKitHasAddedRows(getCurrentKit())) {
 +		display->displayPopup(l10n::get(l10n::String::STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS));
 +		return true;
 +	}
@@ -19867,8 +19882,11 @@ index 000000000..bad32174a
 +	case PresetKit::CYCLES:
 +	case PresetKit::GIN:
 +	case PresetKit::TRIBE:
-+		// Then straight into its presets, playing the top one
-+		if (instrumentClipView.createNewDrumSynthKit(chosen) && kitPresets.setup(chosen)) {
++		// Then straight into its presets, playing the top one. One preset kit swaps for another in place, row for
++		// row, so the pattern and any rows added under or over the kit stay where they are.
++		if (((current != PresetKit::NONE) ? instrumentClipView.changePresetKitType(chosen)
++		                                  : instrumentClipView.createNewDrumSynthKit(chosen))
++		    && kitPresets.setup(chosen)) {
 +			openUI(&kitPresets);
 +			kitPresets.startOnTopPreset();
 +		}
@@ -20561,7 +20579,7 @@ index 000000000..2ddbac357
 +extern SynthCategoryMenu synthCategoryMenu;
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/l10n/english.json b/src/deluge/gui/l10n/english.json
-index 683a26648..dc5bea128 100644
+index 683a26648..bb25c26cd 100644
 --- a/src/deluge/gui/l10n/english.json
 +++ b/src/deluge/gui/l10n/english.json
 @@ -47,6 +47,8 @@
@@ -20594,7 +20612,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS": "Horizontal Menus",
      "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "Trim From Start Of Audio Clips",
      "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "Show Battery Level",
-@@ -545,6 +554,166 @@
+@@ -545,6 +554,167 @@
      "STRING_FOR_CANT_DELETE_FINAL_CLIP": "Can't delete final Clip",
      "STRING_FOR_NEW_SYNTH_CREATED": "New synth created",
      "STRING_FOR_NEW_FM_SYNTH_CREATED": "New dx7 synth created",
@@ -20612,6 +20630,7 @@ index 683a26648..dc5bea128 100644
 +    "STRING_FOR_DRUM_PRESET_LOW_TOM": "Low tom",
 +    "STRING_FOR_DRUM_PRESET_HIGH_TOM": "High tom",
 +    "STRING_FOR_DRUM_PRESET_CYMBAL": "Cymbal",
++    "STRING_FOR_DRUM_PRESET_PERC": "Perc",
 +    "STRING_FOR_DRUM_FM2_AMOUNT": "FM 2 amount",
 +    "STRING_FOR_DRUM_MOD2_WAVE": "Mod 2 wave",
 +    "STRING_FOR_DRUM_MOD2_COARSE": "Mod 2 pitch",
@@ -20761,7 +20780,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_NEW_KIT_CREATED": "New kit created",
      "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "Can only import whole folder into brand-new kit",
      "STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP": "Can't import whole folder into audio clip",
-@@ -570,6 +739,8 @@
+@@ -570,6 +740,8 @@
      "STRING_FOR_START_POINT": "Start-point",
      "STRING_FOR_START_POINT_SHORT": "STRT",
      "STRING_FOR_END_POINT": "End-point",
@@ -20770,7 +20789,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_SPEED": "Speed",
      "STRING_FOR_SPEED_SHORT": "SPD",
      "STRING_FOR_INTERPOLATION": "Interpolation",
-@@ -626,6 +797,19 @@
+@@ -626,6 +798,19 @@
      "STRING_FOR_REVERB_WIDTH": "Reverb width",
      "STRING_FOR_REVERB_PAN": "Reverb pan",
      "STRING_FOR_SATURATION": "Saturation",
@@ -20790,7 +20809,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_MIDI_DEVICE_DEFINITION": "Device Definition",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED": "File Linked",
      "STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE": "Hide Unlabeled CC",
-@@ -707,6 +891,12 @@
+@@ -707,6 +892,12 @@
      "STRING_FOR_DEFAULT_TEMPO": "Default tempo",
      "STRING_FOR_SWING_AMOUNT": "Swing Amount",
      "STRING_FOR_SWING_INTERVAL": "Swing Interval",
@@ -20803,7 +20822,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_DEFAULT_SWING": "Default swing",
      "STRING_FOR_KEY": "Key",
      "STRING_FOR_DEFAULT_KEY": "Default key",
-@@ -849,6 +1039,35 @@
+@@ -849,6 +1040,36 @@
      "STRING_FOR_SUBTRACTIVE": "Subtractive",
      "STRING_FOR_FM": "Fm",
      "STRING_FOR_RINGMOD": "Ringmod",
@@ -20827,6 +20846,7 @@ index 683a26648..dc5bea128 100644
 +    "STRING_FOR_GIN_KIT": "GIN",
 +    "STRING_FOR_NEW_GIN_KIT_CREATED": "New GIN kit created",
 +    "STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS": "Can't change: rows added",
++    "STRING_FOR_PRESET_KIT_ROW_STAYS": "Can't delete: kit row",
 +    "STRING_FOR_KIT_PRESETS": "Kit presets",
 +    "STRING_FOR_KIT_PRESET_CURRENT": "Current",
 +    "STRING_FOR_KIT_PRESET_DEFAULT": "Default",
@@ -20839,7 +20859,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_NOTE_RANGE": "Note range",
      "STRING_FOR_HPF_TO_LPF": "Hpf > Lpf",
      "STRING_FOR_LPF_TO_HPF": "Lpf > Hpf",
-@@ -878,6 +1097,7 @@
+@@ -878,6 +1099,7 @@
      "STRING_FOR_LOOP_TOO_LONG": "Loop too long",
      "STRING_FOR_LOOP_DOUBLED": "Loop doubled",
      "STRING_FOR_WAVEFOLD": "Wavefold",
@@ -20847,7 +20867,7 @@ index 683a26648..dc5bea128 100644
      "STRING_FOR_MOD_MATRIX": "Mod matrix",
      "STRING_FOR_CHECKSUM_FAIL": "Checksum fail",
      "STRING_FOR_WRONG_SIZE": "Wrong size?",
-@@ -997,9 +1217,154 @@
+@@ -997,9 +1219,154 @@
      "STRING_FOR_DEFAULT_CLIP_TYPE": "Clip Type",
      "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "New Clip Type",
      "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "Use Last Clip Type",
@@ -21004,7 +21024,7 @@ index 683a26648..dc5bea128 100644
    }
  }
 diff --git a/src/deluge/gui/l10n/g_english.cpp b/src/deluge/gui/l10n/g_english.cpp
-index 0032e81ac..46d3c060e 100644
+index 0032e81ac..d72d20168 100644
 --- a/src/deluge/gui/l10n/g_english.cpp
 +++ b/src/deluge/gui/l10n/g_english.cpp
 @@ -60,6 +60,8 @@ PLACE_SDRAM_DATA Language english{
@@ -21037,7 +21057,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS, "Horizontal Menus"},
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "Trim From Start Of Audio Clips"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "Show Battery Level"},
-@@ -558,6 +567,166 @@ PLACE_SDRAM_DATA Language english{
+@@ -558,6 +567,167 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "Can't delete final Clip"},
          {STRING_FOR_NEW_SYNTH_CREATED, "New synth created"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "New dx7 synth created"},
@@ -21055,6 +21075,7 @@ index 0032e81ac..46d3c060e 100644
 +        {STRING_FOR_DRUM_PRESET_LOW_TOM, "Low tom"},
 +        {STRING_FOR_DRUM_PRESET_HIGH_TOM, "High tom"},
 +        {STRING_FOR_DRUM_PRESET_CYMBAL, "Cymbal"},
++        {STRING_FOR_DRUM_PRESET_PERC, "Perc"},
 +        {STRING_FOR_DRUM_FM2_AMOUNT, "FM 2 amount"},
 +        {STRING_FOR_DRUM_MOD2_WAVE, "Mod 2 wave"},
 +        {STRING_FOR_DRUM_MOD2_COARSE, "Mod 2 pitch"},
@@ -21204,7 +21225,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_NEW_KIT_CREATED, "New kit created"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "Can only import whole folder into brand-new kit"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "Can't import whole folder into audio clip"},
-@@ -583,6 +752,8 @@ PLACE_SDRAM_DATA Language english{
+@@ -583,6 +753,8 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_START_POINT, "Start-point"},
          {STRING_FOR_START_POINT_SHORT, "STRT"},
          {STRING_FOR_END_POINT, "End-point"},
@@ -21213,7 +21234,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_SPEED, "Speed"},
          {STRING_FOR_SPEED_SHORT, "SPD"},
          {STRING_FOR_INTERPOLATION, "Interpolation"},
-@@ -639,6 +810,19 @@ PLACE_SDRAM_DATA Language english{
+@@ -639,6 +811,19 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_REVERB_WIDTH, "Reverb width"},
          {STRING_FOR_REVERB_PAN, "Reverb pan"},
          {STRING_FOR_SATURATION, "Saturation"},
@@ -21233,7 +21254,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_MIDI_DEVICE_DEFINITION, "Device Definition"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED, "File Linked"},
          {STRING_FOR_MIDI_DEVICE_DEFINITION_HIDE, "Hide Unlabeled CC"},
-@@ -720,6 +904,12 @@ PLACE_SDRAM_DATA Language english{
+@@ -720,6 +905,12 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_TEMPO, "Default tempo"},
          {STRING_FOR_SWING_AMOUNT, "Swing Amount"},
          {STRING_FOR_SWING_INTERVAL, "Swing Interval"},
@@ -21246,7 +21267,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_DEFAULT_SWING, "Default swing"},
          {STRING_FOR_KEY, "Key"},
          {STRING_FOR_DEFAULT_KEY, "Default key"},
-@@ -862,6 +1052,35 @@ PLACE_SDRAM_DATA Language english{
+@@ -862,6 +1053,36 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_SUBTRACTIVE, "Subtractive"},
          {STRING_FOR_FM, "Fm"},
          {STRING_FOR_RINGMOD, "Ringmod"},
@@ -21270,6 +21291,7 @@ index 0032e81ac..46d3c060e 100644
 +        {STRING_FOR_GIN_KIT, "GIN"},
 +        {STRING_FOR_NEW_GIN_KIT_CREATED, "New GIN kit created"},
 +        {STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS, "Can't change: rows added"},
++        {STRING_FOR_PRESET_KIT_ROW_STAYS, "Can't delete: kit row"},
 +        {STRING_FOR_KIT_PRESETS, "Kit presets"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "Current"},
 +        {STRING_FOR_KIT_PRESET_DEFAULT, "Default"},
@@ -21282,7 +21304,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_NOTE_RANGE, "Note range"},
          {STRING_FOR_HPF_TO_LPF, "Hpf > Lpf"},
          {STRING_FOR_LPF_TO_HPF, "Lpf > Hpf"},
-@@ -891,6 +1110,7 @@ PLACE_SDRAM_DATA Language english{
+@@ -891,6 +1112,7 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_LOOP_TOO_LONG, "Loop too long"},
          {STRING_FOR_LOOP_DOUBLED, "Loop doubled"},
          {STRING_FOR_WAVEFOLD, "Wavefold"},
@@ -21290,7 +21312,7 @@ index 0032e81ac..46d3c060e 100644
          {STRING_FOR_MOD_MATRIX, "Mod matrix"},
          {STRING_FOR_CHECKSUM_FAIL, "Checksum fail"},
          {STRING_FOR_WRONG_SIZE, "Wrong size?"},
-@@ -1010,10 +1230,155 @@ PLACE_SDRAM_DATA Language english{
+@@ -1010,10 +1232,155 @@ PLACE_SDRAM_DATA Language english{
          {STRING_FOR_DEFAULT_CLIP_TYPE, "Clip Type"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "New Clip Type"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "Use Last Clip Type"},
@@ -21447,10 +21469,10 @@ index 0032e81ac..46d3c060e 100644
  };
  } // namespace deluge::l10n::built_in
 diff --git a/src/deluge/gui/l10n/g_seven_segment.cpp b/src/deluge/gui/l10n/g_seven_segment.cpp
-index 2024bd2f7..1b7b7967d 100644
+index 2024bd2f7..dd58c8fd2 100644
 --- a/src/deluge/gui/l10n/g_seven_segment.cpp
 +++ b/src/deluge/gui/l10n/g_seven_segment.cpp
-@@ -323,6 +323,43 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -323,6 +323,44 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_PLAY_DIRECTION, "DIRECTION"},
          {STRING_FOR_SWING_AMOUNT, "SWIA"},
          {STRING_FOR_SWING_INTERVAL, "SWII"},
@@ -21482,6 +21504,7 @@ index 2024bd2f7..1b7b7967d 100644
 +        {STRING_FOR_GIN_KIT, "GIN"},
 +        {STRING_FOR_NEW_GIN_KIT_CREATED, "GIN"},
 +        {STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS, "CANT"},
++        {STRING_FOR_PRESET_KIT_ROW_STAYS, "CANT"},
 +        {STRING_FOR_KIT_PRESETS, "PRST"},
 +        {STRING_FOR_KIT_PRESET_CURRENT, "CURR"},
 +        {STRING_FOR_KIT_PRESET_DEFAULT, "DFLT"},
@@ -21494,7 +21517,7 @@ index 2024bd2f7..1b7b7967d 100644
          {STRING_FOR_SHORTCUTS_VERSION, "SHOR"},
          {STRING_FOR_KEYBOARD_FOR_TEXT, "KEYB"},
          {STRING_FOR_LOOP_MARGINS, "MARGINS"},
-@@ -442,6 +479,9 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -442,6 +480,9 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR, "STAR"},
          {STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS, "LOOP"},
          {STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR, "TAPT"},
@@ -21504,7 +21527,7 @@ index 2024bd2f7..1b7b7967d 100644
          {STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP, "TRIM"},
          {STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL, "BATT"},
          {STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY, "OVER"},
-@@ -452,6 +492,165 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -452,6 +493,166 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_DELETE_FINAL_CLIP, "CANT"},
          {STRING_FOR_NEW_SYNTH_CREATED, "NEW"},
          {STRING_FOR_NEW_FM_SYNTH_CREATED, "NEWX"},
@@ -21522,6 +21545,7 @@ index 2024bd2f7..1b7b7967d 100644
 +        {STRING_FOR_DRUM_PRESET_LOW_TOM, "LTOM"},
 +        {STRING_FOR_DRUM_PRESET_HIGH_TOM, "HTOM"},
 +        {STRING_FOR_DRUM_PRESET_CYMBAL, "CYM"},
++        {STRING_FOR_DRUM_PRESET_PERC, "PERC"},
 +        {STRING_FOR_DRUM_FM2_AMOUNT, "FM2"},
 +        {STRING_FOR_DRUM_MOD2_WAVE, "M2WV"},
 +        {STRING_FOR_DRUM_MOD2_COARSE, "M2PT"},
@@ -21670,7 +21694,7 @@ index 2024bd2f7..1b7b7967d 100644
          {STRING_FOR_NEW_KIT_CREATED, "NEW"},
          {STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT, "CANT"},
          {STRING_FOR_CANT_IMPORT_WHOLE_FOLDER_INTO_AUDIO_CLIP, "CANT"},
-@@ -461,6 +660,20 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -461,6 +662,20 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_CANT_CONVERT_TYPE, "CANT"},
          {STRING_FOR_TARGET_FULL, "FULL"},
          {STRING_FOR_WAVEFOLD, "FOLD"},
@@ -21691,7 +21715,7 @@ index 2024bd2f7..1b7b7967d 100644
          {STRING_FOR_LOOP_TOO_SHORT, "CANT"},
          {STRING_FOR_LOOP_HALVED, "HALF"},
          {STRING_FOR_LOOP_TOO_LONG, "CANT"},
-@@ -563,8 +776,153 @@ PLACE_SDRAM_DATA Language seven_segment{
+@@ -563,8 +778,153 @@ PLACE_SDRAM_DATA Language seven_segment{
          {STRING_FOR_NOTE_ROW_EDITOR_FILL, "FILL"},
          {STRING_FOR_DEFAULT_NEW_CLIP_TYPE, "TYPE"},
          {STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE, "LAST"},
@@ -21941,10 +21965,10 @@ index 63586cdc2..9963afd88 100644
 +int32_t recentLookupByContent(std::string_view text, size_t depth = 16);
  } // namespace deluge::l10n
 diff --git a/src/deluge/gui/l10n/seven_segment.json b/src/deluge/gui/l10n/seven_segment.json
-index bc5dd6c8c..f35e42b06 100644
+index bc5dd6c8c..ea4710ab4 100644
 --- a/src/deluge/gui/l10n/seven_segment.json
 +++ b/src/deluge/gui/l10n/seven_segment.json
-@@ -334,6 +334,43 @@
+@@ -334,6 +334,44 @@
          "STRING_FOR_PLAY_DIRECTION": "DIRECTION",
          "STRING_FOR_SWING_AMOUNT": "SWIA",
          "STRING_FOR_SWING_INTERVAL": "SWII",
@@ -21976,6 +22000,7 @@ index bc5dd6c8c..f35e42b06 100644
 +        "STRING_FOR_GIN_KIT": "GIN",
 +        "STRING_FOR_NEW_GIN_KIT_CREATED": "GIN",
 +        "STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS": "CANT",
++        "STRING_FOR_PRESET_KIT_ROW_STAYS": "CANT",
 +        "STRING_FOR_KIT_PRESETS": "PRST",
 +        "STRING_FOR_KIT_PRESET_CURRENT": "CURR",
 +        "STRING_FOR_KIT_PRESET_DEFAULT": "DFLT",
@@ -21988,7 +22013,7 @@ index bc5dd6c8c..f35e42b06 100644
          "STRING_FOR_SHORTCUTS_VERSION": "SHOR",
          "STRING_FOR_KEYBOARD_FOR_TEXT": "KEYB",
          "STRING_FOR_LOOP_MARGINS": "MARGINS",
-@@ -457,6 +494,9 @@
+@@ -457,6 +495,9 @@
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_PLAYBACK_START_BEHAVIOUR": "STAR",
          "STRING_FOR_COMMUNITY_FEATURE_GRID_VIEW_LOOP_PADS": "LOOP",
          "STRING_FOR_COMMUNITY_FEATURE_ALTERNATIVE_TAP_TEMPO_BEHAVIOUR": "TAPT",
@@ -21998,7 +22023,7 @@ index bc5dd6c8c..f35e42b06 100644
          "STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP": "TRIM",
          "STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL": "BATT",
          "STRING_FOR_COMMUNITY_FEATURE_SHORTCUT_OVERLAY": "OVER",
-@@ -468,6 +508,165 @@
+@@ -468,6 +509,166 @@
          "STRING_FOR_CANT_DELETE_FINAL_CLIP": "CANT",
          "STRING_FOR_NEW_SYNTH_CREATED": "NEW",
          "STRING_FOR_NEW_FM_SYNTH_CREATED": "NEWX",
@@ -22016,6 +22041,7 @@ index bc5dd6c8c..f35e42b06 100644
 +        "STRING_FOR_DRUM_PRESET_LOW_TOM": "LTOM",
 +        "STRING_FOR_DRUM_PRESET_HIGH_TOM": "HTOM",
 +        "STRING_FOR_DRUM_PRESET_CYMBAL": "CYM",
++        "STRING_FOR_DRUM_PRESET_PERC": "PERC",
 +        "STRING_FOR_DRUM_FM2_AMOUNT": "FM2",
 +        "STRING_FOR_DRUM_MOD2_WAVE": "M2WV",
 +        "STRING_FOR_DRUM_MOD2_COARSE": "M2PT",
@@ -22164,7 +22190,7 @@ index bc5dd6c8c..f35e42b06 100644
          "STRING_FOR_NEW_KIT_CREATED": "NEW",
  
          "STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT": "CANT",
-@@ -480,6 +679,33 @@
+@@ -480,6 +681,33 @@
          "STRING_FOR_TARGET_FULL": "FULL",
  
          "STRING_FOR_WAVEFOLD": "FOLD",
@@ -22198,7 +22224,7 @@ index bc5dd6c8c..f35e42b06 100644
  
          "STRING_FOR_LOOP_TOO_SHORT": "CANT",
          "STRING_FOR_LOOP_HALVED": "HALF",
-@@ -605,9 +831,154 @@
+@@ -605,9 +833,154 @@
  
          "STRING_FOR_DEFAULT_NEW_CLIP_TYPE": "TYPE",
          "STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE": "LAST",
@@ -22355,7 +22381,7 @@ index bc5dd6c8c..f35e42b06 100644
      }
  }
 diff --git a/src/deluge/gui/l10n/strings.h b/src/deluge/gui/l10n/strings.h
-index 2039f041f..8e3f94a97 100644
+index 2039f041f..6adf7ce83 100644
 --- a/src/deluge/gui/l10n/strings.h
 +++ b/src/deluge/gui/l10n/strings.h
 @@ -64,6 +64,8 @@ enum class String : size_t {
@@ -22377,7 +22403,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_COMMUNITY_FEATURE_HORIZONTAL_MENUS,
  	STRING_FOR_COMMUNITY_FEATURE_TRIM_FROM_START_OF_AUDIO_CLIP,
  	STRING_FOR_COMMUNITY_FEATURE_SHOW_BATTERY_LEVEL,
-@@ -588,6 +593,166 @@ enum class String : size_t {
+@@ -588,6 +593,167 @@ enum class String : size_t {
  	STRING_FOR_CANT_DELETE_FINAL_CLIP,
  	STRING_FOR_NEW_SYNTH_CREATED,
  	STRING_FOR_NEW_FM_SYNTH_CREATED,
@@ -22395,6 +22421,7 @@ index 2039f041f..8e3f94a97 100644
 +	STRING_FOR_DRUM_PRESET_LOW_TOM,
 +	STRING_FOR_DRUM_PRESET_HIGH_TOM,
 +	STRING_FOR_DRUM_PRESET_CYMBAL,
++	STRING_FOR_DRUM_PRESET_PERC,
 +	STRING_FOR_DRUM_FM2_AMOUNT,
 +	STRING_FOR_DRUM_MOD2_WAVE,
 +	STRING_FOR_DRUM_MOD2_COARSE,
@@ -22544,7 +22571,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_NEW_KIT_CREATED,
  
  	STRING_FOR_CAN_ONLY_IMPORT_WHOLE_FOLDER_INTO_BRAND_NEW_KIT,
-@@ -617,6 +782,8 @@ enum class String : size_t {
+@@ -617,6 +783,8 @@ enum class String : size_t {
  	STRING_FOR_START_POINT,
  	STRING_FOR_START_POINT_SHORT,
  	STRING_FOR_END_POINT,
@@ -22553,7 +22580,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_SPEED,
  	STRING_FOR_SPEED_SHORT,
  	STRING_FOR_INTERPOLATION,
-@@ -685,6 +852,19 @@ enum class String : size_t {
+@@ -685,6 +853,19 @@ enum class String : size_t {
  	STRING_FOR_REVERB_WIDTH,
  	STRING_FOR_REVERB_PAN,
  	STRING_FOR_SATURATION,
@@ -22573,7 +22600,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_DECIMATION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION,
  	STRING_FOR_MIDI_DEVICE_DEFINITION_LINKED,
-@@ -717,6 +897,10 @@ enum class String : size_t {
+@@ -717,6 +898,10 @@ enum class String : size_t {
  	STRING_FOR_GRAIN_AMOUNT,
  	STRING_FOR_GRAIN_AMOUNT_SHORT,
  	STRING_FOR_DELAY_AMOUNT,
@@ -22584,7 +22611,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_RATE,
  	STRING_FOR_DELAY_RATE,
  	STRING_FOR_DELAY,
-@@ -774,6 +958,12 @@ enum class String : size_t {
+@@ -774,6 +959,12 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_TEMPO,
  	STRING_FOR_SWING_AMOUNT,
  	STRING_FOR_SWING_INTERVAL,
@@ -22597,7 +22624,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_DEFAULT_SWING,
  	STRING_FOR_KEY,
  	STRING_FOR_DEFAULT_KEY,
-@@ -925,6 +1115,35 @@ enum class String : size_t {
+@@ -925,6 +1116,36 @@ enum class String : size_t {
  	STRING_FOR_SUBTRACTIVE,
  	STRING_FOR_FM,
  	STRING_FOR_RINGMOD,
@@ -22621,6 +22648,7 @@ index 2039f041f..8e3f94a97 100644
 +	STRING_FOR_GIN_KIT,
 +	STRING_FOR_NEW_GIN_KIT_CREATED,
 +	STRING_FOR_PRESET_KIT_HAS_ADDED_ROWS,
++	STRING_FOR_PRESET_KIT_ROW_STAYS,
 +	STRING_FOR_KIT_PRESETS,
 +	STRING_FOR_KIT_PRESET_CURRENT,
 +	STRING_FOR_KIT_PRESET_DEFAULT,
@@ -22633,7 +22661,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_NOTE_RANGE,
  	STRING_FOR_LPF_TO_HPF,
  	STRING_FOR_HPF_TO_LPF,
-@@ -961,6 +1180,7 @@ enum class String : size_t {
+@@ -961,6 +1182,7 @@ enum class String : size_t {
  	STRING_FOR_LOOP_DOUBLED,
  
  	STRING_FOR_WAVEFOLD,
@@ -22641,7 +22669,7 @@ index 2039f041f..8e3f94a97 100644
  	STRING_FOR_MOD_MATRIX,
  
  	STRING_FOR_CHECKSUM_FAIL,
-@@ -1135,6 +1355,8 @@ enum class String : size_t {
+@@ -1135,6 +1357,8 @@ enum class String : size_t {
  	STRING_FOR_DEFAULT_CLIP_TYPE,
  	STRING_FOR_DEFAULT_NEW_CLIP_TYPE,
  	STRING_FOR_DEFAULT_USE_LAST_CLIP_TYPE,
@@ -22650,7 +22678,7 @@ index 2039f041f..8e3f94a97 100644
  
  	// string for favourites feature
  	STRING_FOR_FAVOURITES_EMPTY,
-@@ -1145,6 +1367,151 @@ enum class String : size_t {
+@@ -1145,6 +1369,151 @@ enum class String : size_t {
  
  	STRING_FOR_CHORD_KEYBOARD_MODE_ROW,
  	STRING_FOR_CHORD_KEYBOARD_MODE_COLUMN,
@@ -23810,7 +23838,7 @@ index 000000000..103c0824b
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 000000000..3496ff978
+index 000000000..0504df6db
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
 @@ -0,0 +1,938 @@
@@ -24743,10 +24771,10 @@ index 000000000..3496ff978
 +		    l10n::getView(STRING_FOR_DRUM_PRESET_KICK),       l10n::getView(STRING_FOR_DRUM_PRESET_SNARE),
 +		    l10n::getView(STRING_FOR_DRUM_PRESET_CLOSED_HAT), l10n::getView(STRING_FOR_DRUM_PRESET_OPEN_HAT),
 +		    l10n::getView(STRING_FOR_DRUM_PRESET_LOW_TOM),    l10n::getView(STRING_FOR_DRUM_PRESET_HIGH_TOM),
-+		    l10n::getView(STRING_FOR_DRUM_PRESET_CYMBAL),     l10n::getView(STRING_FOR_DRUM_PRESET_TIA_L),
-+		    l10n::getView(STRING_FOR_DRUM_PRESET_TIA_B),      l10n::getView(STRING_FOR_DRUM_PRESET_TIA_C),
-+		    l10n::getView(STRING_FOR_DRUM_PRESET_IIA_G),      l10n::getView(STRING_FOR_DRUM_PRESET_IIA_I),
-+		    l10n::getView(STRING_FOR_DRUM_PRESET_IIA_H),
++		    l10n::getView(STRING_FOR_DRUM_PRESET_CYMBAL),     l10n::getView(STRING_FOR_DRUM_PRESET_PERC),
++		    l10n::getView(STRING_FOR_DRUM_PRESET_TIA_L),      l10n::getView(STRING_FOR_DRUM_PRESET_TIA_B),
++		    l10n::getView(STRING_FOR_DRUM_PRESET_TIA_C),      l10n::getView(STRING_FOR_DRUM_PRESET_IIA_G),
++		    l10n::getView(STRING_FOR_DRUM_PRESET_IIA_I),      l10n::getView(STRING_FOR_DRUM_PRESET_IIA_H),
 +		};
 +	}
 +};
@@ -30041,7 +30069,7 @@ index 663b5da50..8b06dfd4d 100644
  	                                          int32_t numParams);
  	void getLastSelectedNonGlobalParamArrayPosition(Clip* clip);
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..1626339b6 100644
+index 75e1a7340..f773c9017 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -17,15 +17,22 @@
@@ -30188,7 +30216,33 @@ index 75e1a7340..1626339b6 100644
  	else if (b == SAVE && currentUIMode == UI_MODE_AUDITIONING) {
  		NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(lastAuditionedYDisplay, currentSong, nullptr);
  		if (noteRow->drum->type == DrumType::SOUND) {
-@@ -784,12 +826,19 @@ doCancelPopup:
+@@ -615,6 +657,14 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+ 						continue;
+ 					}
+ 
++					// A preset kit's own rows stay, in their order, so it swaps row for row with the other preset
++					// kits. Rows added to it delete as on any kit.
++					if (deluge::preset_kit::isPresetRow(clip->noteRows.getElement(noteRowIndex)->drum)) {
++						display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_PRESET_KIT_ROW_STAYS));
++						currentUIMode = UI_MODE_NONE;
++						break;
++					}
++
+ 					if (clip->isActiveOnOutput()) {
+ 						NoteRow* noteRow = clip->noteRows.getElement(noteRowIndex);
+ 						if (noteRow->drum) {
+@@ -688,7 +738,9 @@ ActionResult InstrumentClipView::buttonAction(deluge::hid::Button b, bool on, bo
+ 				int32_t i;
+ 				for (i = clip->noteRows.getNumElements() - 1; i >= 0; i--) {
+ 					NoteRow* noteRow = clip->noteRows.getElement(i);
+-					if (noteRow->hasNoNotes() && clip->noteRows.getNumElements() > 1) {
++					// A preset kit's own rows stay (see the single row delete above)
++					if (noteRow->hasNoNotes() && clip->noteRows.getNumElements() > 1
++					    && !deluge::preset_kit::isPresetRow(noteRow->drum)) {
+ 						// If the row has not notes and is not the last one
+ 						clip->deleteNoteRow(modelStack, i);
+ 					}
+@@ -784,12 +836,19 @@ doCancelPopup:
  		// If holding notes down...
  		if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)) {
  			if (on) {
@@ -30208,7 +30262,7 @@ index 75e1a7340..1626339b6 100644
  				goto doCancelPopup;
  			}
  		}
-@@ -838,6 +887,14 @@ doCancelPopup:
+@@ -838,6 +897,14 @@ doCancelPopup:
  
  	else if (b == SELECT_ENC) {
  		if (on) {
@@ -30223,7 +30277,7 @@ index 75e1a7340..1626339b6 100644
  			if (currentUIMode == UI_MODE_NOTES_PRESSED) {
  				if (enterNoteEditor()) {
  					return ActionResult::DEALT_WITH;
-@@ -925,9 +982,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
+@@ -925,9 +992,7 @@ ActionResult InstrumentClipView::handleScaleButtonAction(bool on, bool inCardRou
  	}
  	else {
  		// Button release
@@ -30234,7 +30288,7 @@ index 75e1a7340..1626339b6 100644
  		if (toggleScaleModeOnButtonRelease && isShortPress(scaleButtonPressTime)) {
  			toggleScaleModeOnButtonRelease = false;
  			if (inScaleMode) {
-@@ -955,6 +1010,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
+@@ -955,6 +1020,31 @@ bool InstrumentClipView::handleInstrumentChange(OutputType outputType) {
  		            == RuntimeFeatureStateToggle::On);
  	}
  
@@ -30266,7 +30320,7 @@ index 75e1a7340..1626339b6 100644
  	if (!isMIDIorCV && (is_fm || Buttons::isShiftButtonPressed())) {
  		return createNewInstrument(outputType, is_fm);
  	}
-@@ -1059,15 +1139,13 @@ ramError:
+@@ -1059,15 +1149,13 @@ ramError:
  
  void InstrumentClipView::modEncoderButtonAction(uint8_t whichModEncoder, bool on) {
  
@@ -30289,7 +30343,7 @@ index 75e1a7340..1626339b6 100644
  		}
  	}
  	else {
-@@ -1114,7 +1192,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
+@@ -1114,7 +1202,7 @@ void InstrumentClipView::copyAutomation(int32_t whichModEncoder, int32_t navSysI
  	display->displayPopup(deluge::l10n::get(deluge::l10n::String::STRING_FOR_NO_AUTOMATION_TO_COPY));
  }
  
@@ -30298,7 +30352,7 @@ index 75e1a7340..1626339b6 100644
  
  	bool copyToFile = false;
  	if (writer) {
-@@ -1125,8 +1203,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
+@@ -1125,8 +1213,8 @@ void InstrumentClipView::copyNotes(Serializer* writer, bool selectedDrumOnly) {
  	// Clear out previously copied stuff
  	deleteCopiedNoteRows();
  
@@ -30309,7 +30363,7 @@ index 75e1a7340..1626339b6 100644
  
  	copiedScreenWidth = endPos - startPos;
  	if (copiedScreenWidth == 0) {
-@@ -1297,8 +1375,8 @@ ramError:
+@@ -1297,8 +1385,8 @@ ramError:
  	}
  }
  
@@ -30320,7 +30374,7 @@ index 75e1a7340..1626339b6 100644
  }
  
  void InstrumentClipView::deleteCopiedNoteRows() {
-@@ -1711,11 +1789,107 @@ getOut: {}
+@@ -1711,11 +1799,107 @@ getOut: {}
  	}
  
  	// Pasting notes to the View
@@ -30429,7 +30483,7 @@ index 75e1a7340..1626339b6 100644
  void InstrumentClipView::doubleClipLengthAction() {
  
  	// If too big...
-@@ -1777,6 +1951,383 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
+@@ -1777,6 +1961,425 @@ bool InstrumentClipView::createNewInstrument(OutputType newOutputType, bool is_d
  	return false;
  }
  
@@ -30451,7 +30505,8 @@ index 75e1a7340..1626339b6 100644
 +		uiNeedsRendering(this);
 +		return;
 +	}
-+	// An added row, not one of the preset's: it isn't tinted, and the kit can no longer be swapped for another
++	// An added row, not one of the preset's: it isn't tinted, and it stays as it is when the kit's presets or type
++	// change
 +	drum->presetKit = PresetKit::NONE;
 +	drum->drumName = name.get();
 +	currentSong->backUpParamManager(drum, clip, &paramManager, true);
@@ -30741,6 +30796,47 @@ index 75e1a7340..1626339b6 100644
 +	return true;
 +}
 +
++bool InstrumentClipView::changePresetKitType(deluge::dsp::drum_synth::PresetKit type) {
++	using deluge::dsp::drum_synth::PresetKit;
++	Kit* kit = getCurrentKit();
++	InstrumentClip* clip = getCurrentInstrumentClip();
++
++	// It's a new kit from here, so it gets a new kit's name: saving it mustn't land on the preset it started from
++	String newName;
++	Error error = Browser::currentDir.set(getInstrumentFolder(OutputType::KIT));
++	if (error == Error::NONE) {
++		error = loadInstrumentPresetUI.getUnusedSlot(OutputType::KIT, &newName, "KIT");
++	}
++	if (error != Error::NONE) {
++		display->displayError(error);
++		return false;
++	}
++
++	// The undo history can't follow sounds being swapped under it
++	actionLogger.deleteAllLogs();
++	if (!deluge::preset_kit::changeType(kit, clip, type)) {
++		display->displayError(Error::INSUFFICIENT_RAM);
++		uiNeedsRendering(this);
++		return false;
++	}
++	if (!newName.isEmpty() && kit->dirPath.set(getInstrumentFolder(OutputType::KIT)) == Error::NONE) {
++		kit->name.set(&newName);
++		kit->mightExistOnCard = false;
++	}
++	kit->editedByUser = true;
++
++	recalculateColours();
++	view.setActiveModControllableTimelineCounter(clip);
++	view.setKnobIndicatorLevels();
++	display->consoleText(
++	    deluge::l10n::get((type == PresetKit::CYCLES)  ? deluge::l10n::String::STRING_FOR_NEW_CYCLES_KIT_CREATED
++	                      : (type == PresetKit::GIN)   ? deluge::l10n::String::STRING_FOR_NEW_GIN_KIT_CREATED
++	                      : (type == PresetKit::TRIBE) ? deluge::l10n::String::STRING_FOR_NEW_TRIBE_KIT_CREATED
++	                                                   : deluge::l10n::String::STRING_FOR_NEW_DRUM_SYNTH_KIT_CREATED));
++	uiNeedsRendering(this);
++	return true;
++}
++
 +void InstrumentClipView::changeToMIDIOutput() {
 +	changeOutputType(OutputType::MIDI_OUT);
 +
@@ -30813,7 +30909,7 @@ index 75e1a7340..1626339b6 100644
  bool InstrumentClipView::changeOutputType(OutputType newOutputType) {
  
  	if (getCurrentOutputType() == newOutputType) {
-@@ -1796,6 +2347,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
+@@ -1796,6 +2399,21 @@ void InstrumentClipView::selectEncoderAction(int8_t offset) {
  
  	exitedShortcutOverview = true;
  	uiNeedsRendering(this);
@@ -30835,7 +30931,7 @@ index 75e1a7340..1626339b6 100644
  	// User may be trying to edit noteCode...
  	if (currentUIMode == UI_MODE_AUDITIONING) {
  		if (Buttons::isButtonPressed(deluge::hid::button::SELECT_ENC)) {
-@@ -2132,19 +2698,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2132,19 +2750,24 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  	if (path == &nothing) {
  		return ActionResult::NOT_DEALT_WITH;
  	}
@@ -30865,7 +30961,7 @@ index 75e1a7340..1626339b6 100644
  
  	// Select random audio file from directory
  	int32_t fileCount = 0;
-@@ -2164,10 +2735,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2164,10 +2787,7 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		soundDrum->killAllVoices();
  
  		afh->setAudioFile(nullptr);
@@ -30877,7 +30973,7 @@ index 75e1a7340..1626339b6 100644
  		afh->filePath.concatenate("/");
  		afh->filePath.concatenate(chosenFilename);
  		afh->loadFile(false, true, true, 1, nullptr, false);
-@@ -2179,7 +2747,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
+@@ -2179,7 +2799,6 @@ ActionResult InstrumentClipView::potentiallyRandomizeDrumSample(Kit* kit, Drum*
  		}
  		soundDrum->drumName = chosenFilename;
  		kit->beenEdited();
@@ -30885,7 +30981,7 @@ index 75e1a7340..1626339b6 100644
  
  		// we've randomized a drum sample
  		return ActionResult::ACTIONED_AND_CAUSED_CHANGE;
-@@ -2607,9 +3174,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2607,9 +3226,21 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  					numEditPadPressesPerNoteRowOnScreen[yDisplay]++;
  					enterUIMode(UI_MODE_NOTES_PRESSED);
  
@@ -30907,7 +31003,7 @@ index 75e1a7340..1626339b6 100644
  						// If we're cross-screen-editing, create other corresponding notes too
  						if (clip->wrapEditing) {
  							Error error = noteRow->addCorrespondingNotes(
-@@ -2631,10 +3210,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2631,10 +3262,10 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  					// Can only set the mod region after setting the selected drum! Otherwise the params' currentValues
  					// don't end up right
@@ -30922,7 +31018,7 @@ index 75e1a7340..1626339b6 100644
  
  					// Now that we're holding a note down, get set up for if the user wants to edit its MPE values.
  					for (int32_t t = 0; t < MPE_RECORD_LENGTH_FOR_NOTE_EDITING; t++) {
-@@ -2700,8 +3279,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
+@@ -2700,8 +3331,27 @@ void InstrumentClipView::editPadAction(bool state, uint8_t yDisplay, uint8_t xDi
  
  				int32_t wrapEditLevel = clip->getWrapEditLevel();
  
@@ -30952,7 +31048,7 @@ index 75e1a7340..1626339b6 100644
  
  				noteRow->clearMPEUpUntilNextNote(modelStackWithNoteRow, squareStart, wrapEditLevel, true);
  
-@@ -2775,6 +3373,10 @@ void InstrumentClipView::endAllEditPadPresses() {
+@@ -2775,6 +3425,10 @@ void InstrumentClipView::endAllEditPadPresses() {
  
  void InstrumentClipView::checkIfAllEditPadPressesEnded(bool mayRenderSidebar) {
  	if (numEditPadPresses == 0) {
@@ -30963,7 +31059,7 @@ index 75e1a7340..1626339b6 100644
  		view.setModRegion();
  		exitUIMode(UI_MODE_NOTES_PRESSED);
  		actionLogger.closeAction(ActionType::NOTE_EDIT);
-@@ -4957,6 +5559,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
+@@ -4957,6 +5611,25 @@ void InstrumentClipView::sendAuditionNote(bool on, uint8_t yDisplay, uint8_t vel
  	else {
  		int32_t yNote = getCurrentInstrumentClip()->getYNoteFromYDisplay(yDisplay, currentSong);
  
@@ -30989,7 +31085,7 @@ index 75e1a7340..1626339b6 100644
  		if (on) {
  			((MelodicInstrument*)instrument)
  			    ->beginAuditioningForNote(modelStack, yNote, velocity, zeroMPEValues, MIDI_CHANNEL_NONE,
-@@ -5198,6 +5819,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
+@@ -5198,6 +5871,12 @@ void InstrumentClipView::setSelectedDrum(Drum* drum, bool shouldRedrawStuff, Kit
  		}
  	}
  
@@ -31002,7 +31098,7 @@ index 75e1a7340..1626339b6 100644
  	if (shouldRedrawStuff) {
  		// make sure the clip we're displaying actually belongs to this kit
  		// if you selected a clip and then sent a midi note to a kit that is part of a different clip, well
-@@ -5420,6 +6047,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
+@@ -5420,6 +6099,11 @@ Drum* InstrumentClipView::getAuditionedDrum(int32_t velocity, int32_t yDisplay,
  						AudioEngine::mustUpdateReverbParamsBeforeNextRender = true;
  					}
  				}
@@ -31014,7 +31110,7 @@ index 75e1a7340..1626339b6 100644
  				if (display->haveOLED()) {
  					deluge::hid::display::OLED::removePopup();
  				}
-@@ -5642,7 +6274,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
+@@ -5642,7 +6326,7 @@ void InstrumentClipView::potentiallyRefreshNoteRowMenu() {
  // sub-function of AuditionPadAction
  // pad is released, end previous audition pad press
  void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNoteRow* modelStack,
@@ -31023,7 +31119,7 @@ index 75e1a7340..1626339b6 100644
  	if (auditionPadIsPressed[yDisplay]) {
  		bool auditionNoteWasSounding = lastAuditionedVelocityOnScreen[yDisplay] != 255;
  		auditionPadIsPressed[yDisplay] = 0;
-@@ -5657,8 +6289,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
+@@ -5657,8 +6341,8 @@ void InstrumentClipView::finishAuditioningRow(int32_t yDisplay, ModelStackWithNo
  			sendAuditionNote(false, yDisplay, 64, 0);
  		}
  	}
@@ -31034,7 +31130,7 @@ index 75e1a7340..1626339b6 100644
  	actionLogger.closeAction(ActionType::EUCLIDEAN_NUM_EVENTS_EDIT);
  	actionLogger.closeAction(ActionType::NOTEROW_ROTATE);
  }
-@@ -6312,6 +6944,11 @@ drawNormally:
+@@ -6312,6 +6996,11 @@ drawNormally:
  			}
  
  			NoteRow* noteRow = getCurrentInstrumentClip()->getNoteRowOnScreen(yDisplay, currentSong);
@@ -31046,7 +31142,7 @@ index 75e1a7340..1626339b6 100644
  			if (noteRow != nullptr && noteRow->drum != nullptr && noteRow->drum == getCurrentKit()->selectedDrum) {
  
  				int32_t totalColour =
-@@ -6422,6 +7059,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6422,6 +7111,7 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		// Or note repeat...
  		else if (isUIModeActiveExclusively(UI_MODE_NOTES_PRESSED)
  		         || (inNoteRowEditor && isUIModeActive(UI_MODE_NOTES_PRESSED))) {
@@ -31054,7 +31150,7 @@ index 75e1a7340..1626339b6 100644
  			editNoteRepeat(offset);
  		}
  
-@@ -6437,6 +7075,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
+@@ -6437,6 +7127,13 @@ ActionResult InstrumentClipView::verticalEncoderAction(int32_t offset, bool inCa
  		commandShiftColour(offset);
  	}
  
@@ -31068,7 +31164,7 @@ index 75e1a7340..1626339b6 100644
  	// If neither button is pressed, we'll do vertical scrolling
  	else {
  		if (isUIModeWithinRange(verticalScrollUIModes)) {
-@@ -6849,8 +7494,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
+@@ -6849,8 +7546,8 @@ void InstrumentClipView::commandStartQuantize(int8_t offset, NudgeMode mode) {
  
  ActionResult InstrumentClipView::commandStopQuantize(int32_t y) {
  	ActionResult res;
@@ -31079,7 +31175,7 @@ index 75e1a7340..1626339b6 100644
  		InstrumentClip* clip = getCurrentInstrumentClip();
  		Output* output = clip->output;
  		OutputType outputType = output->type;
-@@ -7383,7 +8028,7 @@ abandonModRegion:
+@@ -7383,7 +8080,7 @@ abandonModRegion:
  		// view.setModRegion(newPos, max((uint32_t)distanceToNextNote + lastNote->pos - firstNote->pos,
  		// squareWidth));
  		// // This is what happens with initial press, kinda different...
@@ -31088,7 +31184,7 @@ index 75e1a7340..1626339b6 100644
  	}
  
  	uiNeedsRendering(this, 0xFFFFFFFF, 0);
-@@ -7408,6 +8053,8 @@ void InstrumentClipView::graphicsRoutine() {
+@@ -7408,6 +8105,8 @@ void InstrumentClipView::graphicsRoutine() {
  		return;
  	}
  
@@ -31097,7 +31193,7 @@ index 75e1a7340..1626339b6 100644
  	if (PadLEDs::flashCursor == FLASH_CURSOR_OFF) {
  		return;
  	}
-@@ -7587,6 +8234,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
+@@ -7587,6 +8286,21 @@ void InstrumentClipView::notifyPlaybackBegun() {
  bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplayWidth + kSideBarWidth],
                                          uint8_t occupancyMask[][kDisplayWidth + kSideBarWidth],
                                          bool drawUndefinedArea) {
@@ -31119,7 +31215,7 @@ index 75e1a7340..1626339b6 100644
  	if (!image) {
  		return true;
  	}
-@@ -7596,6 +8258,8 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7596,6 +8310,8 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	}
  
  	if (maybeRenderShortcutsOverview(whichRows, image, occupancyMask, drawUndefinedArea)) {
@@ -31128,7 +31224,7 @@ index 75e1a7340..1626339b6 100644
  		return true;
  	}
  
-@@ -7604,6 +8268,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
+@@ -7604,6 +8320,7 @@ bool InstrumentClipView::renderMainPads(uint32_t whichRows, RGB image[][kDisplay
  	                    currentSong->xZoom[NAVIGATION_CLIP], kDisplayWidth, kDisplayWidth + kSideBarWidth,
  	                    drawUndefinedArea);
  	render_selected_note_pulse(whichRows, image);
@@ -31136,7 +31232,7 @@ index 75e1a7340..1626339b6 100644
  	PadLEDs::renderingLock = false;
  
  	return true;
-@@ -7646,6 +8311,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
+@@ -7646,6 +8363,9 @@ void InstrumentClipView::performActualRender(uint32_t whichRows, RGB* image,
  				                   occupancyMaskOfRow, true, modelStackWithNoteRow->getLoopLength(),
  				                   clip->allowNoteTails(modelStackWithNoteRow), renderWidth, xScroll, xZoom, 0,
  				                   renderWidth, false);
@@ -31146,7 +31242,7 @@ index 75e1a7340..1626339b6 100644
  			}
  
  			if (drawUndefinedArea) {
-@@ -7694,6 +8362,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
+@@ -7694,6 +8414,12 @@ void InstrumentClipView::modEncoderAction(int32_t whichModEncoder, int32_t offse
  
  	InstrumentClip* clip = getCurrentInstrumentClip();
  
@@ -31159,7 +31255,7 @@ index 75e1a7340..1626339b6 100644
  	char modelStackMemory[MODEL_STACK_MAX_SIZE];
  	ModelStack* modelStack = setupModelStackWithSong(modelStackMemory, currentSong);
  
-@@ -8415,3 +9089,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
+@@ -8415,3 +9141,252 @@ void InstrumentClipView::blinkSelectedNoteRow(int32_t whichMainRows) {
  	uiNeedsRendering(getRootUI(), whichMainRows, 0xFFFFFFFF);
  	uiTimerManager.setTimer(TimerName::NOTE_ROW_BLINK, 180);
  }
@@ -31413,7 +31509,7 @@ index 75e1a7340..1626339b6 100644
 +	display->displayPopup(text);
 +}
 diff --git a/src/deluge/gui/views/instrument_clip_view.h b/src/deluge/gui/views/instrument_clip_view.h
-index 091c51b57..c34c035c9 100644
+index 091c51b57..4162d005b 100644
 --- a/src/deluge/gui/views/instrument_clip_view.h
 +++ b/src/deluge/gui/views/instrument_clip_view.h
 @@ -17,7 +17,10 @@
@@ -31437,17 +31533,19 @@ index 091c51b57..c34c035c9 100644
  	void enterScaleMode(uint8_t yDisplay = 255);
  	void exitScaleMode();
  	void drawMuteSquare(NoteRow* thisNoteRow, RGB thisImage[], uint8_t thisOccupancyMask[]);
-@@ -223,6 +227,26 @@ public:
+@@ -223,6 +227,28 @@ public:
  	uint32_t getSquareWidth(int32_t square, int32_t effectiveLength);
  	void drawNoteCode(uint8_t yDisplay);
  	bool createNewInstrument(OutputType instrumentType, bool is_fm = false);
 +	bool createNewDrumSynthKit(deluge::dsp::drum_synth::PresetKit type);
++	/// Swap the current preset kit for another type in place (see preset_kit::changeType), under a new kit name
++	bool changePresetKitType(deluge::dsp::drum_synth::PresetKit type);
 +	/// MKIT: a new kit of sixteen MIDI rows laid out as asked, on an empty clip
 +	bool createNewMIDIKit(deluge::midi_kit::Layout layout);
 +	/// The MIDI button: this clip to a MIDI track
 +	void changeToMIDIOutput();
-+	/// Whether kit was made as a preset kit (LXR or Cycles) and has had other rows added since. Swapping it for a new
-+	/// kit would leave those rows without their sounds, so SHIFT + KIT refuses.
++	/// Whether kit was made as a preset kit and has had other rows added since. Swapping it for a sample kit would
++	/// leave those rows without their sounds, so SHIFT + KIT refuses. (One preset kit swaps for another in place.)
 +	static bool presetKitHasAddedRows(Kit* kit);
 +	/// Pad Guides: the drum synth whose standard layout pads glow right now, or nullptr
 +	static const Sound* padGuidesGlowSound();
@@ -31464,7 +31562,7 @@ index 091c51b57..c34c035c9 100644
  	bool changeOutputType(OutputType newOutputType);
  	Sound* getSoundForNoteRow(NoteRow* noteRow, ParamManagerForTimeline** getParamManager);
  	void someAuditioningHasEnded(bool recalculateLastAuditionedNoteOnScreen);
-@@ -311,7 +335,13 @@ public:
+@@ -311,7 +337,13 @@ public:
  	bool handleNoteRowEditorPadAction(int32_t x, int32_t y, int32_t on);
  	bool handleNoteRowEditorMainPadAction(int32_t x, int32_t y, int32_t on);
  	void handleNoteRowEditorAuditionPadAction(int32_t y);
@@ -31479,7 +31577,7 @@ index 091c51b57..c34c035c9 100644
  	Error pasteNotesFromFile(Deserializer& reader, bool overwriteExisting, bool noScaling, bool previewOnly,
  	                         bool selectedDrumOnly);
  	void patternPreview();
-@@ -352,6 +382,21 @@ public:
+@@ -352,6 +384,21 @@ public:
  	ModControllableAudio* getModControllableAudioOrNone() override;
  
  private:
@@ -31501,7 +31599,7 @@ index 091c51b57..c34c035c9 100644
  	bool doneAnyNudgingSinceFirstEditPadPress{};
  	bool offsettingNudgeNumberDisplay{};
  
-@@ -395,11 +440,13 @@ private:
+@@ -395,11 +442,13 @@ private:
  	bool updating_note_pulse_directly = false;
  
  	// note row functions
@@ -39200,10 +39298,10 @@ index 4ee8df194..448e5d3bd 100644
  
 diff --git a/src/deluge/model/instrument/preset_kit.cpp b/src/deluge/model/instrument/preset_kit.cpp
 new file mode 100644
-index 000000000..3cda1184c
+index 000000000..b9f69c1d0
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.cpp
-@@ -0,0 +1,284 @@
+@@ -0,0 +1,415 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -39242,7 +39340,8 @@ index 000000000..3cda1184c
 +using dsp::drum_synth::Preset;
 +
 +namespace {
-+constexpr std::array<Row, 7> kLxrRows{{
++// The LXR's seven voices, and a perc on the drum voice to make eight
++constexpr std::array<Row, kNumRows> kLxrRows{{
 +    {Preset::KICK, Engine::NUM_ENGINES, "KICK"},
 +    {Preset::SNARE, Engine::NUM_ENGINES, "SNARE"},
 +    {Preset::CLOSED_HAT, Engine::NUM_ENGINES, "CH"},
@@ -39250,18 +39349,23 @@ index 000000000..3cda1184c
 +    {Preset::LOW_TOM, Engine::NUM_ENGINES, "LTOM"},
 +    {Preset::HIGH_TOM, Engine::NUM_ENGINES, "HTOM"},
 +    {Preset::CYMBAL, Engine::NUM_ENGINES, "CYM"},
++    {Preset::PERC, Engine::NUM_ENGINES, "PERC"},
 +}};
-+// The Cycles' usual six tracks
-+constexpr std::array<Row, 6> kCyclesRows{{
++// The Cycles' usual six tracks, then a clap and a second perc a fifth up to make eight
++constexpr std::array<Row, kNumRows> kCyclesRows{{
 +    {Preset::KICK, Engine::CYC_KIK, "KIK"},
 +    {Preset::KICK, Engine::CYC_SNR, "SNR"},
 +    {Preset::KICK, Engine::CYC_METAL, "METAL"},
 +    {Preset::KICK, Engine::CYC_TONE, "TONE"},
 +    {Preset::KICK, Engine::CYC_PERC, "PERC"},
 +    {Preset::KICK, Engine::CYC_CHORD, "CHORD"},
++    {Preset::KICK, Engine::CLAP_ENG, "CLAP"},
++    {Preset::KICK, Engine::CYC_PERC, "PERC2", -1, -1, 7},
 +}};
 +// GIN's eight: the hats choke each other
-+constexpr std::array<Row, dsp::drum_synth::gin::kNumKitSounds> kGinRows{{
++static_assert(dsp::drum_synth::gin::kNumKitSounds == kNumRows && dsp::drum_synth::kTribeKitRows == kNumRows,
++              "every preset kit has kNumRows rows, so one swaps for another row for row");
++constexpr std::array<Row, kNumRows> kGinRows{{
 +    {Preset::KICK, Engine::GIN, "KICK", dsp::drum_synth::gin::KICK},
 +    {Preset::KICK, Engine::GIN, "SNR", dsp::drum_synth::gin::SNARE},
 +    {Preset::KICK, Engine::GIN, "HAT1", dsp::drum_synth::gin::HAT1},
@@ -39272,7 +39376,7 @@ index 000000000..3cda1184c
 +    {Preset::KICK, Engine::GIN, "OTHER", dsp::drum_synth::gin::OTHER},
 +}};
 +// TRIBE's eight: the hats choke each other. Each row takes its sound from the built in kit picked.
-+constexpr std::array<Row, dsp::drum_synth::kTribeKitRows> kTribeRows{{
++constexpr std::array<Row, kNumRows> kTribeRows{{
 +    {Preset::KICK, Engine::TR_KICK, "KICK", -1, 0},
 +    {Preset::KICK, Engine::TR_SNARE, "SNARE", -1, 1},
 +    {Preset::KICK, Engine::TR_HAT, "CH", -1, 2},
@@ -39351,6 +39455,7 @@ index 000000000..3cda1184c
 +	else {
 +		drum->setupAsDrumSynth(&paramManager, row.preset, row.cycEngine);
 +	}
++	drum->sources[0].transpose += row.transpose;
 +	drum->presetKit = kit;
 +	drum->drumName =
 +	    (row.tribeRow >= 0)
@@ -39368,6 +39473,130 @@ index 000000000..3cda1184c
 +		}
 +	}
 +	return PresetKit::NONE;
++}
++
++bool isPresetRow(Drum* drum) {
++	return drum != nullptr && drum->type == DrumType::SOUND
++	       && static_cast<SoundDrum*>(drum)->presetKit != PresetKit::NONE;
++}
++
++int32_t presetRowsOf(InstrumentClip* clip, PresetKit kit, std::span<int32_t> rows) {
++	int32_t count = 0;
++	for (int32_t i = 0; i < clip->noteRows.getNumElements() && count < static_cast<int32_t>(rows.size()); i++) {
++		Drum* drum = clip->noteRows.getElement(i)->drum;
++		if (isPresetRow(drum) && static_cast<SoundDrum*>(drum)->presetKit == kit) {
++			rows[count++] = i;
++		}
++	}
++	return count;
++}
++
++namespace {
++/// A new NoteRow for drum in one Clip of its Kit, straight over the Clip's top preset row (at the top of the Clip if it
++/// has none). paramManager: the drum's own, for the first Clip; the others (nullptr) clone that Clip's, cloneFrom.
++bool insertRowOverPresetRows(Kit* kit, InstrumentClip* clip, SoundDrum* drum, ParamManagerForTimeline* paramManager,
++                             InstrumentClip* cloneFrom) {
++	int32_t index = clip->noteRows.getNumElements();
++	for (int32_t i = index - 1; i >= 0; i--) {
++		if (isPresetRow(clip->noteRows.getElement(i)->drum)) {
++			index = i + 1;
++			break;
++		}
++	}
++	NoteRow* noteRow = clip->noteRows.insertNoteRowAtIndex(index);
++	if (noteRow == nullptr) {
++		return false;
++	}
++	char modelStackMemory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithNoteRow* modelStack = setupModelStackWithTimelineCounter(modelStackMemory, currentSong, clip)
++	                                        ->addNoteRow(clip->getNoteRowId(noteRow, index), noteRow);
++	noteRow->setDrum(drum, kit, modelStack, cloneFrom, paramManager);
++	return true;
++}
++} // namespace
++
++bool topUp(Kit* kit, InstrumentClip* clip) {
++	const PresetKit type = typeOf(kit);
++	if (type == PresetKit::NONE) {
++		return false;
++	}
++	int32_t have = 0;
++	for (Drum* drum = kit->firstDrum; drum != nullptr; drum = drum->next) {
++		have += isPresetRow(drum) ? 1 : 0;
++	}
++	const auto rows = rowsFor(type);
++	bool anyAdded = false;
++	for (int32_t r = have; r < static_cast<int32_t>(rows.size()); r++) {
++		ParamManagerForTimeline paramManager;
++		SoundDrum* drum = makeDrum(rows[r], type, paramManager);
++		if (drum == nullptr) {
++			break;
++		}
++		// Its name could be on a row added to the kit already
++		if (kit->getDrumFromName(drum->drumName) != nullptr) {
++			String name;
++			name.set(drum->drumName.c_str());
++			if (kit->makeDrumNameUnique(&name, 2) == Error::NONE) {
++				drum->drumName = name.get();
++			}
++		}
++		kit->addDrum(drum);
++		if (!insertRowOverPresetRows(kit, clip, drum, &paramManager, nullptr)) {
++			kit->removeDrum(drum);
++			drum->next = nullptr;
++			paramManager.destructAndForgetParamCollections();
++			deleteDrum(drum);
++			break;
++		}
++		for (InstrumentClip* otherClip : InstrumentClips::everywhere(currentSong)) {
++			if (otherClip != clip && otherClip->output == kit) {
++				insertRowOverPresetRows(kit, otherClip, drum, nullptr, clip);
++			}
++		}
++		anyAdded = true;
++	}
++	if (anyAdded) {
++		kit->beenEdited();
++	}
++	return anyAdded;
++}
++
++bool changeType(Kit* kit, InstrumentClip* clip, PresetKit newType) {
++	const PresetKit oldType = typeOf(kit);
++	if (oldType == PresetKit::NONE || newType == PresetKit::NONE || oldType == newType) {
++		return false;
++	}
++	topUp(kit, clip);
++
++	std::array<int32_t, kNumRows> noteRows{};
++	const auto rows = rowsFor(newType);
++	const int32_t count = std::min<int32_t>(presetRowsOf(clip, oldType, noteRows), rows.size());
++
++	// Make every sound before touching the kit, so running out of RAM leaves it as it was
++	std::array<SoundDrum*, kNumRows> drums{};
++	std::array<ParamManagerForTimeline, kNumRows> paramManagers{};
++	for (int32_t r = 0; r < count; r++) {
++		drums[r] = makeDrum(rows[r], newType, paramManagers[r]);
++		if (drums[r] == nullptr) {
++			for (int32_t made = 0; made < r; made++) {
++				paramManagers[made].destructAndForgetParamCollections();
++				deleteDrum(drums[made]);
++			}
++			return false;
++		}
++	}
++	for (int32_t r = 0; r < count; r++) {
++		swapDrum(kit, clip, noteRows[r], drums[r], &paramManagers[r], false);
++	}
++	// A preset row this Clip has no NoteRow for can't be swapped: from here it's a row added to the kit
++	for (Drum* drum = kit->firstDrum; drum != nullptr; drum = drum->next) {
++		if (isPresetRow(drum) && static_cast<SoundDrum*>(drum)->presetKit == oldType) {
++			static_cast<SoundDrum*>(drum)->presetKit = PresetKit::NONE;
++		}
++	}
++	kit->presetName.set("*");
++	kit->beenEdited();
++	return true;
 +}
 +
 +int32_t loadDrums(PresetKit kit, char const* fileName, std::span<SoundDrum*> drums,
@@ -39490,10 +39719,10 @@ index 000000000..3cda1184c
 +} // namespace deluge::preset_kit
 diff --git a/src/deluge/model/instrument/preset_kit.h b/src/deluge/model/instrument/preset_kit.h
 new file mode 100644
-index 000000000..bd2d56223
+index 000000000..196facd70
 --- /dev/null
 +++ b/src/deluge/model/instrument/preset_kit.h
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,105 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -39518,15 +39747,17 @@ index 000000000..bd2d56223
 +#include <cstdint>
 +#include <span>
 +
++class Drum;
 +class InstrumentClip;
 +class Kit;
 +class ParamManagerForTimeline;
 +class SoundDrum;
 +
-+/// The preset kits SHIFT + KIT makes (LXR, Cycles, GIN), and their presets: ordinary kit files saved into KITS/LXR,
-+/// KITS/CYCLES or KITS/GIN. GIN also has sixteen kits built in (see dsp/drum_synth/gin_kits.h). A preset only replaces
-+/// the sounds of a kit's preset rows, in order from the bottom, so the pattern and any rows added to the kit stay as
-+/// they are.
++/// The preset kits SHIFT + KIT makes (TRIBE, Cycles, LXR, GIN), and their presets: ordinary kit files saved into
++/// KITS/TRIBE, KITS/CYCLES, KITS/LXR or KITS/GIN. GIN and TRIBE also have kits built in. Every preset kit has eight
++/// preset rows, in its own fixed order from the bottom, so one swaps for another row for row. A preset, or a swap to
++/// another preset kit, only replaces the sounds of those rows: the pattern, and any rows added under or over them,
++/// stay as they are.
 +namespace deluge::preset_kit {
 +
 +using dsp::drum_synth::PresetKit;
@@ -39538,7 +39769,11 @@ index 000000000..bd2d56223
 +	char const* name;
 +	int8_t ginRow = -1;   ///< On a GIN kit, which of its kit sounds the row plays
 +	int8_t tribeRow = -1; ///< On a TRIBE kit, which of its kit's rows the row plays
++	int8_t transpose = 0; ///< Semitones on top of the engine's own tune, for a second row on one engine
 +};
++
++/// The number of preset rows every preset kit has
++constexpr int32_t kNumRows = 8;
 +
 +/// The rows a preset kit starts with, bottom row first
 +std::span<const Row> rowsFor(PresetKit kit);
@@ -39559,6 +39794,22 @@ index 000000000..bd2d56223
 +
 +/// The preset kit a kit was made as, from its rows, or NONE
 +PresetKit typeOf(Kit* kit);
++
++/// Whether a drum is one of a preset kit's own rows, not a row added to it
++bool isPresetRow(Drum* drum);
++
++/// The clip's NoteRows that play the kit's preset rows, bottom first. Returns how many, up to rows.size().
++int32_t presetRowsOf(InstrumentClip* clip, PresetKit kit, std::span<int32_t> rows);
++
++/// Bring a preset kit saved with fewer rows (Cycles kits had six, LXR kits seven) up to the eight its type has now.
++/// The missing rows go in straight over its top preset row, under any rows added over the kit, in every Clip of the
++/// Kit, so the rows already there keep their places. Returns whether any were added.
++bool topUp(Kit* kit, InstrumentClip* clip);
++
++/// Swap a preset kit for another type in place: each preset row gets the new kit's sound for that row, as SHIFT + KIT
++/// first makes it, in every Clip of the Kit. Notes stay on their rows and rows added under or over the kit aren't
++/// touched. Returns false, with the kit as it was, if out of RAM.
++bool changeType(Kit* kit, InstrumentClip* clip, PresetKit newType);
 +
 +/// Read the preset rows' sounds from a preset file in folderFor(kit): the rows saved as preset rows, or if there are
 +/// none (a kit made by hand), every sound row, bottom first. Fills drums and paramManagers and returns how many were
@@ -48009,10 +48260,10 @@ index 000000000..d801dfeea
 +}
 diff --git a/website/src/content/docs/features/drum_synth.mdx b/website/src/content/docs/features/drum_synth.mdx
 new file mode 100644
-index 000000000..dce96f329
+index 000000000..dfb8411ff
 --- /dev/null
 +++ b/website/src/content/docs/features/drum_synth.mdx
-@@ -0,0 +1,520 @@
+@@ -0,0 +1,522 @@
 +---
 +title: Drum Synth
 +---
@@ -48034,13 +48285,15 @@ index 000000000..dce96f329
 +1. In clip view on an empty clip, press **SHIFT + KIT**.
 +2. The **New kit** menu opens. Turn **SELECT** to a kit type and press **SELECT** (or **KIT**):
 +   - **Kit**: a normal, sample based kit.
-+   - **LXR**: seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows are in choke mode, so an open hat is cut off by the next closed hat.
-+   - **Cycles**: the Model:Cycles' usual six tracks as Cyc engine rows, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**. They play at the note, as the Cycles does at its default tune.
++   - **LXR**: eight LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM**, **CYM** and **PERC** (from v1.40: a short, woody perc on the drum voice). The two hat rows are in choke mode, so an open hat is cut off by the next closed hat.
++   - **Cycles**: eight Cyc engine rows, from the bottom: the Model:Cycles' usual six tracks, **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, then **CLAP** (clap eng) and **PERC2** (Cyc Perc a fifth up), both from v1.40. They play at the note, as the Cycles does at its default tune.
 +   - **GIN**: eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2** (choked by HAT1), **PERC1**, **PERC2**, **CLAP** and **OTHER**, playing GIN's first built in kit (808). Each row is tuned to its sound.
 +
 +Picking **LXR**, **Cycles** or **GIN** goes straight into that kit's [Kit presets](#kit-presets) (from v1.19), playing the top one: the first preset in its folder, or the kit as described above if the folder is empty (on GIN, its first built in kit). Keep it with **SELECT**, or **BACK** to the New kit menu with the kit as described above.
 +
-+The rows a preset kit makes have softly coloured audition pads, by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN (brighter on the selected row). You can add more rows above or below them: tap an empty audition pad and a new row appears there with **SYNTH MODE** open, so you can turn it into any engine, **Sample** or FM straight away (or hold the empty pad and press **LOAD** for a sample, **SYNTH** for a synth preset, **MIDI** or **CV**, as on any kit). Added rows aren't coloured. On a preset kit, **SHIFT + KIT** opens its [Kit presets](#kit-presets); **BACK** from there goes up to the Kit / LXR / Cycles / GIN menu, where its own type goes back into its presets. Once a preset kit has rows added, that menu won't swap it for another kit, which would leave the added rows without their sounds: the screen shows **CANT**. Without added rows, swapping keeps the pattern on the rows the new kit fills.
++The rows a preset kit makes have softly coloured audition pads, by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN (brighter on the selected row). You can add more rows above or below them: tap an empty audition pad and a new row appears there with **SYNTH MODE** open, so you can turn it into any engine, **Sample** or FM straight away (or hold the empty pad and press **LOAD** for a sample, **SYNTH** for a synth preset, **MIDI** or **CV**, as on any kit). Added rows aren't coloured. On a preset kit, **SHIFT + KIT** opens its [Kit presets](#kit-presets); **BACK** from there goes up to the Kit / LXR / Cycles / GIN menu, where its own type goes back into its presets. 
++
++**Every preset kit has eight rows, and one swaps for another row for row** (from v1.40). Picking another preset kit in that menu changes the kit in place: row 1 of the old kit becomes row 1 of the new one, and so on up to row 8, in every clip of the kit. The notes stay on their rows, and rows you added under the kick or over the top row stay exactly where they are with their sounds. The kit's own eight rows keep their order: they can't be deleted (hold a note pad + **SAVE/DELETE** shows **CANT**), though rows you added delete as on any kit. A Cycles kit saved with six rows, or an LXR kit saved with seven, gets its missing rows the first time you open its presets, turn **SELECT** on it or swap it: they go in straight over its top preset row, under anything you added above. Swapping a preset kit with added rows for a plain sample **Kit** is still refused (**CANT**), as that would leave the added rows without their sounds.
 +
 +Every other engine (Vtg Snr, clap eng, DXIA, DIIA) is a **SYNTH MODE** choice. You can turn any row of any kit, or any synth, into a drum synth: press the **SYNTH MODE** shortcut and choose an engine. That way sampled and synthesised drums can share a kit. See [Choosing an engine](#choosing-an-engine).
 +
@@ -48050,7 +48303,7 @@ index 000000000..dce96f329
 +
 +1. On a preset kit, press **SHIFT + KIT**. The **Kit presets** (**PRST**) list opens instead of the New kit menu.
 +2. Turn **SELECT**. Each preset plays on the kit's preset rows straight away; the pattern, its notes and any rows you added stay as they are. The audition pads still play the rows.
-+3. Press **SELECT** (or **KIT**) to keep the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu, where you can swap to the other preset kit (if no rows have been added) or go back into the presets.
++3. Press **SELECT** (or **KIT**) to keep the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu, where you can swap to another preset kit (in place, row for row) or go back into the presets.
 +
 +**Without the list** (from v1.19): in the clip, turning **SELECT** on a preset kit steps to the next or previous one in the same list and keeps it straight away, with the name on the screen. It goes round at the ends. Turning **SELECT** never swaps a preset kit for a sample kit.
 +

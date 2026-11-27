@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.39.3
+# BRIBELUGE: Deluge Bribes FW v1.40
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.39.3`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.39.3), the exact commit the bin was built from, and a full source download on the [v1.39.3 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.39.3). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.40`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.40), the exact commit the bin was built from, and a full source download on the [v1.40 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.40). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -19,7 +19,7 @@ What Bribeluge adds:
 3. **[Autofill](#3-autofill):** TAP plays a fill to the end of the bar: Ghost, Drive, Build, Climb or Stutter.
 4. **[Mono sequencer](#4-mono-sequencer):** A bassline step sequencer for synth, MIDI and CV tracks: octave per note, slide steps, gate control and a voltage per row on CV.
 5. **[Endless Record](#5-endless-record):** RECORD while playing keeps recording past the end of the loop. RECORD again stops at the next bar.
-6. **[Drum synth](#6-drum-synth):** Synthesised drums on any kit row: LXR voices, DXIA, DIIA, eight Cyc engines, GIN, the ULTRAKIK kick and TRIBE. One pad layout, Cycles-style gold knobs, preset kits on SHIFT + KIT, and ULTRAKIK or XIA onto a single row from the same menu.
+6. **[Drum synth](#6-drum-synth):** Synthesised drums on any kit row: LXR voices, DXIA, DIIA, eight Cyc engines, GIN, the ULTRAKIK kick and TRIBE. One pad layout, Cycles-style gold knobs, eight-row preset kits on SHIFT + KIT that swap for each other in place and keep any rows you add above or below, and ULTRAKIK or XIA onto a single row from the same menu.
 7. **[Saturation](#7-saturation):** A one-knob drive that gets louder and denser all the way to a hard clip, with five curves. Learnable to a gold knob.
 8. **[Sample start offset](#8-sample-start-offset):** Move where a sample starts, per step: draw it, lock it, modulate it.
 9. **[303 synth](#9-303-synth):** A TB-303 voice from Open303 with accent and slide from the mono sequencer, three filters (303, LP18, DIRT) and an overdrive after them.
@@ -57,9 +57,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.39.3.bin`](firmware/deluge-bribes-v1.39.3.bin)
+[`firmware/deluge-bribes-v1.40.bin`](firmware/deluge-bribes-v1.40.bin)
 
-SHA-256: `e832aef6d14683e90d97fb2bf8b887bfa1c7b4574c6d2924c7af61199168f6d3`
+SHA-256: `56278696710e1fe12a194f2777ec46dead070a34a978324441f5cf6495da56cb`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -75,7 +75,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.39.3.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.40.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -316,8 +316,8 @@ The engines:
 1. In clip view on an empty clip, press **SHIFT + KIT**.
 2. The **New kit** (**NEW**) menu opens. Turn **SELECT** to a kit type and press **SELECT**:
    - **Kit** (**KIT**): a normal, sample based kit.
-   - **Cycles** (**CYCL**): the Model:Cycles' usual six tracks, from the bottom: **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, playing at the note as the Cycles does at its default tune.
-   - **LXR** (**LXR**): seven LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM** and **CYM**. The two hat rows choke each other.
+   - **Cycles** (**CYCL**): eight Cyc engine rows, from the bottom: the Model:Cycles' usual six tracks, **KIK**, **SNR**, **METAL**, **TONE**, **PERC** and **CHORD**, then **CLAP** (clap eng) and **PERC2** (Cyc Perc a fifth up), both new in v1.40. They play at the note as the Cycles does at its default tune.
+   - **LXR** (**LXR**): eight LXR voice rows, from the bottom: **KICK**, **SNARE**, **CH** (closed hat), **OH** (open hat), **LTOM**, **HTOM**, **CYM** and **PERC** (new in v1.40: a short, woody perc on the drum voice). The two hat rows choke each other.
    - **GIN** (**GIN**): eight GIN rows, from the bottom: **KICK**, **SNR**, **HAT1**, **HAT2**, **PERC1**, **PERC2**, **CLAP** and **OTHER**, on the 808 kit. The two hats choke each other, and each row is tuned to its sound.
    - **TRIBE** (**TRIBE**): eight TRIBE rows, from the bottom: **KICK**, **SNARE**, **CH**, **OH**, **RIM**, **TOM**, **CLAP** and **CYM**, on the TRIBE kit. The two hats choke each other. See [TRIBE](#30-tribe).
    - **ULTRAKIK (single row only)** (**UKIK**) and **XIA (single row only)** (**XIA**): put that engine on the kit's selected row only, and open **SYNTH MODE** on it so you can pick another engine from there. On a track that isn't a kit yet, a sample kit is made first.
@@ -326,20 +326,27 @@ Vtg Snr, clap eng, DXIA and DIIA are picked per row in SYNTH MODE.
 
 The rows an LXR, Cycles, GIN or TRIBE kit makes are its **preset rows** (new in v1.12). Their audition pads are softly coloured by the engine each plays: blue for the Cyc engines, orange for the LXR voices, green for DXIA and DIIA, pink for GIN and ULTRAKIK, red for TRIBE (brighter on the selected row).
 
-- **Adding rows:** tap an empty audition pad above or below the preset rows and a new row appears there with **SYNTH MODE** open, to make it any engine, **Sample** or FM. Holding the empty pad and pressing **LOAD**, **SYNTH**, **MIDI** or **CV** works as on any kit. Added rows aren't coloured.
-- **Swapping kit type:** once rows have been added, a preset kit can't be swapped for another kit (the added rows would lose their sounds): the screen shows **CANT**. Without added rows, the swap keeps the pattern on the rows the new kit fills.
+Every Bribeluge kit has eight preset rows (new in v1.40), which is what lets them swap in and out of each other so easily, and lets you build around them.
+
+- **Swapping kits (new in v1.40):** pick another kit in the SHIFT + KIT menu and the kit changes in place, row for row: row 1 becomes the new kit's row 1, and so on up to row 8, in every clip of the kit. The notes stay on their rows, so a pattern written on a Cycles kit plays straight away on TRIBE, LXR or GIN.
+- **Adding rows:** tap an empty audition pad under the kick or over the top row and a new row appears there with **SYNTH MODE** open, to make it any engine, **Sample** or FM. Holding the empty pad and pressing **LOAD**, **SYNTH**, **MIDI** or **CV** works as on any kit. Added rows aren't coloured.
+- **Added rows are kept (new in v1.40):** rows you add above or below the kit stay exactly where they are, with their sounds and notes, when you swap the kit for another or change its preset. Only the kit's own eight rows change.
+- **The kit's own rows keep their order:** they can't be deleted (hold a note pad on the row and press **SAVE/DELETE**: the screen shows **CANT**), so every kit lines up with every other. Rows you added delete as on any kit.
+- **Kits from before v1.40:** a Cycles kit saved with six rows or an LXR kit saved with seven gets its missing rows the first time you open its presets, turn **SELECT** on it or swap it. They go in straight over its top preset row, under anything you added above.
+- **To a sample kit:** a preset kit with added rows can't be swapped for a plain **Kit**, as the added rows would lose their sounds: the screen shows **CANT**.
 
 ### Kit presets
 
 On an LXR, Cycles, GIN or TRIBE kit, **SHIFT + KIT** opens **Kit presets** (**PRST**): the kit files in `KITS/LXR`, `KITS/CYCLES`, `KITS/GIN` or `KITS/TRIBE` on the card.
 
 1. Turn **SELECT**. Each preset plays on the preset rows straight away, pattern running. Notes, added rows and the other rows stay as they are, and the audition pads still play the rows.
-2. **SELECT** (or **KIT**) keeps the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu: its own type goes back into the presets, another swaps the kit.
+2. **SELECT** (or **KIT**) keeps the one showing. **BACK** puts the kit back as it was and goes up to the Kit / LXR / Cycles / GIN menu: its own type goes back into the presets, another swaps the kit in place, row for row.
 
 The list is **Default** (the rows as SHIFT + KIT makes them) and then the presets in name order. On a GIN kit, Default is replaced by GIN's sixteen built in kits (on a TRIBE kit, TRIBE's eleven), so there's nothing to copy to the card. It opens on the preset the kit is on (kept with the kit when you save), or **Current** if it's on none of them.
 
-- **Cycles presets:** sixteen kits of my own, bank E of my Model:Cycles kits, converted for the Cyc engines: copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) to `KITS/CYCLES` on the card.
-- **LXR presets:** sixteen kits by **Hrtl** from the free [LXR-02 pack Erica Synths released in 2022](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), converted for the drum synth: copy [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/LXR` on the card. Close to the originals rather than identical (see the folder's README).
+- **Cycles presets:** sixteen kits of my own, bank E of my Model:Cycles kits, converted for the Cyc engines: copy [`presets/KITS/CYCLES`](presets/KITS/CYCLES) to `KITS/CYCLES` on the card. From v1.40 each has eight rows: the six from the Cycles, then a **CLAP** and a **PERC2** of its own.
+- **LXR presets:** sixteen kits by **Hrtl** from the free [LXR-02 pack Erica Synths released in 2022](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), converted for the drum synth: copy [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/LXR` on the card. Close to the originals rather than identical (see the folder's README). From v1.40 each has an eighth row, **PERC**: the kit's own high tom voice a fifth up and shorter.
+- **Presets with fewer rows:** a preset saved before v1.40 with six or seven rows still loads. The kit's rows above those keep the sounds they had.
 - **Making presets:** a preset is an ordinary kit file. Set the kit up, press **SAVE**, go into `KITS/LXR`, `KITS/CYCLES`, `KITS/GIN` or `KITS/TRIBE` (made the first time you open the list) and save, over an existing preset or under a new name. Only the preset rows are read back. [`tools/lxr_to_deluge.py`](tools/lxr_to_deluge.py) converts LXR-02 .SND kits.
 - **Turning SELECT in the clip** (new in v1.19) steps to the next or previous preset in the same list and keeps it, without opening the list. It goes round at the ends.
 - **Picking LXR, Cycles or GIN** in the New kit menu (new in v1.19) opens that kit's presets on the top one: the first preset in its folder, or Default if there's none (GIN: its first built in kit).
@@ -1453,7 +1460,7 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 | **FX > DISTORTION > CTYP** | How Bitcrush and Decimation sound: **HARD**, **VINT**, **ULAW**, **JITR**, **DECY** or **CLAS** (Crush types) |
 | **SELECT in song view > MASTER > MASTER CLIP** | Clip or limit the song's output: **SOFT**, **TANH**, **HARD**, **TAPE**, **FOLD** or **LIMT**, with **CLIP DRIVE** and **CEILING** (Master clip) |
 | **MOD FX > SHIFT** | Three-band frequency shifter: Depth is the amount, Rate the glide, Feedback, Offset morphs between two sets of shifts (SHIFT) |
-| **SHIFT + KIT** | New kit: choose **Kit** (samples), **Cycles** (the six Cyc engines), **LXR** (the seven LXR voices), **GIN** (eight GIN sounds), or **ULTRAKIK** or **XIA** on the selected row only |
+| **SHIFT + KIT** | New kit: choose **Kit** (samples), **Cycles**, **LXR**, **GIN** or **TRIBE** (eight rows each; on one of them, picking another swaps it in place, row for row, keeping rows you added above or below), or **ULTRAKIK** or **XIA** on the selected row only |
 | **SHIFT + KIT on an LXR, Cycles, GIN or TRIBE kit** | Kit presets: turn SELECT to play each preset on the kit's rows, SELECT to keep, BACK to go back (Drum synth) |
 | **Turn SELECT on an LXR, Cycles, GIN or TRIBE kit** | Step to the kit's next or previous preset and keep it (Instrument Picker, new in v1.19) |
 | **Tap an empty audition pad on an LXR, Cycles, GIN or TRIBE kit** | Add a row there and open SYNTH MODE to choose its sound (Drum synth) |
@@ -1525,6 +1532,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.40: Eight-row kits that swap in place.** Every Bribeluge kit (TRIBE, Cycles, LXR, GIN) now has eight rows, so they swap in and out of each other easily: **SHIFT + KIT** to another kit changes it in place, row for row, with the pattern still on its rows. You can add rows under the kick or over the top row, and they stay where they are, with their sounds and notes, when you swap kits or change preset. A Cycles kit gains **CLAP** and **PERC2**, an LXR kit gains **PERC**, and every Cycles and LXR preset has the new rows (copy the preset folders to the card again). A kit's own eight rows keep their order and can't be deleted; rows you added delete as before. Kits in older songs get their missing rows the first time you swap them or change their preset. See [Making a drum synth kit](#making-a-drum-synth-kit). *Why:* a Cycles kit had six rows and an LXR kit seven, so a swap moved things about, and a kit with rows added couldn't be swapped at all. *Learned:* the swap used to build a whole new kit and pour the pattern back in from the bottom. Changing the sounds under the rows, the way the presets already did, is simpler and leaves everything else alone.
 
 - **v1.39.3: Data crush type removed.** The **Data** crush type from v1.37 is gone. Its Bitcrush knob mostly added clicks, not the looping, corrupted sound it was meant to have. **Crush type** now offers Hard, Vintage, u-Law, Jitter, Decay and Classic (see [Crush types](#23-crush-types)). Songs and presets saved with Data load as **Hard**: Decimation sounds the same, and Bitcrush becomes Hard's bit depth. The other types sound exactly as they did. *Why:* a type that isn't worth using is one more stop in a menu you scroll with one knob. *Learned:* Decay came over from Seal Eggs already tuned by ear on hardware, and Data was designed from scratch for this build without that. It showed.
 
