@@ -25331,6 +25331,27 @@ index 014f2b624..5c80fa28e 100644
  	display->setText(getName(), false, shouldDrawDotOnName());
  }
  
+diff --git a/src/deluge/gui/menu_item/menu_item.h b/src/deluge/gui/menu_item/menu_item.h
+index 20eaa0d4c..b82acc048 100644
+--- a/src/deluge/gui/menu_item/menu_item.h
++++ b/src/deluge/gui/menu_item/menu_item.h
+@@ -44,6 +44,7 @@ class MultiRange;
+ class MIDICable;
+ 
+ namespace deluge::gui::menu_item {
++class Selection;
+ class Submenu;
+ class HorizontalMenu;
+ } // namespace deluge::gui::menu_item
+@@ -287,6 +288,8 @@ public:
+ 	// render the submenu item type (icon or value)
+ 	virtual void renderSubmenuItemTypeForOled(int32_t yPixel);
+ 	virtual bool isSubmenu() { return false; }
++	/// This item as a Selection (a list of named options), else nullptr: for the companion screen
++	virtual deluge::gui::menu_item::Selection* asSelection() { return nullptr; }
+ 	virtual void setupNumberEditor() {}
+ 	virtual void updatePadLights();
+ 
 diff --git a/src/deluge/gui/menu_item/midi/drum_row.h b/src/deluge/gui/menu_item/midi/drum_row.h
 new file mode 100644
 index 000000000..42682d946
@@ -26034,6 +26055,18 @@ index 4f1b80d85..1002de496 100644
  		const auto options = this->getOptions();
  		display->setScrollingText(options[this->getValue()].data());
  	}
+diff --git a/src/deluge/gui/menu_item/selection.h b/src/deluge/gui/menu_item/selection.h
+index 5e7c5c6b5..cda6da703 100644
+--- a/src/deluge/gui/menu_item/selection.h
++++ b/src/deluge/gui/menu_item/selection.h
+@@ -36,6 +36,7 @@ public:
+ 	size_t size() override { return this->getOptions().size(); }
+ 
+ 	virtual bool isToggle() { return false; }
++	Selection* asSelection() override { return this; }
+ 
+ 	void displayToggleValue();
+ 
 diff --git a/src/deluge/gui/menu_item/song/master_clip.h b/src/deluge/gui/menu_item/song/master_clip.h
 new file mode 100644
 index 000000000..9f79503bf
@@ -26141,6 +26174,23 @@ index 95d3f6ea5..0312df07a 100644
  	// Collect items before the current item, this is possibly more than we need.
  	etl::vector<MenuItem*, kOLEDMenuNumOptionsVisible> before = {};
  	for (auto it = current_item_ - 1; it != items.begin() - 1 && before.size() < before.capacity(); it--) {
+diff --git a/src/deluge/gui/menu_item/submenu.h b/src/deluge/gui/menu_item/submenu.h
+index e936b40f1..acb271221 100644
+--- a/src/deluge/gui/menu_item/submenu.h
++++ b/src/deluge/gui/menu_item/submenu.h
+@@ -67,6 +67,12 @@ public:
+ 	uint32_t getParamIndex() override;
+ 	[[nodiscard]] int32_t getOccupiedSlots() const override { return 2; };
+ 	[[nodiscard]] bool showNotification() const override { return false; }
++	/// For the companion screen: the items (relevant or not) and the focused one (nullptr if none)
++	[[nodiscard]] std::span<MenuItem* const> companionItems() const { return {items.data(), items.size()}; }
++	[[nodiscard]] MenuItem* companionFocused() const {
++		return (items.size() > 0 && current_item_ >= items.begin() && current_item_ < items.end()) ? *current_item_
++		                                                                                           : nullptr;
++	}
+ 
+ protected:
+ 	deluge::vector<MenuItem*> items;
 diff --git a/src/deluge/gui/menu_item/swing/stumble.h b/src/deluge/gui/menu_item/swing/stumble.h
 new file mode 100644
 index 000000000..662c41d01
@@ -33985,10 +34035,10 @@ index 8ba4446a9..b40f41e82 100644
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..4b958d0ec 100644
+index 51a40bfd2..6bd43de1c 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
-@@ -1,15 +1,68 @@
+@@ -1,15 +1,71 @@
  #include "hid/hid_sysex.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include "extern.h"
@@ -33997,7 +34047,10 @@ index 51a40bfd2..4b958d0ec 100644
  #include "gui/l10n/l10n.h"
 +#include "gui/l10n/language.h"
 +#include "gui/menu_item/menu_item.h"
++#include "gui/menu_item/multi_range.h"
 +#include "gui/menu_item/sample/start_offset.h"
++#include "gui/menu_item/selection.h"
++#include "gui/menu_item/submenu.h"
 +#include "gui/menu_item/value_scaling.h"
 +#include "gui/ui/browser/browser.h"
 +#include "gui/ui/browser/sample_browser.h"
@@ -34057,7 +34110,7 @@ index 51a40bfd2..4b958d0ec 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,4511 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +73,4822 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -38193,6 +38246,291 @@ index 51a40bfd2..4b958d0ec 100644
 +	}
 +	uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 10);
 +}
++// ---- Menu (the sound editor: a clip's menu, the song's, SHIFT + SELECT settings) on the companion, whole ----
++// MENU (0x5A), one message per level, each sent when it changes: version, open (1), levels open, this level, flags
++// (1 = a value being edited, not a list), selected entry (127 none), entry count, title, then per entry: flags (1 =
++// opens a list of its own), name. A value being edited lists its options when it has named ones. All English.
++// Closed: version, open 0. The tablet goes to an entry with 03 25 <level> <entry> <enter> (127 as the level: leave
++// the menu), and turns the select knob with 03 26 <offset + 64>.
++constexpr uint8_t kMenuHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x5A};
++constexpr int32_t kMenuMaxLevels = 8;
++constexpr int32_t kMenuMaxItems = 48;
++constexpr int32_t kMenuNameMax = 24;
++constexpr int32_t kMenuBodyMax = 8 + (kMenuNameMax + 1) + kMenuMaxItems * (kMenuNameMax + 2);
++
++struct MenuLevel {
++	void const* key;                  ///< The list or value this body was built for
++	MenuItem* entries[kMenuMaxItems]; ///< A list's relevant items, to find a tapped one again
++	int32_t count;                    ///< Entries in the body
++	int32_t len;                      ///< Body length, 0 = not built
++	uint32_t sentHash;                ///< Of the body as last sent, 0 = not sent
++	uint8_t body[kMenuBodyMax];
++};
++PLACE_SDRAM_BSS MenuLevel menuLevels[kMenuMaxLevels];
++int32_t menuSentLevels = 0; ///< Levels the tablet was last told are open
++bool menuWasOpen = false;
++
++bool menuIsOpen() {
++	return getCurrentUI() == &soundEditor && soundEditor.navigationDepth < kMenuMaxLevels;
++}
++
++/// The English of what a menu item shows as its name (its own string when that's what it shows, else only if certain)
++std::string_view menuEnglish(MenuItem* item) {
++	const std::string_view shown = item->getName();
++	const auto own = deluge::l10n::getView(*deluge::l10n::chosenLanguage, item->name);
++	const int16_t index = (own.data() == shown.data()) ? util::to_underlying(item->name) : resolveString(shown, true);
++	return englishFor(shown, index);
++}
++
++int32_t putMenuName(uint8_t* out, std::string_view text) {
++	int32_t n = 0;
++	for (; n < kMenuNameMax && n < static_cast<int32_t>(text.size()) && text[n] != '\0'; n++) {
++		const char c = text[n];
++		out[1 + n] = (c >= 0x20 && c <= 0x7E) ? c : '?';
++	}
++	out[0] = n;
++	return n + 1;
++}
++
++uint32_t menuHash(uint8_t const* body, int32_t len) {
++	uint32_t h = 2166136261u;
++	for (int32_t i = 0; i < len; i++) {
++		if (i != 2) { // The open level count is sent apart (see sendMenu)
++			h = (h ^ body[i]) * 16777619u;
++		}
++	}
++	return h | 1;
++}
++
++/// Build level k's body if what it shows changed, else just its selection
++void buildMenuLevel(int32_t k, int32_t levels) {
++	MenuLevel& c = menuLevels[k];
++	MenuItem* item = soundEditor.menuItemNavigationRecord[k];
++	MenuItem* pathChild = k < soundEditor.navigationDepth ? soundEditor.menuItemNavigationRecord[k + 1] : nullptr;
++	if (pathChild == &deluge::gui::menu_item::multiRangeMenu) {
++		pathChild = deluge::gui::menu_item::multiRangeMenu.menuItemHeadingTo;
++	}
++
++	if (item->isSubmenu()) {
++		auto* list = static_cast<deluge::gui::menu_item::Submenu*>(item);
++		MenuItem* found[kMenuMaxItems];
++		int32_t count = 0;
++		for (MenuItem* entry : list->companionItems()) {
++			if (count < kMenuMaxItems
++			    && entry->isRelevant(soundEditor.currentModControllable, soundEditor.currentSourceIndex)) {
++				found[count++] = entry;
++			}
++		}
++		MenuItem* target = pathChild != nullptr ? pathChild : list->companionFocused();
++		int32_t selected = 127;
++		for (int32_t e = 0; e < count; e++) {
++			if (found[e] == target) {
++				selected = e;
++			}
++		}
++		const bool same = c.len > 0 && c.key == item && c.count == count
++		                  && memcmp(c.entries, found, count * sizeof(MenuItem*)) == 0 && c.body[4] == 0;
++		if (!same) {
++			memcpy(c.entries, found, count * sizeof(MenuItem*));
++			c.key = item;
++			c.count = count;
++			int32_t i = 0;
++			c.body[i++] = kStateVersion;
++			c.body[i++] = 1;
++			c.body[i++] = levels;
++			c.body[i++] = k;
++			c.body[i++] = 0;
++			c.body[i++] = selected;
++			c.body[i++] = count;
++			i += putMenuName(c.body + i, menuEnglish(item));
++			for (int32_t e = 0; e < count; e++) {
++				c.body[i++] = found[e]->isSubmenu() ? 1 : 0;
++				i += putMenuName(c.body + i, menuEnglish(found[e]));
++			}
++			c.len = i;
++		}
++		c.body[2] = levels;
++		c.body[5] = selected;
++		return;
++	}
++
++	// A value being edited: its options, when it has named ones
++	deluge::gui::menu_item::Selection* sel = item->asSelection();
++	int32_t selected = 127;
++	if (sel != nullptr) {
++		selected = std::clamp<int32_t>(sel->getValue(), 0, 126);
++	}
++	if (c.len == 0 || c.key != item || c.body[4] != 1) {
++		c.key = item;
++		c.count = 0;
++		int32_t i = 0;
++		c.body[i++] = kStateVersion;
++		c.body[i++] = 1;
++		c.body[i++] = levels;
++		c.body[i++] = k;
++		c.body[i++] = 1;
++		c.body[i++] = selected;
++		const int32_t countAt = i++;
++		i += putMenuName(c.body + i, menuEnglish(item));
++		if (sel != nullptr) {
++			const auto options = sel->getOptions();
++			if (options.size() <= kMenuMaxItems) {
++				for (std::string_view option : options) {
++					c.body[i++] = 0;
++					i += putMenuName(c.body + i, englishFor(option, resolveString(option, true)));
++					c.count++;
++				}
++			}
++		}
++		c.body[countAt] = c.count;
++		c.len = i;
++	}
++	c.body[2] = levels;
++	c.body[5] = c.count > 0 ? selected : 127;
++}
++
++/// Send each menu level that changed, and the close when it shuts. Returns false if something must go again.
++bool sendMenu(MIDICable& cable, bool force) {
++	if (force) {
++		for (auto& level : menuLevels) {
++			level.sentHash = 0;
++		}
++		menuSentLevels = -1;
++	}
++	if (!menuIsOpen()) {
++		if (!menuWasOpen) {
++			return true;
++		}
++		const uint8_t closed[2] = {kStateVersion, 0};
++		if (!sendFramed(cable, kMenuHeader, false, closed, 2)) {
++			return false;
++		}
++		menuWasOpen = false;
++		menuSentLevels = 0;
++		for (auto& level : menuLevels) {
++			level.sentHash = 0;
++			level.len = 0;
++			level.key = nullptr;
++		}
++		return true;
++	}
++	menuWasOpen = true;
++	const int32_t levels = soundEditor.navigationDepth + 1;
++	bool ok = true;
++	for (int32_t k = 0; k < levels; k++) {
++		buildMenuLevel(k, levels);
++		MenuLevel& c = menuLevels[k];
++		const uint32_t hash = menuHash(c.body, c.len);
++		// The deepest level also carries a change in how many are open (going back leaves the rest as they were)
++		if (hash == c.sentHash && !(k == levels - 1 && levels != menuSentLevels)) {
++			continue;
++		}
++		if (!sendFramed(cable, kMenuHeader, false, c.body, c.len)) {
++			ok = false;
++			break;
++		}
++		c.sentHash = hash;
++		if (k == levels - 1) {
++			menuSentLevels = levels;
++		}
++	}
++	for (int32_t k = levels; k < kMenuMaxLevels; k++) {
++		menuLevels[k].sentHash = 0; // Closed: whatever opens there next goes again
++	}
++	return ok;
++}
++
++// The tablet's menu action, run from the UI timer like a hand on the buttons. pendingMenu: 0 none, 1 go to entry
++// pendingMenuEntry of level pendingMenuLevel (BACK up to it, turn the select knob to the entry, then SELECT if
++// pendingMenuEnter), 2 leave the menu (BACK until it closes). pendingMenuTurn: select knob turns waiting.
++int32_t pendingMenu = 0;
++int32_t pendingMenuLevel = 0;
++int32_t pendingMenuEntry = 0;
++bool pendingMenuEnter = false;
++bool pendingMenuFinish = false; ///< The held button is the last step
++int32_t pendingMenuSteps = 0;
++int32_t pendingMenuTurn = 0;
++deluge::hid::Button pendingMenuButton = deluge::hid::button::BACK;
++bool pendingMenuDown = false;
++
++/// Press a button: it's let go on the next run. Returns true to run again.
++bool pressMenuButton(deluge::hid::Button button, bool last) {
++	const ActionResult result = Buttons::buttonAction(button, true, sdRoutineLock);
++	if (result == ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE) {
++		return true;
++	}
++	pendingMenuButton = button;
++	pendingMenuDown = true;
++	pendingMenuFinish = last;
++	return true;
++}
++
++bool runPendingMenu() {
++	if (pendingMenu == 0 && pendingMenuTurn == 0 && !pendingMenuDown) {
++		return false;
++	}
++	if (sdRoutineLock) {
++		return true; // Card routine running: try again after it
++	}
++	if (pendingMenuDown) {
++		const ActionResult result = Buttons::buttonAction(pendingMenuButton, false, sdRoutineLock);
++		if (result == ActionResult::REMIND_ME_OUTSIDE_CARD_ROUTINE) {
++			return true;
++		}
++		pendingMenuDown = false;
++		if (pendingMenuFinish) {
++			pendingMenu = 0;
++			pendingMenuFinish = false;
++		}
++		return pendingMenu != 0 || pendingMenuTurn != 0;
++	}
++	if (getCurrentUI() != &soundEditor || currentUIMode != UI_MODE_NONE) {
++		pendingMenu = 0;
++		pendingMenuTurn = 0;
++		return false;
++	}
++	if (pendingMenu == 0) {
++		const int32_t turn = std::clamp<int32_t>(pendingMenuTurn, -63, 63);
++		pendingMenuTurn = 0;
++		soundEditor.selectEncoderAction(static_cast<int8_t>(turn));
++		return false;
++	}
++	pendingMenuTurn = 0; // A jump replaces knob turns still waiting
++	if (++pendingMenuSteps > 2 * kMenuMaxLevels + 4) {
++		pendingMenu = 0;
++		return false;
++	}
++	if (pendingMenu == 2 || soundEditor.navigationDepth > pendingMenuLevel) {
++		return pressMenuButton(deluge::hid::button::BACK, false);
++	}
++	MenuItem* item = soundEditor.getCurrentMenuItem();
++	MenuLevel& c = menuLevels[pendingMenuLevel];
++	if (soundEditor.navigationDepth != pendingMenuLevel || !item->isSubmenu() || c.key != item || c.body[4] != 0
++	    || pendingMenuEntry >= c.count) {
++		pendingMenu = 0; // Not the list the tablet saw (it went back past it, or changed): do nothing rather than guess
++		return false;
++	}
++	auto* list = static_cast<deluge::gui::menu_item::Submenu*>(item);
++	MenuItem* focused = list->companionFocused();
++	int32_t at = -1;
++	for (int32_t e = 0; e < c.count; e++) {
++		if (c.entries[e] == focused) {
++			at = e;
++		}
++	}
++	if (at < 0) {
++		pendingMenu = 0;
++		return false;
++	}
++	if (at != pendingMenuEntry) {
++		soundEditor.selectEncoderAction(static_cast<int8_t>(pendingMenuEntry - at));
++	}
++	if (!pendingMenuEnter) {
++		pendingMenu = 0;
++		return false;
++	}
++	return pressMenuButton(deluge::hid::button::SELECT_ENC, true);
++}
 +} // namespace
 +
 +void HIDSysex::requestState(MIDICable& cable, uint8_t* data, int32_t len) {
@@ -38364,6 +38702,27 @@ index 51a40bfd2..4b958d0ec 100644
 +		uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
 +		return;
 +	}
++	if (data[2] == 25) {
++		// 25 <level> <entry> <enter> = go to that entry of that open menu level (BACK up to it, turn to it), then
++		// press SELECT if enter is 1; 127 as the level = leave the menu
++		if (len >= 6) {
++			pendingMenu = data[3] == 127 ? 2 : 1;
++			pendingMenuLevel = data[3];
++			pendingMenuEntry = data[4];
++			pendingMenuEnter = data[5] != 0;
++			pendingMenuSteps = 0;
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 26) {
++		// 26 <offset + 64> = turn the select knob that far in the open menu
++		if (len >= 4) {
++			pendingMenuTurn += static_cast<int32_t>(data[3]) - 64;
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
 +	if (data[2] == 2) {
 +		// Tapped a picker tile: choose that option from the UI timer, like a select press (MIDI arrives on a task
 +		// that can run inside the SD card routine)
@@ -38464,6 +38823,11 @@ index 51a40bfd2..4b958d0ec 100644
 +			refreshPanels = true; // Try again next time round
 +			uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 40);
 +		}
++	}
++
++	// The open menu, a level at a time (each up to about 1300 bytes)
++	if (!sendMenu(*midiStateCable, force)) {
++		uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 40);
 +	}
 +
 +	// The browser window is up to about 1300 bytes: wait for room (only when there is one, so knobs and panels aren't
@@ -38569,7 +38933,7 @@ index 51a40bfd2..4b958d0ec 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +4593,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +4907,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -38580,7 +38944,7 @@ index 51a40bfd2..4b958d0ec 100644
  	default:
  		break;
  	}
-@@ -79,6 +4641,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +4955,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -38589,7 +38953,7 @@ index 51a40bfd2..4b958d0ec 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +4800,459 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +5114,460 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -39022,7 +39386,8 @@ index 51a40bfd2..4b958d0ec 100644
 +
 +void HIDSysex::runPendingPick() {
 +	const bool again = runPendingActions();
-+	if (runPendingBrowser() || again) {
++	const bool menuAgain = runPendingMenu();
++	if (runPendingBrowser() || again || menuAgain) {
 +		uiTimerManager.setTimer(TimerName::COMPANION_PICK, 20);
 +		return;
 +	}
