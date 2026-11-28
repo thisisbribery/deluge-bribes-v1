@@ -27487,7 +27487,7 @@ index f4e341a9b..0063cf875 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..3633dd605 100644
+index 7bbd559f6..a1ba0a3bd 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -27815,7 +27815,7 @@ index 7bbd559f6..3633dd605 100644
                                              }};
  
  PLACE_SDRAM_BSS ToggleBool defaultUseSharps{STRING_FOR_DEFAULT_UI_SHARPS, STRING_FOR_DEFAULT_UI_SHARPS,
-@@ -1469,14 +1556,844 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
+@@ -1469,14 +1556,858 @@ PLACE_SDRAM_DATA std::array<MenuItem*, 3> dxMenuItems = {
  };
  PLACE_SDRAM_BSS menu_item::Submenu dxMenu{STRING_FOR_DX_1, dxMenuItems};
  
@@ -28536,6 +28536,20 @@ index 7bbd559f6..3633dd605 100644
 +	return isDrumSynth(sound) && layoutOwnsPad(sound->sources[0].drumPatch().engine(), x, y);
 +}
 +
++MenuItem* companionSettingItem(int32_t which, int32_t& source) {
++	source = which == 2 ? 1 : 0;
++	switch (which) {
++	case 0:
++		return &synthModeMenu;
++	case 1:
++		return &osc0TypeMenu;
++	case 2:
++		return &osc1TypeMenu;
++	default:
++		return nullptr;
++	}
++}
++
 +MenuItem* soundShortcutFor(const Sound* sound, int32_t x, int32_t y) {
 +	MenuItem* usual = paramShortcutsForSounds[x][y];
 +	if (!isDrumSynth(sound)) {
@@ -28660,7 +28674,7 @@ index 7bbd559f6..3633dd605 100644
  PLACE_SDRAM_BSS bend_range::PerFinger drumBendRangeMenu{STRING_FOR_BEND_RANGE}; // The single option available for Drums
  PLACE_SDRAM_BSS patched_param::Integer volumeMenu{STRING_FOR_VOLUME_LEVEL, STRING_FOR_MASTER_LEVEL,
                                                    params::GLOBAL_VOLUME_POST_FX, BAR};
-@@ -1518,8 +2435,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
+@@ -1518,8 +2449,11 @@ PLACE_SDRAM_BSS Submenu soundEditorRootDrumActionsMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
      STRING_FOR_SOUND,
      {
@@ -28672,7 +28686,7 @@ index 7bbd559f6..3633dd605 100644
          &arpMenu,
          &randomizerMenu,
          &audioCompMenu,
-@@ -1544,6 +2464,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1544,6 +2478,8 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -28681,7 +28695,7 @@ index 7bbd559f6..3633dd605 100644
          &outputMidiSubmenu,
      },
  };
-@@ -1551,6 +2473,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
+@@ -1551,6 +2487,10 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenu{
  PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
      STRING_FOR_SOUND,
      {
@@ -28692,7 +28706,7 @@ index 7bbd559f6..3633dd605 100644
          &soundEditorRootDrumActionsMenu,
          &soundMasterMenu,
          &arpMenu,
-@@ -1577,7 +2503,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
+@@ -1577,7 +2517,6 @@ PLACE_SDRAM_BSS Submenu soundEditorRootMenuDrum{
          &drumBendRangeMenu,
          &patchCablesMenu,
          &sequenceDirectionMenu,
@@ -28700,7 +28714,7 @@ index 7bbd559f6..3633dd605 100644
      },
  };
  
-@@ -1668,8 +2593,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
+@@ -1668,8 +2607,13 @@ PLACE_SDRAM_BSS note_row::IterancePreset noteRowIteranceMenu{STRING_FOR_NOTE_ROW
  PLACE_SDRAM_BSS note_row::Fill noteRowFillMenu{STRING_FOR_NOTE_ROW_EDITOR_FILL};
  
  // Root menu for Note Row Editor
@@ -28714,7 +28728,7 @@ index 7bbd559f6..3633dd605 100644
                                                           &sequenceDirectionMenu,
                                                           &noteRowProbabilityMenu,
                                                           &noteRowIteranceMenu,
-@@ -1697,12 +2627,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1697,12 +2641,16 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
      STRING_FOR_MIDI_INST_MENU_TITLE,
      {
          &soundEditorRootActionsMenuMIDIOrCV,
@@ -28731,7 +28745,7 @@ index 7bbd559f6..3633dd605 100644
          &mpeyToModWheelMenu,
          &midiMPEMenu,
          &sequenceDirectionMenu,
-@@ -1713,6 +2647,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
+@@ -1713,6 +2661,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMIDIOrCV{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuMidiDrum{
      STRING_FOR_MIDI,
      {
@@ -28740,7 +28754,7 @@ index 7bbd559f6..3633dd605 100644
          &soundEditorRootDrumActionsMenu,
          &arpMenuMIDIOrCV,
          &randomizerMenu,
-@@ -1833,6 +2769,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
+@@ -1833,6 +2783,8 @@ PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuSongView{
          &globalFiltersMenu,
          &globalFXMenu,
          &swingIntervalMenu,
@@ -28749,7 +28763,7 @@ index 7bbd559f6..3633dd605 100644
          &activeScaleMenu,
          &songThresholdRecordingSubmenu,
          &configureSongMacrosMenu,
-@@ -1882,12 +2820,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
+@@ -1882,12 +2834,13 @@ PLACE_SDRAM_BSS Submenu settingsActionsSubmenu{
  PLACE_SDRAM_BSS menu_item::Submenu soundEditorRootMenuKitGlobalFX{
      STRING_FOR_KIT_GLOBAL_FX,
      {
@@ -28764,7 +28778,7 @@ index 7bbd559f6..3633dd605 100644
          &globalSidechainMenu,
      },
  };
-@@ -1909,6 +2848,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
+@@ -1909,6 +2862,7 @@ PLACE_SDRAM_BSS Submenu settingsRootMenu{
          &runtimeFeatureSettingsMenu,
          &batteryLevelMenu,
          &voiceUsageMenu,
@@ -28772,7 +28786,7 @@ index 7bbd559f6..3633dd605 100644
          &firmwareVersionMenu,
      },
  };
-@@ -1925,7 +2865,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
+@@ -1925,7 +2879,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSounds[][kDisplayHeight] = {
      {&modulator0Volume,		&modulator0TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator0PhaseMenu,	&modulator0FeedbackMenu,	comingSoonMenu,					&sequenceDirectionMenu             },
      {&modulator1Volume,		&modulator1TransposeMenu,	comingSoonMenu,                 comingSoonMenu,                 &modulator1PhaseMenu,	&modulator1FeedbackMenu,	&modulatorDestMenu,				&stutterRateMenu                   },
      {&volumeMenu,			&masterTransposeMenu,		&vibratoMenu,                   &panMenu,                       &synthModeMenu,			&srrMenu,					&bitcrushMenu,					&clippingMenu                      },
@@ -28781,7 +28795,7 @@ index 7bbd559f6..3633dd605 100644
      {&env1ReleaseMenu,		&env1SustainMenu,			&env1DecayMenu,                 &env1AttackMenu,                &lpfMorphMenu,			&lpfModeMenu,				&lpfResMenu,					&lpfFreqMenu                       },
      {&env2ReleaseMenu,		&env2SustainMenu,			&env2DecayMenu,                 &env2AttackMenu,                &hpfMorphMenu,			&hpfModeMenu,				&hpfResMenu,					&hpfFreqMenu                       },
      {&sidechainReleaseMenu,	&sidechainSyncMenu,			&sidechainVolumeShortcutMenu,   &sidechainAttackMenu,           &sidechainShapeMenu,	&sidechainSendMenu,			&bassMenu,						&bassFreqMenu                      },
-@@ -1943,7 +2883,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1943,7 +2897,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,	                nullptr,	nullptr,	&stutterDirectionMenu},
@@ -28790,7 +28804,7 @@ index 7bbd559f6..3633dd605 100644
      {nullptr,	        &voice::polyphonicVoiceCountMenu, nullptr,  nullptr,	        &unison::stereoSpreadMenu,  &compRatio,	nullptr,	nullptr              },
      {&env3ReleaseMenu,	&env3SustainMenu,	    &env3DecayMenu,	    &env3AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
      {&env4ReleaseMenu,	&env4SustainMenu,	    &env4DecayMenu,	    &env4AttackMenu,	nullptr,	                nullptr,	nullptr,	nullptr              },
-@@ -1951,10 +2891,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
+@@ -1951,10 +2905,32 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForSoundsSecondLayer[][kDisplayHeight]
      {nullptr,	        nullptr,	            nullptr,	        nullptr,	        nullptr,					nullptr,	nullptr,	nullptr              },
      {&lfo3RateMenu,	    &lfo3SyncMenu,	        &lfo3TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
      {&lfo4RateMenu,	    &lfo4SyncMenu,	        &lfo4TypeMenu,	    nullptr,	        nullptr,	                nullptr,	nullptr,	nullptr              },
@@ -28824,7 +28838,7 @@ index 7bbd559f6..3633dd605 100644
  PLACE_SDRAM_DATA MenuItem* paramShortcutsForAudioClips[kDisplayWidth][kDisplayHeight] = {
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
      {nullptr,                 &audioClipReverseMenu,   nullptr,                    &sample0PitchSpeedMenu,       nullptr,             &file0SelectorMenu,  &audioClipInterpolationMenu,&audioClipSampleMarkerEditorMenuEnd},
-@@ -2000,7 +2962,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
+@@ -2000,7 +2976,7 @@ PLACE_SDRAM_DATA MenuItem* paramShortcutsForKitGlobalFX[][kDisplayHeight] = {
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        nullptr,                     nullptr,                nullptr,                  nullptr             				 },
@@ -28833,7 +28847,7 @@ index 7bbd559f6..3633dd605 100644
      {nullptr,              	 nullptr,                 nullptr,                        nullptr,                        nullptr,                     &threshold,             nullptr,                  nullptr                            },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalLPFMorphMenu,         &lpfModeMenu,           &globalLPFResMenu,        &globalLPFFreqMenu                 },
      {nullptr,                 nullptr,                 nullptr,                        nullptr,                        &globalHPFMorphMenu,         &hpfModeMenu,           &globalHPFResMenu,        &globalHPFFreqMenu                 },
-@@ -2024,7 +2986,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
+@@ -2024,7 +3000,7 @@ PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForSound = {
  PLACE_SDRAM_BSS deluge::vector<HorizontalMenu*> horizontalMenusChainForKit = {
  	&kitClipMasterMenu,
  	&globalFiltersMenuGroup, &globalEQMenu, &globalModFXMenu,
@@ -28843,7 +28857,7 @@ index 7bbd559f6..3633dd605 100644
  	&arpMenuGroupKit, &randomizerMenu
  };
 diff --git a/src/deluge/gui/ui/menus.h b/src/deluge/gui/ui/menus.h
-index 09efdfd62..2eb09fbef 100644
+index 09efdfd62..1e1f3586e 100644
 --- a/src/deluge/gui/ui/menus.h
 +++ b/src/deluge/gui/ui/menus.h
 @@ -4,6 +4,7 @@
@@ -28879,10 +28893,13 @@ index 09efdfd62..2eb09fbef 100644
  extern gui::menu_item::osc::AudioRecorder sample0RecorderMenu;
  extern gui::menu_item::osc::AudioRecorder sample1RecorderMenu;
  extern gui::menu_item::audio_clip::SampleMarkerEditor audioClipSampleMarkerEditorMenuStart;
-@@ -113,7 +118,39 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
+@@ -113,7 +118,42 @@ extern gui::menu_item::source::patched_param::ModulatorLevel modulator1Volume;
  extern MenuItem* midiOrCVParamShortcuts[kDisplayHeight];
  extern MenuItem* gateDrumParamShortcuts[kDisplayHeight];
  extern MenuItem* paramShortcutsForSounds[kDisplayWidth][kDisplayHeight];
++/// For the companion: a setting it can open on the Deluge (0 SYNTH MODE, 1 osc 1 type, 2 osc 2 type), or nullptr;
++/// source is set to the oscillator it edits
++MenuItem* companionSettingItem(int32_t which, int32_t& source);
 +/// In 303 mode, the menu item that takes over a shortcut pad, or nullptr
 +MenuItem* tb303ShortcutAt(int32_t x, int32_t y);
 +/// Whether a shortcut pad item is the vibrato pad (LFO 1 to pitch)
@@ -34040,10 +34057,10 @@ index 8ba4446a9..b40f41e82 100644
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..49ab001aa 100644
+index 51a40bfd2..84b840acf 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
-@@ -1,15 +1,72 @@
+@@ -1,15 +1,73 @@
  #include "hid/hid_sysex.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include "extern.h"
@@ -34091,6 +34108,7 @@ index 51a40bfd2..49ab001aa 100644
 +#include "model/sample/sample_cache.h"
 +#include "model/sample/sample_holder_for_voice.h"
 +#include "model/song/song.h"
++#include "model/sync.h"
 +#include "model/voice/voice.h"
 +#include "model/voice/voice_sample.h"
 +#include "modulation/patch/patch_cable_set.h"
@@ -34116,7 +34134,7 @@ index 51a40bfd2..49ab001aa 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +74,5075 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +75,5624 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -36338,6 +36356,24 @@ index 51a40bfd2..49ab001aa 100644
 +	XIA_VARIANT,   ///< XIA: the variant (L / B / C, G / I / H), as SYNTH MODE sets it
 +	RINGS_MODEL,   ///< BRIBERING: its model
 +	RINGS_POLY,    ///< BRIBERING: strings per voice
++	// The SOUND table (every setting of the sound, below the panels): stepped ones are sent as the choice itself
++	MASTER_TRANSPOSE, ///< The sound's transpose, -48 to +48 semitones (cents kept)
++	POLY,             ///< PolyphonyMode (kits add CHOKE)
++	PRIORITY,         ///< VoicePriority
++	FILTER_ROUTE,     ///< FilterRoute
++	LFO_SYNC,         ///< An LFO's sync (param: LFO id), as the sync menu's option (0 = off)
++	DELAY_SYNC,       ///< The delay's sync, the same way
++	DELAY_PINGPONG,   ///< 0 / 1
++	DELAY_ANALOG,     ///< 0 digital, 1 analog
++	CRUSH_TYPE,       ///< dsp::CrushType
++	SAT_TYPE,         ///< dsp::SaturationType
++	CLIP_TYPE,        ///< The song's master clip type (dsp::MasterClipType)
++	CLIP_DRIVE,       ///< The song's master clip drive, 0 to 24 dB
++	CLIP_CEIL,        ///< The song's master clip ceiling, -12 to 0 dB, sent plus 12
++	SIDECHAIN_SEND,   ///< Send to sidechain, 0 to 50
++	REVERB,           ///< The song's reverb (param: 0 room size, 1 damping, 2 width), 0 to 50
++	UNISON_SPREAD,    ///< Unison stereo spread, 0 to 50
++	PAN_SPREAD,       ///< Voice pan spread, 0 to 50
 +};
 +struct DrumPanelControl {
 +	DKind kind;
@@ -36835,14 +36871,29 @@ index 51a40bfd2..49ab001aa 100644
 +	return (pos * 2 * kDrumTranspose + kPanelMax / 2) / kPanelMax - kDrumTranspose;
 +}
 +
-+int32_t readDrumPanel(Sound* sound, ParamManagerForTimeline* params, uint8_t kind, int32_t* v) {
++/// Sync menu option from a type and level (as SyncLevel::syncTypeAndLevelToMenuOption)
++int32_t syncOption(SyncType type, SyncLevel level) {
++	if (level == SYNC_LEVEL_NONE) {
++		return 0;
++	}
++	return std::clamp<int32_t>(static_cast<int32_t>(type)
++	                               + (static_cast<int32_t>(level) - (type != SYNC_TYPE_EVEN ? 1 : 0)),
++	                           0, NUM_SYNC_VALUES - 1);
++}
++int32_t panelFromSteps(int32_t value, int32_t max) {
++	return (std::clamp<int32_t>(value, 0, max) * kPanelMax + max / 2) / max;
++}
++int32_t stepsFromPanel(int32_t pos, int32_t max) {
++	return (std::clamp<int32_t>(pos, 0, kPanelMax) * max + kPanelMax / 2) / kPanelMax;
++}
++
++/// One control's position, as the sound has it
++int32_t readControl(Sound* sound, ParamManagerForTimeline* params, const DrumPanelControl& c) {
 +	PatchedParamSet* patched = params->getPatchedParamSet();
 +	UnpatchedParamSet* unpatched = params->getUnpatchedParamSet();
 +	const auto& patch = sound->sources[0].drumPatch();
 +	DxPatch* dx = sound->sources[0].dxPatch;
-+	const int32_t count = drumPanelCount(kind);
-+	for (int32_t id = 0; id < count; id++) {
-+		const DrumPanelControl c = drumPanelControl(sound, kind, id);
++	{
 +		int32_t pos = 0;
 +		switch (c.kind) {
 +		case DKind::NONE:
@@ -36920,8 +36971,72 @@ index 51a40bfd2..49ab001aa 100644
 +		case DKind::RINGS_POLY:
 +			pos = patch.get(DP::RINGS_POLY) != 0 ? 1 : 0;
 +			break;
++		case DKind::MASTER_TRANSPOSE:
++			pos = transposeToPanel(sound->transpose);
++			break;
++		case DKind::POLY:
++			pos = std::min<int32_t>(util::to_underlying(sound->polyphonic), c.max);
++			break;
++		case DKind::PRIORITY:
++			pos = std::min<int32_t>(util::to_underlying(sound->voicePriority), c.max);
++			break;
++		case DKind::FILTER_ROUTE:
++			pos = std::min<int32_t>(util::to_underlying(sound->filterRoute), c.max);
++			break;
++		case DKind::LFO_SYNC:
++			pos = syncOption(sound->lfoConfig[c.param].syncType, sound->lfoConfig[c.param].syncLevel);
++			break;
++		case DKind::DELAY_SYNC:
++			pos = syncOption(sound->delay.syncType, sound->delay.syncLevel);
++			break;
++		case DKind::DELAY_PINGPONG:
++			pos = sound->delay.pingPong ? 1 : 0;
++			break;
++		case DKind::DELAY_ANALOG:
++			pos = sound->delay.analog ? 1 : 0;
++			break;
++		case DKind::CRUSH_TYPE:
++			pos = std::min<int32_t>(util::to_underlying(sound->crushType), c.max);
++			break;
++		case DKind::SAT_TYPE:
++			pos = std::min<int32_t>(util::to_underlying(sound->saturation.type), c.max);
++			break;
++		case DKind::CLIP_TYPE:
++			pos = std::min<int32_t>(util::to_underlying(currentSong->masterClip.type), c.max);
++			break;
++		case DKind::CLIP_DRIVE:
++			pos = std::clamp<int32_t>(currentSong->masterClip.driveDb, 0, deluge::dsp::MasterClip::kMaxDriveDb);
++			break;
++		case DKind::CLIP_CEIL:
++			pos = std::clamp<int32_t>(currentSong->masterClip.ceilingDb - deluge::dsp::MasterClip::kMinCeilingDb, 0,
++			                          -deluge::dsp::MasterClip::kMinCeilingDb);
++			break;
++		case DKind::SIDECHAIN_SEND:
++			pos = panelFromSteps(
++			    static_cast<int32_t>((static_cast<uint64_t>(sound->sideChainSendLevel) * 50 + 1073741824) >> 31), 50);
++			break;
++		case DKind::REVERB: {
++			const float f = c.param == 0   ? AudioEngine::reverb.getRoomSize()
++			                : c.param == 1 ? AudioEngine::reverb.getDamping()
++			                               : AudioEngine::reverb.getWidth();
++			pos = panelFromSteps(static_cast<int32_t>(std::round(f * 50)), 50);
++			break;
 +		}
-+		v[id] = pos;
++		case DKind::UNISON_SPREAD:
++			pos = panelFromSteps(sound->unisonStereoSpread, 50);
++			break;
++		case DKind::PAN_SPREAD:
++			pos = panelFromSteps(sound->voiceStereoSpread, kMaxVoiceStereoSpread);
++			break;
++		}
++		return pos;
++	}
++}
++
++int32_t readDrumPanel(Sound* sound, ParamManagerForTimeline* params, uint8_t kind, int32_t* v) {
++	const int32_t count = drumPanelCount(kind);
++	for (int32_t id = 0; id < count; id++) {
++		v[id] = readControl(sound, params, drumPanelControl(sound, kind, id));
 +	}
 +	return count;
 +}
@@ -37039,11 +37154,11 @@ index 51a40bfd2..49ab001aa 100644
 +	}
 +}
 +
-+void applyDrum(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params, uint8_t kind,
-+               int32_t id, int32_t pos) {
++void applyControl(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params,
++                  const DrumPanelControl& c, int32_t pos) {
 +	namespace ds = deluge::dsp::drum_synth;
-+	const DrumPanelControl c = drumPanelControl(sound, kind, id);
-+	auto& patch = sound->sources[0].editDrumPatch();
++	// Only the drum engine controls make the drum patch: a synth's settings never give it one
++	auto patch = [&]() -> ds::Patch& { return sound->sources[0].editDrumPatch(); };
 +	DxPatch* dx = sound->sources[0].dxPatch;
 +	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
 +	char memory[MODEL_STACK_MAX_SIZE];
@@ -37056,10 +37171,10 @@ index 51a40bfd2..49ab001aa 100644
 +		setPatched(modelStack, ds::kDrumControlParams[drumSlotOf(c)], DC::fromKnob(controlKnobFromPanel(pos)));
 +		break;
 +	case DKind::CHOICE:
-+		patch.set(static_cast<DP::Param>(c.param), std::min<int32_t>(pos, c.max));
++		patch().set(static_cast<DP::Param>(c.param), std::min<int32_t>(pos, c.max));
 +		break;
 +	case DKind::NUMBER:
-+		patch.set(static_cast<DP::Param>(c.param), byteFromPanel(pos));
++		patch().set(static_cast<DP::Param>(c.param), byteFromPanel(pos));
 +		break;
 +	case DKind::TRANSPOSE: {
 +		Source& source = sound->sources[c.param];
@@ -37174,7 +37289,7 @@ index 51a40bfd2..49ab001aa 100644
 +			row.transpose = 0; // A synth plays it at the note
 +		}
 +		panelRowSetup(modelStack, sound, params, row);
-+		patch.setUltrakikPreset(choice);
++		patch().setUltrakikPreset(choice);
 +		panelSetControls(modelStack, ds::ultrakikControlsFor(choice));
 +		sound->setDrumSynthKnobs(ds::Engine::ULTRAKIK);
 +		view.setKnobIndicatorLevels();
@@ -37183,16 +37298,16 @@ index 51a40bfd2..49ab001aa 100644
 +	}
 +	case DKind::XIA_VARIANT: {
 +		// As SYNTH MODE moving to another variant: that variant's own preset
-+		const auto engine = patch.engine();
++		const auto engine = patch().engine();
 +		const int32_t variant = std::min<int32_t>(pos, c.max);
-+		if (!ds::isXia(engine) || variant == patch.get(DP::XIA_VARIANT)) {
++		if (!ds::isXia(engine) || variant == patch().get(DP::XIA_VARIANT)) {
 +			break;
 +		}
 +		const ds::RowSetup row = ds::rowSetupForEngine(engine, variant);
 +		panelRowSetup(modelStack, sound, params, row);
-+		patch.setXiaPreset(engine, variant);
-+		patch.set(DP::SNAPPY_DECAY, ds::snappyByDefault(engine) ? 1 : 0);
-+		panelSetControls(modelStack, ds::controlsFromPatch(patch));
++		patch().setXiaPreset(engine, variant);
++		patch().set(DP::SNAPPY_DECAY, ds::snappyByDefault(engine) ? 1 : 0);
++		panelSetControls(modelStack, ds::controlsFromPatch(patch()));
 +		if (row.engineDecay >= 0) {
 +			setPatched(modelStack, ds::kDrumControlParams[DC::COMMON_DECAY], DC::fromValue(row.engineDecay));
 +		}
@@ -37204,14 +37319,102 @@ index 51a40bfd2..49ab001aa 100644
 +	case DKind::RINGS_POLY: {
 +		const auto param = c.kind == DKind::RINGS_MODEL ? DP::RINGS_MODEL : DP::RINGS_POLY;
 +		const int32_t value = std::min<int32_t>(pos, c.max);
-+		if (patch.get(param) != value) {
++		if (patch().get(param) != value) {
 +			sound->killAllVoices(); // As its menus do
-+			patch.set(param, value);
++			patch().set(param, value);
 +			panelRingsVoiceLimit(sound);
 +		}
 +		break;
 +	}
++	case DKind::MASTER_TRANSPOSE: {
++		const int32_t transpose = transposeFromPanel(pos);
++		if (sound->transpose != transpose) {
++			sound->transpose = transpose;
++			sound->recalculateAllVoicePhaseIncrements(flags());
++		}
++		break;
 +	}
++	case DKind::POLY: {
++		// CHOKE only in a kit
++		const int32_t top = currentKitClip() != nullptr ? c.max : std::min<int32_t>(c.max, 3);
++		sound->polyphonic = static_cast<PolyphonyMode>(std::min<int32_t>(pos, top));
++		break;
++	}
++	case DKind::PRIORITY:
++		sound->voicePriority = static_cast<VoicePriority>(std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::FILTER_ROUTE:
++		sound->filterRoute = static_cast<FilterRoute>(std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::LFO_SYNC: {
++		const int32_t option = std::min<int32_t>(pos, NUM_SYNC_VALUES - 1);
++		LFOConfig& lfo = sound->lfoConfig[c.param];
++		if (syncOption(lfo.syncType, lfo.syncLevel) != option) {
++			lfo.syncType = syncValueToSyncType(option);
++			lfo.syncLevel = syncValueToSyncLevel(option);
++			sound->resyncGlobalLFOs(); // As the LFO sync menu
++			sound->setupPatchingForAllParamManagers(currentSong);
++		}
++		break;
++	}
++	case DKind::DELAY_SYNC: {
++		const int32_t option = std::min<int32_t>(pos, NUM_SYNC_VALUES - 1);
++		sound->delay.syncType = syncValueToSyncType(option);
++		sound->delay.syncLevel = syncValueToSyncLevel(option);
++		break;
++	}
++	case DKind::DELAY_PINGPONG:
++		sound->delay.pingPong = pos != 0;
++		break;
++	case DKind::DELAY_ANALOG:
++		sound->delay.analog = pos != 0;
++		break;
++	case DKind::CRUSH_TYPE:
++		sound->crushType = static_cast<deluge::dsp::CrushType>(std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::SAT_TYPE:
++		sound->saturation.type = static_cast<deluge::dsp::SaturationType>(std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::CLIP_TYPE:
++		currentSong->masterClip.type = static_cast<deluge::dsp::MasterClipType>(std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::CLIP_DRIVE:
++		currentSong->masterClip.driveDb = std::min<int32_t>(pos, deluge::dsp::MasterClip::kMaxDriveDb);
++		break;
++	case DKind::CLIP_CEIL:
++		currentSong->masterClip.ceilingDb =
++		    std::min<int32_t>(pos, -deluge::dsp::MasterClip::kMinCeilingDb) + deluge::dsp::MasterClip::kMinCeilingDb;
++		break;
++	case DKind::SIDECHAIN_SEND: {
++		const int32_t v = stepsFromPanel(pos, 50);
++		sound->sideChainSendLevel = v == 50 ? 2147483647 : v * 42949673; // As its menu
++		break;
++	}
++	case DKind::REVERB: {
++		const float f = static_cast<float>(stepsFromPanel(pos, 50)) / 50;
++		if (c.param == 0) {
++			AudioEngine::reverb.setRoomSize(f);
++		}
++		else if (c.param == 1) {
++			AudioEngine::reverb.setDamping(f);
++		}
++		else {
++			AudioEngine::reverb.setWidth(f);
++		}
++		break;
++	}
++	case DKind::UNISON_SPREAD:
++		sound->setUnisonStereoSpread(stepsFromPanel(pos, 50));
++		break;
++	case DKind::PAN_SPREAD:
++		sound->voiceStereoSpread = static_cast<uint8_t>(stepsFromPanel(pos, kMaxVoiceStereoSpread));
++		break;
++	}
++}
++
++void applyDrum(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params, uint8_t kind,
++               int32_t id, int32_t pos) {
++	applyControl(modelStack, sound, params, drumPanelControl(sound, kind, id), pos);
 +}
 +
 +bool sendIfChanged(uint8_t const* header, uint8_t const* body, int32_t len, uint8_t* last, int32_t& lastLen, bool force,
@@ -37607,6 +37810,307 @@ index 51a40bfd2..49ab001aa 100644
 +	}
 +}
 +
++// ---- SOUND (0x5B): every setting of the sound being played (a synth, or the kit's selected row), shown below the
++// engine panels. One table, sections the tablet lays out; the same reads and writes as the table built panels. The
++// tablet moves one with 03 1B <id> <hi> <lo>; 03 1C <which> opens a setting on the Deluge (0 SYNTH MODE, 1 and 2 the
++// oscillators' types), and 03 1D <option> <leave> picks an option of the open setting (and leaves the menu if 1).
++enum SoundSec : uint8_t {
++	S_OSC1,
++	S_OSC2,
++	S_OSCMIX,
++	S_FMMOD,
++	S_LPF,
++	S_HPF,
++	S_ROUTE,
++	S_ENV,
++	S_LFO,
++	S_VOICE,
++	S_PANSPREAD,
++	S_FX,
++	S_MASTER,
++};
++struct SoundControl {
++	DrumPanelControl c;
++	SoundSec sec;
++	uint8_t osc = 0; ///< 1: an oscillator's PW, 2: its wave position, 3: an FM carrier's feedback, 4: its type
++};
++#define SOUND_ENV(e)                                                                                                   \
++	{{DKind::STANDARD, P::LOCAL_ENV_##e##_ATTACK}, S_ENV}, {{DKind::STANDARD, P::LOCAL_ENV_##e##_DECAY}, S_ENV},       \
++	    {{DKind::STANDARD, P::LOCAL_ENV_##e##_SUSTAIN}, S_ENV}, {                                                      \
++		{DKind::STANDARD, P::LOCAL_ENV_##e##_RELEASE}, S_ENV                                                           \
++	}
++constexpr SoundControl kSoundTable[] = {
++    // 0 OSC 1: type, level, transpose, PW, wave position, carrier feedback
++    {{DKind::OSC_TYPE, 0, 12}, S_OSC1, 4},
++    {{DKind::STANDARD, P::LOCAL_OSC_A_VOLUME}, S_OSC1},
++    {{DKind::TRANSPOSE, 0}, S_OSC1},
++    {{DKind::STANDARD, P::LOCAL_OSC_A_PHASE_WIDTH}, S_OSC1, 1},
++    {{DKind::STANDARD, P::LOCAL_OSC_A_WAVE_INDEX}, S_OSC1, 2},
++    {{DKind::STANDARD, P::LOCAL_CARRIER_0_FEEDBACK}, S_OSC1, 3},
++    // 6 OSC 2
++    {{DKind::OSC_TYPE, 1, 12}, S_OSC2, 4},
++    {{DKind::STANDARD, P::LOCAL_OSC_B_VOLUME}, S_OSC2},
++    {{DKind::TRANSPOSE, 1}, S_OSC2},
++    {{DKind::STANDARD, P::LOCAL_OSC_B_PHASE_WIDTH}, S_OSC2, 1},
++    {{DKind::STANDARD, P::LOCAL_OSC_B_WAVE_INDEX}, S_OSC2, 2},
++    {{DKind::STANDARD, P::LOCAL_CARRIER_1_FEEDBACK}, S_OSC2, 3},
++    // 12 sync, noise
++    {{DKind::SYNC, 0, 1}, S_OSCMIX},
++    {{DKind::STANDARD, P::LOCAL_NOISE_VOLUME}, S_OSCMIX},
++    // 14 FM modulators
++    {{DKind::STANDARD, P::LOCAL_MODULATOR_0_VOLUME}, S_FMMOD},
++    {{DKind::MOD_TRANSPOSE, 0}, S_FMMOD},
++    {{DKind::STANDARD, P::LOCAL_MODULATOR_0_FEEDBACK}, S_FMMOD},
++    {{DKind::STANDARD, P::LOCAL_MODULATOR_1_VOLUME}, S_FMMOD},
++    {{DKind::MOD_TRANSPOSE, 1}, S_FMMOD},
++    {{DKind::STANDARD, P::LOCAL_MODULATOR_1_FEEDBACK}, S_FMMOD},
++    {{DKind::MOD2_DEST, 0, 1}, S_FMMOD},
++    // 21 LPF, 25 HPF, 29 route
++    {{DKind::LPF_MODE, 0, 7}, S_LPF},
++    {{DKind::STANDARD, P::LOCAL_LPF_FREQ}, S_LPF},
++    {{DKind::STANDARD, P::LOCAL_LPF_RESONANCE}, S_LPF},
++    {{DKind::STANDARD, P::LOCAL_LPF_MORPH}, S_LPF},
++    {{DKind::HPF_MODE, 0, 3}, S_HPF},
++    {{DKind::STANDARD, P::LOCAL_HPF_FREQ}, S_HPF},
++    {{DKind::STANDARD, P::LOCAL_HPF_RESONANCE}, S_HPF},
++    {{DKind::STANDARD, P::LOCAL_HPF_MORPH}, S_HPF},
++    {{DKind::FILTER_ROUTE, 0, 2}, S_ROUTE},
++    // 30 ENV 1 to 4 (attack, decay, sustain, release)
++    SOUND_ENV(0),
++    SOUND_ENV(1),
++    SOUND_ENV(2),
++    SOUND_ENV(3),
++    // 46 LFO 1 to 4 (shape, rate, sync)
++    {{DKind::LFO_TYPE, LFO1_ID, 6}, S_LFO},
++    {{DKind::STANDARD, P::GLOBAL_LFO_FREQ_1}, S_LFO},
++    {{DKind::LFO_SYNC, LFO1_ID, NUM_SYNC_VALUES - 1}, S_LFO},
++    {{DKind::LFO_TYPE, LFO2_ID, 6}, S_LFO},
++    {{DKind::STANDARD, P::LOCAL_LFO_LOCAL_FREQ_1}, S_LFO},
++    {{DKind::LFO_SYNC, LFO2_ID, NUM_SYNC_VALUES - 1}, S_LFO},
++    {{DKind::LFO_TYPE, LFO3_ID, 6}, S_LFO},
++    {{DKind::STANDARD, P::GLOBAL_LFO_FREQ_2}, S_LFO},
++    {{DKind::LFO_SYNC, LFO3_ID, NUM_SYNC_VALUES - 1}, S_LFO},
++    {{DKind::LFO_TYPE, LFO4_ID, 6}, S_LFO},
++    {{DKind::STANDARD, P::LOCAL_LFO_LOCAL_FREQ_2}, S_LFO},
++    {{DKind::LFO_SYNC, LFO4_ID, NUM_SYNC_VALUES - 1}, S_LFO},
++    // 58 voice: polyphony, unison voices, detune, spread, portamento, priority, transpose, pan, level, pan spread,
++    // wavefold, voice feedback
++    {{DKind::POLY, 0, 4}, S_VOICE},
++    {{DKind::UNISON_NUM, 0, 7}, S_VOICE},
++    {{DKind::UNISON_DETUNE}, S_VOICE},
++    {{DKind::UNISON_SPREAD}, S_VOICE},
++    {{DKind::UNPATCHED, P::UNPATCHED_PORTAMENTO}, S_VOICE},
++    {{DKind::PRIORITY, 0, 2}, S_VOICE},
++    {{DKind::MASTER_TRANSPOSE}, S_VOICE},
++    {{DKind::STANDARD, P::LOCAL_PAN}, S_VOICE},
++    {{DKind::STANDARD, P::GLOBAL_VOLUME_POST_FX}, S_VOICE},
++    {{DKind::PAN_SPREAD}, S_PANSPREAD},
++    {{DKind::STANDARD, P::LOCAL_FOLD}, S_VOICE},
++    {{DKind::STANDARD, P::LOCAL_VOICE_FEEDBACK}, S_VOICE},
++    // 70 mod FX: type, rate, depth, feedback, offset
++    {{DKind::MODFX_TYPE, 0, kNumModFXTypes - 1}, S_FX},
++    {{DKind::STANDARD, P::GLOBAL_MOD_FX_RATE}, S_FX},
++    {{DKind::STANDARD, P::GLOBAL_MOD_FX_DEPTH}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_MOD_FX_FEEDBACK}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_MOD_FX_OFFSET}, S_FX},
++    // 75 delay: amount, rate, feedback, tone, sync, ping pong, analog
++    {{DKind::STANDARD, P::GLOBAL_DELAY_FEEDBACK}, S_FX},
++    {{DKind::STANDARD, P::GLOBAL_DELAY_RATE}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_DELAY_FEEDBACK}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_DELAY_TONE}, S_FX},
++    {{DKind::DELAY_SYNC, 0, NUM_SYNC_VALUES - 1}, S_FX},
++    {{DKind::DELAY_PINGPONG, 0, 1}, S_FX},
++    {{DKind::DELAY_ANALOG, 0, 1}, S_FX},
++    // 82 reverb: amount, then the song's room size, damping, width
++    {{DKind::STANDARD, P::GLOBAL_REVERB_AMOUNT}, S_FX},
++    {{DKind::REVERB, 0}, S_FX},
++    {{DKind::REVERB, 1}, S_FX},
++    {{DKind::REVERB, 2}, S_FX},
++    // 86 EQ: bass, treble, bass freq, treble freq
++    {{DKind::UNPATCHED, P::UNPATCHED_BASS}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_TREBLE}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_BASS_FREQ}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_TREBLE_FREQ}, S_FX},
++    // 90 distortion: saturation type and drive, crush type, bitcrush, decimation
++    {{DKind::SAT_TYPE, 0, util::to_underlying(deluge::dsp::SaturationType::NUM_TYPES) - 1}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_SATURATION}, S_FX},
++    {{DKind::CRUSH_TYPE, 0, util::to_underlying(deluge::dsp::CrushType::NUM_TYPES) - 1}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_BITCRUSHING}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_SAMPLE_RATE_REDUCTION}, S_FX},
++    // 95 sidechain: send, ducking, shape, compressor threshold
++    {{DKind::SIDECHAIN_SEND}, S_FX},
++    {{DKind::STANDARD, P::GLOBAL_VOLUME_POST_REVERB_SEND}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_SIDECHAIN_SHAPE}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_COMPRESSOR_THRESHOLD}, S_FX},
++    // 99 arp rate and gate, stutter rate
++    {{DKind::STANDARD, P::GLOBAL_ARP_RATE}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_ARP_GATE}, S_FX},
++    {{DKind::UNPATCHED, P::UNPATCHED_STUTTER_RATE}, S_FX},
++    // 102 the song's master clip: type, drive, ceiling
++    {{DKind::CLIP_TYPE, 0, deluge::dsp::kNumMasterClipTypes - 1}, S_MASTER},
++    {{DKind::CLIP_DRIVE, 0, deluge::dsp::MasterClip::kMaxDriveDb}, S_MASTER},
++    {{DKind::CLIP_CEIL, 0, -deluge::dsp::MasterClip::kMinCeilingDb}, S_MASTER},
++};
++#undef SOUND_ENV
++constexpr int32_t kNumSound = sizeof(kSoundTable) / sizeof(kSoundTable[0]);
++static_assert(kNumSound <= 128);
++constexpr int32_t kSoundMaskBytes = (kNumSound + 6) / 7;
++constexpr int32_t kSoundTextMax = 12;
++constexpr uint8_t kSoundHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x5B};
++uint8_t lastSound[4 + kSoundMaskBytes + 2 * kNumSound + 1 + 8 * (2 + kSoundTextMax)];
++int32_t lastSoundLen = 0;
++uint16_t pendingSound[kNumSound];
++uint64_t pendingSoundMask[2] = {0, 0};
++int32_t pendingOpenSetting = -1; ///< 03 1C: the setting to open on the Deluge
++int32_t pendingMenuPick = -1;    ///< 03 1D: the option to pick in the open setting
++bool pendingMenuPickLeave = false;
++
++/// Whether a SOUND control means anything for this sound: the oscillators only on the Deluge's own synth modes (an
++/// engine panel has its own), FM's modulators only on FM, an oscillator's PW and wave position by its type
++bool soundShows(Sound* sound, const SoundControl& s) {
++	const Source& source0 = sound->sources[0];
++	const SynthMode mode = sound->getSynthMode();
++	const bool fm = mode == SynthMode::FM;
++	const bool ownOscs =
++	    source0.oscType != OscType::DRUM_SYNTH && source0.oscType != OscType::DX7 && mode != SynthMode::TB303;
++	switch (s.sec) {
++	case S_OSC1:
++	case S_OSC2: {
++		if (!ownOscs) {
++			return false;
++		}
++		const OscType type = sound->sources[s.sec == S_OSC1 ? 0 : 1].oscType;
++		switch (s.osc) {
++		case 1:
++			return !fm && type != OscType::SINE && type <= OscType::ANALOG_SAW_2;
++		case 2:
++			return !fm && type == OscType::WAVETABLE;
++		case 3:
++			return fm;
++		case 4:
++			return !fm;
++		default:
++			return true;
++		}
++	}
++	case S_OSCMIX:
++		return ownOscs && !fm;
++	case S_FMMOD:
++		return ownOscs && fm;
++	case S_PANSPREAD:
++		return sound->polyphonic == PolyphonyMode::POLY && mode != SynthMode::TB303;
++	default:
++		return true;
++	}
++}
++
++/// SOUND body: version, count, flags (1 a kit row), which controls this sound has (count bits, 7 a byte, control 0 in
++/// bit 0 of the first), each control's position (2 bytes: 14-bit, a stepped one its choice), then texts: how many, and
++/// each one's control and its text (the syncs' note lengths)
++int32_t buildSound(uint8_t* out) {
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	int32_t i = 0;
++	out[i++] = kStateVersion;
++	if (!currentSoundAndParams(sound, params) || params->getPatchedParamSet() == nullptr) {
++		out[i++] = 0;
++		return i;
++	}
++	out[i++] = kNumSound;
++	out[i++] = currentKitClip() != nullptr ? 1 : 0;
++	const int32_t maskAt = i;
++	memset(out + i, 0, kSoundMaskBytes);
++	i += kSoundMaskBytes;
++	for (int32_t id = 0; id < kNumSound; id++) {
++		const SoundControl& s = kSoundTable[id];
++		if (soundShows(sound, s)) {
++			out[maskAt + id / 7] |= 1 << (id % 7);
++		}
++		const int32_t pos = std::clamp<int32_t>(readControl(sound, params, s.c), 0, kPanelMax);
++		out[i++] = (pos >> 7) & 0x7F;
++		out[i++] = pos & 0x7F;
++	}
++	const int32_t textCountAt = i++;
++	int32_t texts = 0;
++	for (int32_t id = 0; id < kNumSound && texts < 8; id++) {
++		const SoundControl& s = kSoundTable[id];
++		if (s.c.kind != DKind::LFO_SYNC && s.c.kind != DKind::DELAY_SYNC) {
++			continue;
++		}
++		const int32_t option = readControl(sound, params, s.c);
++		DEF_STACK_STRING_BUF(buffer, 30);
++		if (option == 0) {
++			buffer.append("OFF");
++		}
++		else {
++			syncValueToString(option, buffer, currentSong->getInputTickMagnitude());
++		}
++		out[i++] = id;
++		const int32_t n = std::min<int32_t>(buffer.size(), kSoundTextMax);
++		out[i++] = n;
++		for (int32_t c = 0; c < n; c++) {
++			const char ch = buffer.data()[c];
++			out[i++] = (ch >= 0x20 && ch <= 0x7E) ? ch : '?';
++		}
++		texts++;
++	}
++	out[textCountAt] = texts;
++	return i;
++}
++
++/// The tablet's SOUND moves, on the sound being played
++void runPendingSound() {
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (browserIsOpen() || !currentSoundAndParams(sound, params) || params->getPatchedParamSet() == nullptr) {
++		pendingSoundMask[0] = pendingSoundMask[1] = 0;
++		return;
++	}
++	char memory[MODEL_STACK_MAX_SIZE];
++	ModelStackWithThreeMainThings* modelStack = panelModelStack(memory, sound, params);
++	bool any = false;
++	for (int32_t id = 0; id < kNumSound; id++) {
++		uint64_t& mask = pendingSoundMask[id / 64];
++		const uint64_t bit = uint64_t{1} << (id % 64);
++		if (!(mask & bit)) {
++			continue;
++		}
++		mask &= ~bit;
++		if (!soundShows(sound, kSoundTable[id])) {
++			continue; // Not this sound's (the track changed under the finger)
++		}
++		applyControl(modelStack, sound, params, kSoundTable[id].c, pendingSound[id]);
++		any = true;
++	}
++	if (any) {
++		static_cast<Instrument*>(getCurrentClip()->output)->beenEdited();
++		view.notifyParamAutomationOccurred(params);
++		uiTimerManager.setTimer(TimerName::COMPANION_WAVE, 10);
++	}
++}
++
++/// Open a setting on the Deluge, as its shortcut would: the sound editor on it, for the sound being played
++void runPendingOpenSetting() {
++	const int32_t which = pendingOpenSetting;
++	pendingOpenSetting = -1;
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (browserIsOpen() || !currentSoundAndParams(sound, params) || getRootUI() == nullptr) {
++		return;
++	}
++	int32_t source = 0;
++	MenuItem* item = companionSettingItem(which, source);
++	if (item == nullptr || !item->isRelevant(sound, source)) {
++		return;
++	}
++	if (getCurrentUI() != getRootUI()) {
++		getCurrentUI()->close(); // Leave whatever is open, so the setting opens fresh
++	}
++	if (getCurrentUI() == getRootUI() && soundEditor.setup(getCurrentClip(), item, source)) {
++		openUI(&soundEditor);
++	}
++}
++
 +// ---- Transport, song (session clips and outputs), arranger ----
 +uint8_t lastTransport[12];
 +int32_t lastTransportLen = 0;
@@ -37998,8 +38502,15 @@ index 51a40bfd2..49ab001aa 100644
 +	if (panel[1] == 3) {
 +		sendWaveExtras(force);
 +	}
-+	// An engine panel is showing: watch it on its own fast timer, so a knob turned on the Deluge moves it right away
-+	if (panel[1] != 0 && !uiTimerManager.isTimerSet(TimerName::COMPANION_PANEL)) {
++	if (force) {
++		lastSoundLen = 0;
++	}
++	uint8_t soundBody[sizeof(lastSound)];
++	const int32_t soundLen = buildSound(soundBody);
++	sendIfChanged(kSoundHeader, soundBody, soundLen, lastSound, lastSoundLen, force, 0);
++	// An engine panel or the sound's settings are showing: watch them on their own fast timer, so a knob turned on
++	// the Deluge moves them right away
++	if ((panel[1] != 0 || soundBody[1] != 0) && !uiTimerManager.isTimerSet(TimerName::COMPANION_PANEL)) {
 +		uiTimerManager.setTimer(TimerName::COMPANION_PANEL, kPanelPollMs);
 +	}
 +
@@ -38472,6 +38983,26 @@ index 51a40bfd2..49ab001aa 100644
 +}
 +
 +bool runPendingMenu() {
++	if (pendingMenuPick >= 0 && !pendingMenuDown && !sdRoutineLock) {
++		// An option of the open setting: one turn of the select knob straight to it, as the menu's option tiles do
++		const int32_t pick = pendingMenuPick;
++		pendingMenuPick = -1;
++		if (getCurrentUI() == &soundEditor && currentUIMode == UI_MODE_NONE) {
++			deluge::gui::menu_item::Selection* sel = soundEditor.getCurrentMenuItem()->asSelection();
++			if (sel != nullptr && pick < static_cast<int32_t>(sel->getOptions().size())) {
++				const int32_t turn = std::clamp<int32_t>(pick - sel->getValue(), -63, 63);
++				if (turn != 0) {
++					soundEditor.selectEncoderAction(static_cast<int8_t>(turn));
++				}
++				if (pendingMenuPickLeave) {
++					pendingMenu = 2; // Then BACK until the menu closes
++					pendingMenuSteps = 0;
++					pendingMenuTurn = 0;
++					return true;
++				}
++			}
++		}
++	}
 +	if (pendingMenu == 0 && pendingMenuTurn == 0 && !pendingMenuDown) {
 +		return false;
 +	}
@@ -38961,6 +39492,32 @@ index 51a40bfd2..49ab001aa 100644
 +		uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
 +		return;
 +	}
++	if (data[2] == 27) {
++		// 27 <control> <hi> <lo> = move a SOUND control there
++		if (len >= 6 && data[3] < kNumSound) {
++			pendingSound[data[3]] = (data[4] << 7) | data[5];
++			pendingSoundMask[data[3] / 64] |= uint64_t{1} << (data[3] % 64);
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 28) {
++		// 28 <which> = open a setting on the Deluge (0 SYNTH MODE, 1 osc 1 type, 2 osc 2 type)
++		if (len >= 4) {
++			pendingOpenSetting = data[3];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 29) {
++		// 29 <option> <leave> = pick that option of the open setting, then leave the menu if leave is 1
++		if (len >= 5) {
++			pendingMenuPick = data[3];
++			pendingMenuPickLeave = data[4] != 0;
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
 +	if (data[2] == 25) {
 +		// 25 <level> <entry> <enter> = go to that entry of that open menu level (BACK up to it, turn to it), then
 +		// press SELECT if enter is 1; 127 as the level = leave the menu
@@ -39009,11 +39566,21 @@ index 51a40bfd2..49ab001aa 100644
 +		uint8_t panel[sizeof(lastPanel)];
 +		const int32_t panelLen = buildPanel(panel);
 +		sendIfChanged(kPanelHeader, panel, panelLen, lastPanel, lastPanelLen, false, 0);
-+		if (panel[1] == 0) {
-+			return; // Closed
-+		}
 +		if (panel[1] == 3) {
 +			sendWaveExtras(false);
++		}
++		// The sound's settings: every third poll (a hundred reads), sent only when one moved
++		static uint8_t soundPoll = 0;
++		bool soundOpen = lastSoundLen > 2;
++		if (++soundPoll >= 3 && midiStateCable->sendBufferSpace() >= 360) {
++			soundPoll = 0;
++			uint8_t soundBody[sizeof(lastSound)];
++			const int32_t soundLen = buildSound(soundBody);
++			sendIfChanged(kSoundHeader, soundBody, soundLen, lastSound, lastSoundLen, false, 0);
++			soundOpen = soundBody[1] != 0;
++		}
++		if (panel[1] == 0 && !soundOpen) {
++			return; // Closed
 +		}
 +	}
 +	uiTimerManager.setTimer(TimerName::COMPANION_PANEL, kPanelPollMs);
@@ -39192,7 +39759,7 @@ index 51a40bfd2..49ab001aa 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +5161,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +5711,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -39203,7 +39770,7 @@ index 51a40bfd2..49ab001aa 100644
  	default:
  		break;
  	}
-@@ -79,6 +5209,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +5759,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -39212,7 +39779,7 @@ index 51a40bfd2..49ab001aa 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +5368,460 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +5918,467 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -39491,7 +40058,8 @@ index 51a40bfd2..49ab001aa 100644
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
 +		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0 || pendingPanelMask != 0
 +		       || pendingBrophetMask != 0 || pendingWaveMask != 0 || numPendingKnobs != 0 || pendingGoldMask != 0
-+		       || pendingDrumMask != 0 || pendingDrumRow >= 0 || numPendingAuditions != 0 || pendingTouchKind >= 0;
++		       || pendingDrumMask != 0 || pendingDrumRow >= 0 || numPendingAuditions != 0 || pendingTouchKind >= 0
++		       || pendingSoundMask[0] != 0 || pendingSoundMask[1] != 0 || pendingOpenSetting >= 0;
 +	}
 +	bool again = false;
 +	if (pendingDrumRow >= 0) {
@@ -39518,6 +40086,12 @@ index 51a40bfd2..49ab001aa 100644
 +	}
 +	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0 || pendingDrumMask != 0) {
 +		runPendingPanel();
++	}
++	if (pendingSoundMask[0] != 0 || pendingSoundMask[1] != 0) {
++		runPendingSound();
++	}
++	if (pendingOpenSetting >= 0) {
++		runPendingOpenSetting();
 +	}
 +	if (numPendingKnobs != 0) {
 +		runPendingKnobs();

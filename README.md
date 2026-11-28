@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.49
+# BRIBELUGE: Deluge Bribes FW v1.50
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.49`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.49), the exact commit the bin was built from, and a full source download on the [v1.49 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.49). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.50`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.50), the exact commit the bin was built from, and a full source download on the [v1.50 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.50). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -40,7 +40,7 @@ What Bribeluge adds:
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
-27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, engine drawings, every knob it shows turnable from the screen and following the Deluge (main settings, engine controls, switches and gold knobs), waveforms with draggable markers, picture pickers, a song view you can tap, the Deluge's menus whole page by touch, and a hardware-style panel for every engine: BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs), wavetable synths (a 3D view of the table with every note moving through it), every other synth and drum engine, and the Deluge's own SUBTRACTIVE, FM and RINGMOD, all working both ways.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, engine drawings, every knob it shows turnable from the screen and following the Deluge (main settings, engine controls, switches and gold knobs), waveforms with draggable markers, picture pickers, a song view you can tap, the Deluge's menus whole page by touch, every setting of the sound laid out below the panels, picture pickers for the engine, oscillator, crush, saturation and master clip types, and a hardware-style panel for every engine: BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs), wavetable synths (a 3D view of the table with every note moving through it), every other synth and drum engine, and the Deluge's own SUBTRACTIVE, FM and RINGMOD, all working both ways.
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
@@ -60,9 +60,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.49.bin`](firmware/deluge-bribes-v1.49.bin)
+[`firmware/deluge-bribes-v1.50.bin`](firmware/deluge-bribes-v1.50.bin)
 
-SHA-256: `d806690d75549de751fc9e32e123b8ae105d52532382c0bdd08da240329e6ab1`
+SHA-256: `9e4db0b24ede9342e81aa13b48dfff15504f382f09cdf0442d8156c1a4fc6c2b`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -78,7 +78,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.49.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.50.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1267,12 +1267,38 @@ It talks plain USB MIDI. The display mirror is the Deluge Community firmware's s
 - **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. They work both ways (new in v1.41): drag a knob up or down with a finger or the mouse and the Deluge follows, as if you'd turned it there; turn it on the Deluge and the knob moves. Tap a knob without dragging and it opens on the Deluge, as before. Tap a switch to step it to its next setting. Every engine gets its own panel (below, and [Engine panels](#33-engine-panels)).
 - **Gold knobs:** the two knobs of each of the eight mod buttons, with the lit pair glowing. Drag one to turn it (new in v1.41): if its mod button isn't lit, the Deluge lights it first, as only the lit pair turns. It goes through the Deluge's own knob, so the value popup, affect all on a kit and holding notes for parameter locks work as with your hand on it. A knob on a patch cable covers its whole range, -50 to +50. Tap a pair to light its mod button.
 - **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
-- **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
+- **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load. Choosing an engine, an oscillator type or a crush, saturation or master clip type gets picture tiles too: see [Picture pickers](#picture-pickers).
 - **Follows the Deluge:** the screen goes where the Deluge goes, so there's nothing to scroll to find. A menu, SHIFT + SYNTH, SHIFT + KIT, a browser, a waveform or the song view opens at the top with its selection in view. Choose a new kit or synth, or change track, and the page centres on its main panel, ready to play. Back out of a menu without changing anything and you're where you left off. Open a setting on the Deluge and its knob scrolls into view.
-- **NAV:** a column down the left side lists the sections the track shows: TOP, PANEL (the engine panel), GOLD, ENGINE (the engine's own controls), OSC, FILTER, ENV 1, ENV 2, VOICE, FX and LFO, plus ROWS and SAMPLES on a kit. Tap one and the page glides to it, centred. The section in view stays lit as you scroll, and while a menu or browser is up on the Deluge it's listed on top.
+- **NAV:** a column down the left side lists the sections the track shows: TOP, PANEL (the engine panel), GOLD, ENGINE (the engine's own controls), then the sound's settings, OSC, FILTER, ENV, LFO, VOICE, EXT, FX, DRIVE, SIDE and MASTER (see [Every setting of the sound](#every-setting-of-the-sound)), plus ROWS and SAMPLES on a kit. Tap one and the page glides to it, centred. The section in view stays lit as you scroll, and while a menu or browser is up on the Deluge it's listed on top.
 - **Menus (new in v1.48):** whenever a menu is open on the Deluge (SELECT in a clip, the song menu, SHIFT + SELECT settings), the companion shows it whole page: every open level side by side as columns, like a file browser. Tap any entry at any level and the Deluge goes straight there (it goes back up to that level, turns to the entry and presses SELECT, faster than you can on the select knob), and the NAV column lists the menu's top level so any section is one tap away. A setting being edited gets its own column with its value large, **-10**, **-**, **+** and **+10**, and its choices as tiles when it has named ones. **Back** and **Close menu** sit at the top. When the menu closes, the companion goes back to what it showed before. A single setting opened from a shortcut pad (or by tapping a knob on the companion) doesn't take over the page.
 - **Waveforms:** audio clips, sample markers and Start offset, full width with every playing note's playhead. Drag the start, loop and end markers, or the offset.
 - **Song:** rows view and grid view in the pads' order, each clip with its steps, playhead, the pads' colours and the section pads' glow by track type. Tap a clip or a section to launch it. The arranger shows the same stretch of the song as the pads, with the playhead.
+
+### Every setting of the sound
+
+Below the gold knobs, the companion lays out every setting of the synth or kit row being played, in blocks you can reach from the NAV column. Each one works both ways like the panels: drag a knob and the Deluge follows, turn it on the Deluge and the knob moves. A box with an arrow is a choice: tap it for its list, or its picture tiles where it has them.
+
+- **Engine:** a bar at the top with the engine's drawing and name. Tap it (or the engine drawing in the header) to open **SYNTH MODE** on the Deluge, with the [engine picker](#picture-pickers) on the companion.
+- **OSC:** each oscillator's type, level, pitch, pulse width, wavetable position and FM feedback, oscillator sync, noise, and the FM modulators.
+- **FILTER:** the low-pass and high-pass filters' mode, frequency, resonance and morph, and the filter order.
+- **ENV and LFO:** envelopes 1 and 2 (attack, decay, sustain, release) and LFOs 1 and 2 (shape, rate, sync with its note length).
+- **VOICE:** polyphony, unison voices, detune and spread, portamento, priority, master transpose, pan, level, [pan spread](#25-pan-spread), wavefolder and [Feedback](#22-feedback).
+- **EXT:** envelopes 3 and 4 and LFOs 3 and 4, kept below the main voice so the page leads with what you reach for most.
+- **FX:** Mod FX (type, rate, depth, feedback, offset), delay (amount, rate, feedback, tone, sync, ping-pong, analog) and reverb (amount, room size, damping, width).
+- **DRIVE:** EQ bass and treble with their frequencies, saturation type and drive, crush type, bitcrush and decimation.
+- **SIDE:** sidechain send, ducking, shape and the compressor's threshold, the arpeggiator's rate and gate, and stutter rate.
+- **MASTER:** the song's master clip type, drive and ceiling.
+- **Only what applies:** a setting the sound doesn't have is left out, and a block with nothing left goes too. A drum engine kit row shows no oscillators, FM modulators only show on FM, wavetable position only on a wavetable, pan spread only on a poly sound.
+- This takes the place of the main settings knobs while it shows. With firmware before v1.50 (or STOCK mode) the companion shows those knobs as before.
+
+### Picture pickers
+
+When the Deluge opens one of these settings, the companion takes over the page with a tile for every choice, the current one lit. Tap a tile and the Deluge picks it and closes the setting, as if you'd turned the select knob there and pressed it.
+
+- **Engine (SYNTH MODE):** every synth and drum engine as its companion panel render, in three groups: Synths, Drum voices and Drum machines. It comes up when you choose SYNTH MODE on a kit row or a synth track, from the Deluge's menu or from the companion's engine bar.
+- **Oscillator type:** each type with a drawing of its wave. From the menu, or the Type box under OSC.
+- **Crush, saturation and master clip types:** each type as a sine going in and the shape that comes out, with a line on what it does to the sound. From the menu, or their boxes under DRIVE and MASTER.
+- **Back** goes up a level on the Deluge and **Close** puts the page back.
 
 ### BRUNO106 panel
 
@@ -1628,6 +1654,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.50: Every setting of the sound, and picture pickers.** Below the panels, the [companion](#27-bribeluge-companion) now lays out every setting of the synth or kit row being played, a hundred and five of them, in blocks on the NAV column: OSC, FILTER, ENV, LFO, VOICE, EXT (envelopes and LFOs 3 and 4), FX, DRIVE, SIDE and MASTER, with lists for every type and mode, and only what the sound has. Choosing an engine, an oscillator type or a crush, saturation or master clip type now gets picture tiles, the engines as their panel renders. See [Every setting of the sound](#every-setting-of-the-sound) and [Picture pickers](#picture-pickers). Also has everything in v1.49. *Why:* the panels show an engine's main controls, but the rest of the sound was still only in the menus, and picking a crush or clip type by its four letter name means trying each one. *Learned:* one table of settings, each with its kind (a knob, a list, a sync, the song's master clip), lets the Deluge send all of them in one message of about 300 bytes, and say which ones apply, so the companion never has to know the rules for each engine.
 - **v1.49: More room in the Deluge's fast memory.** A TRIBE kit now takes 79 KB of the Deluge's on-chip RAM, down from 135 KB, and a 16-row sample kit loaded next to it stays in on-chip RAM instead of spilling 87 KB into the slower SDRAM. Three changes, and only the first is one you can hear, on hits that used to overlap: each [drum engine](#6-drum-synth) row plays one voice and retriggers it, the store of drum engine voices starts at 8 and grows only as far as a song needs (it made 48 up front), and every kit row and kit fits a 2 KB block again. *Why:* the more of a song that lives in on-chip RAM, the less the Deluge has to fall back on SDRAM, which is slower for voices and, once full, takes room from loaded samples. *Learned:* measure before guessing. The Deluge now streams its CPU load, time per engine and free memory over USB, and can list every block of memory in use, so I could see what each kit really takes. The Deluge hands out memory in power-of-two blocks: Bribeluge's extra settings had pushed every kit row from 1,864 to 2,384 bytes, just past 2 KB, so each row took a 4 KB block. Moving the settings only some sounds use (303, BRUNO106, the newer crush types and saturation, drum engine settings) out of the row put it back at 2,024. The stream also showed a TRIBE voice costs about 1.5 times a sample voice, which is the next thing to work on. See [Measuring CPU and memory](#measuring-cpu-and-memory).
 - **v1.48: The Deluge's menu, whole page, by touch.** With a menu open on the Deluge (a clip's, the song's or SHIFT + SELECT settings), the [companion](#27-bribeluge-companion) shows every open level as a column you can tap: any entry at any level is one tap away, a setting gets its value, steps and named choices as tiles, and the page goes back to what it showed when the menu closes. *Why:* the select knob walks a long menu one entry at a time, and a screen can show the whole tree at once. *Learned:* the companion doesn't need its own copy of the menu: the Deluge sends each level as it is (only what applies to this sound), and a tap is played back as the presses a hand would make (BACK up, turn, SELECT), so everything the Deluge does on the way still happens.
 - **v1.47: A panel for every engine.** The [companion](#27-bribeluge-companion) now has a hardware-style panel for ULTRAKIK, XIA, BRIBERING, the 303, DX7 and the Deluge's own SUBTRACTIVE, FM and RINGMOD, next to the drum machines, BRUNO106, BROPHET and WAVE, and the BRUNO106 panel is rebuilt in three rows that fill the width with clearer names. See [Engine panels](#33-engine-panels). *Why:* once the drum machines had panels, every other engine looked unfinished next to them. *Learned:* the same table that drives the drum panels covers the Deluge's own synth too, once it knows a few more kinds of setting (oscillator types, filter modes, unison, DX7 voice bytes), and a preset or variant can be loaded exactly as its menu does it.
