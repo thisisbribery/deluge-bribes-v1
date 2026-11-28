@@ -33906,7 +33906,7 @@ index 8ba4446a9..ca26b545e 100644
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..425a5d5fd 100644
+index 51a40bfd2..d346387df 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -33978,7 +33978,7 @@ index 51a40bfd2..425a5d5fd 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,3887 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3923 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -36314,6 +36314,23 @@ index 51a40bfd2..425a5d5fd 100644
 +uint64_t pendingDrumMask = 0;
 +uint8_t pendingDrumKind = 0; ///< The panel the waiting moves were made on
 +int32_t pendingDrumRow = -1; ///< Kit row to select (index in the clip's note rows)
++struct PanelAudition {
++	uint8_t row; ///< Note row index
++	bool on;
++};
++constexpr int32_t kMaxPendingAuditions = 8;
++PanelAudition pendingAuditions[kMaxPendingAuditions]; ///< Row key presses and releases, in order
++int32_t numPendingAuditions = 0;
++int32_t pendingTouchKind = -1; ///< Panel control just touched: select its gold knob pair (and open its pad)
++int32_t pendingTouchId = 0;
++bool pendingTouchShortcut = false;
++// Each drum panel control's standard drum layout slot (dsp::drum_synth::StandardSlot: its pad, MOD1 then MOD2 bottom
++// up), or -1 for one that isn't on a layout pad. LXR's first 16 controls are its slots in order.
++constexpr int8_t kTribeSlots[kNumTribePanel] = {5, 6,  3,  4, 7,  8,  9,  10, 11, 12, 1,
++                                                0, 13, 14, 2, -1, -1, -1, -1, -1, -1};
++constexpr int8_t kCycSlots[kNumCycPanel] = {5, 6, 3, 4, 0, 1, 7, 2, -1, -1, -1, -1, -1, -1};
++constexpr int8_t kGinSlots[kNumGinPanel] = {8,  9,  10, 7, 4, 3,  5,  11, 12, 6,  13,
++                                            14, 15, 1,  0, 2, -1, -1, -1, -1, -1, -1};
 +
 +/// Which drum panel a sound gets, or 0
 +uint8_t drumPanelKind(Sound* sound) {
@@ -37581,6 +37598,25 @@ index 51a40bfd2..425a5d5fd 100644
 +		}
 +		return;
 +	}
++	if (data[2] == 22) {
++		// 22 <row> <on> = press (1) or release (0) that kit row's audition, as its audition pad would
++		if (len >= 5 && numPendingAuditions < kMaxPendingAuditions) {
++			pendingAuditions[numPendingAuditions++] = {data[3], data[4] != 0};
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 23 || data[2] == 24) {
++		// 23 <panel> <control> = a panel control was touched: light the mod button whose gold knobs turn it.
++		// 24 <panel> <control> = the same, and open its setting (SHIFT + its shortcut pad).
++		if (len >= 5 && data[3] >= 1 && data[3] <= 7) {
++			pendingTouchKind = data[3];
++			pendingTouchId = data[4];
++			pendingTouchShortcut = data[2] == 24;
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
 +	if (data[2] == 16) {
 +		// 16 <group> <x> <y> <hi> <lo> = set that PARAMS knob to a 14-bit position (a switch: to that choice)
 +		if (len >= 8 && data[3] <= 8 && data[4] < kDisplayWidth && data[5] < kDisplayHeight) {
@@ -37866,7 +37902,7 @@ index 51a40bfd2..425a5d5fd 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3969,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +4005,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -37877,7 +37913,7 @@ index 51a40bfd2..425a5d5fd 100644
  	default:
  		break;
  	}
-@@ -79,6 +4017,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +4053,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -37886,7 +37922,7 @@ index 51a40bfd2..425a5d5fd 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +4176,250 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +4212,447 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -37956,13 +37992,204 @@ index 51a40bfd2..425a5d5fd 100644
 +} // namespace
 +
 +namespace {
++/// Which panel the sound shows: as buildPanel decides
++uint8_t panelKindOf(Sound* sound) {
++	const uint8_t drumKind = drumPanelKind(sound);
++	return isBrunoSound(sound) ? 1 : isBrophetSound(sound) ? 2 : drumKind != 0 ? drumKind : isWaveSound(sound) ? 3 : 0;
++}
++
++/// The param a panel control moves, as a gold knob would hold it (patched, or UNPATCHED_START + an unpatched one), or
++/// -1; and its drum layout slot, or -1
++int32_t panelControlParam(Sound* sound, uint8_t kind, int32_t id, int32_t& slot) {
++	namespace ds = deluge::dsp::drum_synth;
++	slot = -1;
++	if (kind == 1) {
++		switch (id) {
++		case PANEL_LFO_RATE:
++			return P::GLOBAL_LFO_FREQ_1;
++		case PANEL_PWM:
++			return ds::kDrumControlParams[DC::BRUNO_PW];
++		case PANEL_SUB:
++			return ds::kDrumControlParams[DC::BRUNO_SUB];
++		case PANEL_NOISE:
++			return ds::kDrumControlParams[DC::BRUNO_NOISE];
++		case PANEL_SLOP:
++			return ds::kDrumControlParams[DC::BRUNO_SLOP];
++		case PANEL_VCF_FREQ:
++			return P::LOCAL_LPF_FREQ;
++		case PANEL_VCF_RES:
++			return P::LOCAL_LPF_RESONANCE;
++		case PANEL_LEVEL:
++			return P::GLOBAL_VOLUME_POST_FX;
++		case PANEL_DRIVE:
++			return P::LOCAL_LPF_MORPH;
++		case PANEL_DELAY_AMOUNT:
++			return P::GLOBAL_DELAY_FEEDBACK;
++		case PANEL_DELAY_RATE:
++			return P::GLOBAL_DELAY_RATE;
++		case PANEL_REVERB:
++			return P::GLOBAL_REVERB_AMOUNT;
++		case PANEL_CRUSH:
++			return P::UNPATCHED_START + P::UNPATCHED_BITCRUSHING;
++		case PANEL_DECI:
++			return P::UNPATCHED_START + P::UNPATCHED_SAMPLE_RATE_REDUCTION;
++		case PANEL_SATURATION:
++			return P::UNPATCHED_START + P::UNPATCHED_SATURATION;
++		case PANEL_DELAY_FEEDBACK:
++			return P::UNPATCHED_START + P::UNPATCHED_DELAY_FEEDBACK;
++		default:
++			if (id >= PANEL_ENV_A && id <= PANEL_ENV_R) {
++				return envParam(0, id - PANEL_ENV_A);
++			}
++			if (id >= PANEL_ENV2_A && id <= PANEL_ENV2_R) {
++				return envParam(1, id - PANEL_ENV2_A);
++			}
++			return -1;
++		}
++	}
++	if (kind == 2) {
++		if (id < 0 || id >= kNumBrophetPanel) {
++			return -1;
++		}
++		const BrophetControl& c = kBrophet[id];
++		return c.kind == BKind::STANDARD    ? c.param
++		       : c.kind == BKind::UNPATCHED ? P::UNPATCHED_START + c.param
++		       : c.kind == BKind::CONTROL   ? ds::kDrumControlParams[c.param]
++		                                    : -1;
++	}
++	if (kind == 3) {
++		if (id < 0 || id >= kNumWavePanel) {
++			return -1;
++		}
++		const WaveControl& c = kWave[id];
++		return c.kind == WKind::STANDARD ? c.param : c.kind == WKind::UNPATCHED ? P::UNPATCHED_START + c.param : -1;
++	}
++	const DrumPanelControl c = drumPanelControl(sound, kind, id);
++	if (c.kind == DKind::NONE || id < 0 || id >= drumPanelCount(kind)) {
++		return -1;
++	}
++	slot = kind == 4 ? kTribeSlots[id] : kind == 5 ? kCycSlots[id] : kind == 6 ? (id < 16 ? id : -1) : kGinSlots[id];
++	switch (c.kind) {
++	case DKind::SLOT:
++	case DKind::LXR:
++		return ds::kDrumControlParams[drumSlotOf(c)];
++	case DKind::STANDARD:
++		return c.param;
++	case DKind::TRANSPOSE:
++		return P::LOCAL_PITCH_ADJUST; // Custom 1, the tune knob, on a drum row
++	default:
++		return -1;
++	}
++}
++
++/// A panel control touched: the mod button whose gold knobs hold its param lights, so the knobs turn it; with
++/// SHORTCUT on, its setting opens too, as SHIFT and its shortcut pad would
++void runPendingTouch() {
++	const int32_t kind = pendingTouchKind;
++	const int32_t id = pendingTouchId;
++	const bool shortcut = pendingTouchShortcut;
++	pendingTouchKind = -1;
++	Sound* sound = nullptr;
++	ParamManagerForTimeline* params = nullptr;
++	if (browserIsOpen() || !currentSoundAndParams(sound, params) || panelKindOf(sound) != kind) {
++		return; // The panel was for another sound
++	}
++	int32_t slot = -1;
++	const int32_t param = panelControlParam(sound, kind, id, slot);
++	if (param >= 0 && view.activeModControllableModelStack.modControllable == static_cast<ModControllable*>(sound)) {
++		uint8_t* mode = sound->getModKnobMode();
++		for (int32_t button = 0; mode != nullptr && button < kNumModButtons; button++) {
++			const ParamDescriptor upper = sound->modKnobs[button][1].paramDescriptor;
++			const ParamDescriptor lower = sound->modKnobs[button][0].paramDescriptor;
++			const bool holds = (upper.isJustAParam() && upper.getJustTheParam() == static_cast<uint32_t>(param))
++			                   || (lower.isJustAParam() && lower.getJustTheParam() == static_cast<uint32_t>(param));
++			if (holds) {
++				if (*mode != button) {
++					view.modButtonAction(button, true);
++					view.modButtonAction(button, false);
++				}
++				break;
++			}
++		}
++	}
++	if (!shortcut || getRootUI() == nullptr) {
++		return;
++	}
++	// Its pad: the drum layout slot's, or the pad whose patched param it is
++	int32_t x = -1;
++	int32_t y = 0;
++	if (slot >= 0 && slot < 16) {
++		x = 4 + slot / kDisplayHeight; // MOD1, then MOD2, bottom row up
++		y = slot % kDisplayHeight;
++	}
++	else if (param >= 0 && param < P::UNPATCHED_START && param != P::LOCAL_PITCH_ADJUST) {
++		for (int32_t px = 0; px < kDisplayWidth && x < 0; px++) {
++			for (int32_t py = 0; py < kDisplayHeight; py++) {
++				if (drumShortcutParam(sound, px, py) == static_cast<uint32_t>(param)) {
++					x = px;
++					y = py;
++					break;
++				}
++			}
++		}
++	}
++	if (x >= 0) {
++		pendingKnobX = x;
++		pendingKnobY = y;
++	}
++}
++
++/// The row keys: each press and release as its audition pad would make it, on the kit's active clip
++void runPendingAuditions() {
++	const int32_t count = numPendingAuditions;
++	numPendingAuditions = 0;
++	InstrumentClip* clip = currentKitClip();
++	if (clip == nullptr) {
++		return;
++	}
++	Kit* kit = static_cast<Kit*>(clip->output);
++	auto* active = static_cast<InstrumentClip*>(kit->getActiveClip());
++	if (active == nullptr) {
++		return;
++	}
++	for (int32_t a = 0; a < count; a++) {
++		const PanelAudition ev = pendingAuditions[a];
++		if (ev.row >= clip->noteRows.getNumElements()) {
++			continue;
++		}
++		Drum* drum = clip->noteRows.getElement(ev.row)->drum;
++		if (drum == nullptr) {
++			continue;
++		}
++		char memory[MODEL_STACK_MAX_SIZE];
++		ModelStackWithTimelineCounter* modelStack =
++		    setupModelStackWithSong(memory, currentSong)->addTimelineCounter(active);
++		ModelStackWithNoteRow* withRow = active->getNoteRowForDrum(modelStack, drum);
++		NoteRow* row = withRow->getNoteRowAllowNull();
++		if (row == nullptr) {
++			continue;
++		}
++		if (ev.on) {
++			if (drum->type == DrumType::SOUND && !row->paramManager.containsAnyMainParamCollections()) {
++				continue;
++			}
++			kit->beginAuditioningforDrum(withRow, drum, kit->defaultVelocity, zeroMPEValues);
++		}
++		else {
++			kit->endAuditioningForDrum(withRow, drum);
++		}
++	}
++}
++} // namespace
++
++namespace {
 +/// The tablet's other actions. Returns true if one wants to run again.
 +bool runPendingActions() {
 +	if (sdRoutineLock) {
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
 +		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0 || pendingPanelMask != 0
 +		       || pendingBrophetMask != 0 || pendingWaveMask != 0 || numPendingKnobs != 0 || pendingGoldMask != 0
-+		       || pendingDrumMask != 0 || pendingDrumRow >= 0;
++		       || pendingDrumMask != 0 || pendingDrumRow >= 0 || numPendingAuditions != 0 || pendingTouchKind >= 0;
 +	}
 +	bool again = false;
 +	if (pendingDrumRow >= 0) {
@@ -37980,6 +38207,12 @@ index 51a40bfd2..425a5d5fd 100644
 +			}
 +		}
 +		pendingDrumRow = -1;
++	}
++	if (numPendingAuditions != 0) {
++		runPendingAuditions();
++	}
++	if (pendingTouchKind >= 0) {
++		runPendingTouch(); // Sets the shortcut pad below
 +	}
 +	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0 || pendingDrumMask != 0) {
 +		runPendingPanel();
