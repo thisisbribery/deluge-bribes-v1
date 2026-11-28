@@ -19980,7 +19980,7 @@ index 000000000..9872e7267
 +} // namespace deluge::gui::context_menu
 diff --git a/src/deluge/gui/context_menu/synth_instrument.cpp b/src/deluge/gui/context_menu/synth_instrument.cpp
 new file mode 100644
-index 000000000..099f3b666
+index 000000000..4bf98cf9f
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/synth_instrument.cpp
 @@ -0,0 +1,522 @@
@@ -20085,11 +20085,11 @@ index 000000000..099f3b666
 +	}
 +	const bool dx = synth->sources[0].oscType == OscType::DX7;
 +	const bool rings = synth->sources[0].oscType == OscType::DRUM_SYNTH
-+	                   && dsp::drum_synth::isRings(synth->sources[0].drumPatch.engine());
++	                   && dsp::drum_synth::isRings(synth->sources[0].drumPatch().engine());
 +	const bool brophet = synth->sources[0].oscType == OscType::DRUM_SYNTH
-+	                     && dsp::drum_synth::isBrophet(synth->sources[0].drumPatch.engine());
++	                     && dsp::drum_synth::isBrophet(synth->sources[0].drumPatch().engine());
 +	const bool bruno106 = synth->sources[0].oscType == OscType::DRUM_SYNTH
-+	                      && dsp::drum_synth::isBruno106(synth->sources[0].drumPatch.engine());
++	                      && dsp::drum_synth::isBruno106(synth->sources[0].drumPatch().engine());
 +	const bool wavetable =
 +	    synth->getSynthMode() == SynthMode::SUBTRACTIVE
 +	    && (synth->sources[0].oscType == OscType::WAVETABLE || synth->sources[1].oscType == OscType::WAVETABLE);
@@ -23394,7 +23394,7 @@ index 000000000..466e7dab2
 +} // namespace deluge::gui::menu_item::delay
 diff --git a/src/deluge/gui/menu_item/drum_synth/editor.cpp b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 new file mode 100644
-index 000000000..01b3f5301
+index 000000000..bd47bc9e7
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/editor.cpp
 @@ -0,0 +1,426 @@
@@ -23518,7 +23518,7 @@ index 000000000..01b3f5301
 +	if (sound == nullptr) {
 +		return {};
 +	}
-+	const Engine engine = sound->sources[0].drumPatch.engine();
++	const Engine engine = sound->sources[0].drumPatch().engine();
 +	if (deluge::dsp::drum_synth::isTribe(engine)) {
 +		return layouts_[11];
 +	}
@@ -23560,7 +23560,7 @@ index 000000000..01b3f5301
 +	if (sound == nullptr) {
 +		return l10n::getView(STRING_FOR_DRUM_SYNTH);
 +	}
-+	const Engine engine = sound->sources[0].drumPatch.engine();
++	const Engine engine = sound->sources[0].drumPatch().engine();
 +	if (deluge::dsp::drum_synth::isCyc(engine)) {
 +		return l10n::getView(deluge::dsp::drum_synth::cycEngineName(engine));
 +	}
@@ -23936,7 +23936,7 @@ index 000000000..103c0824b
 +} // namespace deluge::gui::menu_item::drum_synth
 diff --git a/src/deluge/gui/menu_item/drum_synth/param.h b/src/deluge/gui/menu_item/drum_synth/param.h
 new file mode 100644
-index 000000000..0504df6db
+index 000000000..e7070ee30
 --- /dev/null
 +++ b/src/deluge/gui/menu_item/drum_synth/param.h
 @@ -0,0 +1,938 @@
@@ -23981,14 +23981,14 @@ index 000000000..0504df6db
 +
 +/// The drum synth always lives on osc 1
 +inline Patch& currentPatch() {
-+	return soundEditor.currentSound->sources[0].drumPatch;
++	return soundEditor.currentSound->sources[0].editDrumPatch();
 +}
 +
 +/// Shown only when the sound's drum synth engine reads this setting
 +inline bool usedBySound(ModControllableAudio* modControllable, Patch::Param param) {
 +	// Patched sound menus are only ever opened on a Sound
 +	const auto* sound = static_cast<Sound*>(modControllable);
-+	return Patch::isUsedBy(param, sound->sources[0].drumPatch.engine());
++	return Patch::isUsedBy(param, sound->sources[0].drumPatch().engine());
 +}
 +
 +using deluge::dsp::drum_synth::DrumControls;
@@ -24153,7 +24153,7 @@ index 000000000..0504df6db
 +	using deluge::dsp::drum_synth::isXia;
 +	Sound& sound = *soundEditor.currentSound;
 +	Source& source = sound.sources[0];
-+	Patch& patch = source.drumPatch;
++	Patch& patch = source.editDrumPatch();
 +	const bool wasDrumSynth = source.oscType == OscType::DRUM_SYNTH;
 +	const Engine from = patch.engine();
 +	using deluge::dsp::drum_synth::isRings;
@@ -24248,7 +24248,7 @@ index 000000000..0504df6db
 +	if (source.oscType != OscType::DRUM_SYNTH) {
 +		return;
 +	}
-+	deluge::dsp::drum_synth::storeControlsInPatch(currentControls(), source.drumPatch);
++	deluge::dsp::drum_synth::storeControlsInPatch(currentControls(), source.editDrumPatch());
 +	sound.killAllVoices();
 +	source.setOscType(soundEditor.editingKitRow() ? OscType::SAMPLE : OscType::SAW);
 +	// GIN's EQ frequency sits on the sample start offset
@@ -24284,7 +24284,7 @@ index 000000000..0504df6db
 +
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
-+		const Engine engine = sound->sources[0].drumPatch.engine();
++		const Engine engine = sound->sources[0].drumPatch().engine();
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
 +		       && ((engine_ == Engine::NUM_ENGINES) ? deluge::dsp::drum_synth::isXia(engine) : engine == engine_);
 +	}
@@ -24301,7 +24301,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isCyc(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isCyc(sound->sources[0].drumPatch().engine());
 +	}
 +	[[nodiscard]] std::string_view getName() const override { return l10n::getView(currentName()); }
 +	[[nodiscard]] std::string_view getTitle() const override { return l10n::getView(currentName()); }
@@ -24309,7 +24309,7 @@ index 000000000..0504df6db
 +private:
 +	[[nodiscard]] l10n::String currentName() const {
 +		const Sound* sound = soundEditor.currentSound;
-+		return cycKnobName((sound != nullptr) ? sound->sources[0].drumPatch.engine() : Engine::CYC_KIK, slot_);
++		return cycKnobName((sound != nullptr) ? sound->sources[0].drumPatch().engine() : Engine::CYC_KIK, slot_);
 +	}
 +	DrumControls::Slot slot_;
 +};
@@ -24322,7 +24322,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24334,7 +24334,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24346,7 +24346,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isTribe(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isTribe(sound->sources[0].drumPatch().engine());
 +	}
 +	[[nodiscard]] std::string_view getName() const override { return l10n::getView(currentName()); }
 +	[[nodiscard]] std::string_view getTitle() const override { return l10n::getView(currentName()); }
@@ -24355,7 +24355,7 @@ index 000000000..0504df6db
 +	[[nodiscard]] l10n::String currentName() const {
 +		const Sound* sound = soundEditor.currentSound;
 +		return deluge::dsp::drum_synth::tribeKnobName(
-+		    (sound != nullptr) ? sound->sources[0].drumPatch.engine() : Engine::TR_KICK, slot_);
++		    (sound != nullptr) ? sound->sources[0].drumPatch().engine() : Engine::TR_KICK, slot_);
 +	}
 +	DrumControls::Slot slot_;
 +};
@@ -24368,7 +24368,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isRings(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isRings(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24380,7 +24380,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isBrophet(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isBrophet(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24392,7 +24392,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isBruno106(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isBruno106(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24424,7 +24424,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isLxr(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isLxr(sound->sources[0].drumPatch().engine());
 +	}
 +};
 +
@@ -24436,7 +24436,7 @@ index 000000000..0504df6db
 +
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
-+		const Engine engine = sound->sources[0].drumPatch.engine();
++		const Engine engine = sound->sources[0].drumPatch().engine();
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH && !deluge::dsp::drum_synth::isXia(engine)
 +		       && Patch::isUsedBy(param_, engine);
 +	}
@@ -24608,7 +24608,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		namespace rings = deluge::dsp::drum_synth::rings;
 +		const auto* sound = static_cast<Sound*>(modControllable);
-+		const auto& patch = sound->sources[0].drumPatch;
++		const auto& patch = sound->sources[0].drumPatch();
 +		const auto m = static_cast<rings::Model>(patch.get(Patch::RINGS_MODEL));
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH && deluge::dsp::drum_synth::isRings(patch.engine())
 +		       && (m == rings::Model::SYMPATHETIC || m == rings::Model::CHORD);
@@ -24711,7 +24711,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isGin(sound->sources[0].drumPatch().engine());
 +	}
 +	MenuItem* selectButtonPress() override {
 +		namespace gin = deluge::dsp::drum_synth::gin;
@@ -24770,7 +24770,7 @@ index 000000000..0504df6db
 +	bool isRelevant(ModControllableAudio* modControllable, int32_t whichThing) const override {
 +		const auto* sound = static_cast<Sound*>(modControllable);
 +		return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch.engine());
++		       && deluge::dsp::drum_synth::isUltrakik(sound->sources[0].drumPatch().engine());
 +	}
 +
 +	deluge::vector<std::string_view> getOptions(OptType optType) override {
@@ -26282,7 +26282,7 @@ index 000000000..bb20e6814
 +
 +} // namespace deluge::gui::menu_item::swing
 diff --git a/src/deluge/gui/menu_item/synth_mode.h b/src/deluge/gui/menu_item/synth_mode.h
-index 02acbd45b..4367fe7e8 100644
+index 02acbd45b..aa4c0d252 100644
 --- a/src/deluge/gui/menu_item/synth_mode.h
 +++ b/src/deluge/gui/menu_item/synth_mode.h
 @@ -16,33 +16,184 @@
@@ -26325,11 +26325,11 @@ index 02acbd45b..4367fe7e8 100644
 +		for (size_t i = 0; i < list.size(); i++) {
 +			const Entry& e = list[i];
 +			const bool match = (source.oscType == OscType::DRUM_SYNTH)
-+			                       ? (e.kind == Entry::Kind::DRUM && e.engine == source.drumPatch.engine()
++			                       ? (e.kind == Entry::Kind::DRUM && e.engine == source.drumPatch().engine()
 +			                          && (!dsp::drum_synth::isXia(e.engine)
-+			                              || e.variant == source.drumPatch.get(dsp::drum_synth::Patch::XIA_VARIANT))
++			                              || e.variant == source.drumPatch().get(dsp::drum_synth::Patch::XIA_VARIANT))
 +			                          && (!dsp::drum_synth::isRings(e.engine)
-+			                              || e.variant == source.drumPatch.get(dsp::drum_synth::Patch::RINGS_MODEL)))
++			                              || e.variant == source.drumPatch().get(dsp::drum_synth::Patch::RINGS_MODEL)))
 +			                   : (sound.synthMode == ::SynthMode::TB303)
 +			                       ? e.kind == Entry::Kind::TB303
 +			                       : (e.kind == Entry::Kind::MODE && e.mode == sound.synthMode);
@@ -27487,7 +27487,7 @@ index f4e341a9b..0063cf875 100644
  
  extern LoadInstrumentPresetUI loadInstrumentPresetUI;
 diff --git a/src/deluge/gui/ui/menus.cpp b/src/deluge/gui/ui/menus.cpp
-index 7bbd559f6..e8a3973e5 100644
+index 7bbd559f6..3633dd605 100644
 --- a/src/deluge/gui/ui/menus.cpp
 +++ b/src/deluge/gui/ui/menus.cpp
 @@ -33,8 +33,10 @@
@@ -28533,7 +28533,7 @@ index 7bbd559f6..e8a3973e5 100644
 +}
 +
 +bool isDrumLayoutPad(const Sound* sound, int32_t x, int32_t y) {
-+	return isDrumSynth(sound) && layoutOwnsPad(sound->sources[0].drumPatch.engine(), x, y);
++	return isDrumSynth(sound) && layoutOwnsPad(sound->sources[0].drumPatch().engine(), x, y);
 +}
 +
 +MenuItem* soundShortcutFor(const Sound* sound, int32_t x, int32_t y) {
@@ -28541,7 +28541,7 @@ index 7bbd559f6..e8a3973e5 100644
 +	if (!isDrumSynth(sound)) {
 +		return usual;
 +	}
-+	const auto engine = sound->sources[0].drumPatch.engine();
++	const auto engine = sound->sources[0].drumPatch().engine();
 +	if (layoutOwnsPad(engine, x, y)) {
 +		return drumLayoutItemAt(engine, x, y);
 +	}
@@ -29093,7 +29093,7 @@ index c7f05939d..61dfc6092 100644
  
  extern SavePatternUI savePatternUI;
 diff --git a/src/deluge/gui/ui/sound_editor.cpp b/src/deluge/gui/ui/sound_editor.cpp
-index 1cd5b7410..91184dd39 100644
+index 1cd5b7410..3a18f7210 100644
 --- a/src/deluge/gui/ui/sound_editor.cpp
 +++ b/src/deluge/gui/ui/sound_editor.cpp
 @@ -2,7 +2,10 @@
@@ -29209,7 +29209,7 @@ index 1cd5b7410..91184dd39 100644
  			*cols = 0xFFFFFFFE;
 +			// Pad Guides: the drum synth layout's columns stay lit, the glow greys their empty pads itself
 +			if (const Sound* glowSound = InstrumentClipView::padGuidesGlowSound(); glowSound != nullptr) {
-+				const auto engine = glowSound->sources[0].drumPatch.engine();
++				const auto engine = glowSound->sources[0].drumPatch().engine();
 +				for (int32_t x = 0; x < kDisplayWidth; x++) {
 +					if (drumLayoutColumn(engine, x)) {
 +						*cols &= ~(1u << (kDisplayWidth + kSideBarWidth - 1 - x));
@@ -29595,7 +29595,7 @@ index 68735d042..2c7f6ebe5 100644
  	MenuItem* getCurrentMenuItem();
  	bool inSettingsMenu();
 diff --git a/src/deluge/gui/ui_timer_manager.cpp b/src/deluge/gui/ui_timer_manager.cpp
-index 3122e5db3..6295cf352 100644
+index 3122e5db3..b2676b98b 100644
 --- a/src/deluge/gui/ui_timer_manager.cpp
 +++ b/src/deluge/gui/ui_timer_manager.cpp
 @@ -148,6 +148,10 @@ void UITimerManager::routine() {
@@ -29609,7 +29609,7 @@ index 3122e5db3..6295cf352 100644
  				case TimerName::MATRIX_DRIVER:
  					PadLEDs::timerRoutine();
  					break;
-@@ -253,6 +257,18 @@ void UITimerManager::routine() {
+@@ -253,6 +257,22 @@ void UITimerManager::routine() {
  					HIDSysex::sendDisplayIfChanged();
  					break;
  
@@ -29625,24 +29625,29 @@ index 3122e5db3..6295cf352 100644
 +					HIDSysex::sendPanelIfChanged();
 +					break;
 +
++				case TimerName::COMPANION_CPU:
++					HIDSysex::sendCpu();
++					break;
++
  				// explicit fallthrough cases
  				case TimerName::METER_INDICATOR_BLINK: // really nothing for this?
  				case TimerName::NUM_TIMERS:;
 diff --git a/src/deluge/gui/ui_timer_manager.h b/src/deluge/gui/ui_timer_manager.h
-index 214f3a7f3..a4cfcb52e 100644
+index 214f3a7f3..7d3e6a6aa 100644
 --- a/src/deluge/gui/ui_timer_manager.h
 +++ b/src/deluge/gui/ui_timer_manager.h
-@@ -40,6 +40,9 @@ enum class TimerName {
+@@ -40,6 +40,10 @@ enum class TimerName {
  	OLED_CONSOLE,
  	OLED_SCROLLING_AND_BLINKING,
  	SYSEX_DISPLAY,
 +	COMPANION_PICK,  ///< Choose the picker option a companion screen tapped
 +	COMPANION_WAVE,  ///< Keep a companion screen's waveform view up to date (scroll, zoom, playhead)
 +	COMPANION_PANEL, ///< Keep a companion screen's engine panel up to date with the Deluge's knobs
++	COMPANION_CPU,   ///< Send the CPU stream (0x59) to whoever asked for it
  	METER_INDICATOR_BLINK,
  	SEND_MIDI_FEEDBACK_FOR_AUTOMATION,
  	INTERPOLATION_SHORTCUT_BLINK,
-@@ -49,6 +52,8 @@ enum class TimerName {
+@@ -49,6 +53,8 @@ enum class TimerName {
  	MOD_ENCODER_POPUP_FLUSH,
  	SELECTED_CLIP_PULSE,
  	SELECTED_NOTE_PULSE,
@@ -30297,7 +30302,7 @@ index 663b5da50..8b06dfd4d 100644
  	                                          int32_t numParams);
  	void getLastSelectedNonGlobalParamArrayPosition(Clip* clip);
 diff --git a/src/deluge/gui/views/instrument_clip_view.cpp b/src/deluge/gui/views/instrument_clip_view.cpp
-index 75e1a7340..001963d21 100644
+index 75e1a7340..4c5096bad 100644
 --- a/src/deluge/gui/views/instrument_clip_view.cpp
 +++ b/src/deluge/gui/views/instrument_clip_view.cpp
 @@ -17,15 +17,22 @@
@@ -30830,7 +30835,7 @@ index 75e1a7340..001963d21 100644
 +	constexpr RGB kPink{255, 0, 120};
 +	constexpr RGB kRed{255, 0, 0};
 +	if (soundDrum->sources[0].oscType == OscType::DRUM_SYNTH) {
-+		const auto engine = soundDrum->sources[0].drumPatch.engine();
++		const auto engine = soundDrum->sources[0].drumPatch().engine();
 +		*tint = deluge::dsp::drum_synth::isTribe(engine)                                                  ? kRed
 +		        : deluge::dsp::drum_synth::isCyc(engine)                                                  ? kBlue
 +		        : deluge::dsp::drum_synth::isXia(engine)                                                  ? kGreen
@@ -30885,7 +30890,7 @@ index 75e1a7340..001963d21 100644
 +	constexpr int32_t kFullGreyout = 6500000;
 +	constexpr RGB kDrumGlow{255, 40, 90};
 +	constexpr RGB kSynthGlow{150, 40, 255};
-+	const auto engine = sound->sources[0].drumPatch.engine();
++	const auto engine = sound->sources[0].drumPatch().engine();
 +	const bool sameAsBefore = state.sound == sound && state.engine == engine && state.overOverlay == overOverlay
 +	                          && state.onPads == (image == PadLEDs::image);
 +	if (!sameAsBefore) {
@@ -30958,7 +30963,7 @@ index 75e1a7340..001963d21 100644
 +	}
 +	// Nothing to pulse once SHIFT is up or the sound has changed: the render that follows clears it
 +	const Sound* sound = padGuidesGlowSound();
-+	if (sound != state.sound || sound->sources[0].drumPatch.engine() != state.engine) {
++	if (sound != state.sound || sound->sources[0].drumPatch().engine() != state.engine) {
 +		return;
 +	}
 +	// The layouts sit in columns 2 to 5: two column messages
@@ -32146,7 +32151,7 @@ index 091c51b57..9e23f1bef 100644
  	int16_t copiedYNoteOfBottomRow{};
 diff --git a/src/deluge/gui/views/kit_affect_all.cpp b/src/deluge/gui/views/kit_affect_all.cpp
 new file mode 100644
-index 000000000..37038ba25
+index 000000000..f9ac3de13
 --- /dev/null
 +++ b/src/deluge/gui/views/kit_affect_all.cpp
 @@ -0,0 +1,456 @@
@@ -32287,7 +32292,7 @@ index 000000000..37038ba25
 +	if (!isEngineRow(from) || !isEngineRow(to)) {
 +		return params::kNoParamID;
 +	}
-+	if (from->sources[0].drumPatch.engine() == to->sources[0].drumPatch.engine()) {
++	if (from->sources[0].drumPatch().engine() == to->sources[0].drumPatch().engine()) {
 +		return paramId;
 +	}
 +	for (int32_t x = 0; x < kDisplayWidth; x++) {
@@ -34035,10 +34040,10 @@ index 8ba4446a9..b40f41e82 100644
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..6bd43de1c 100644
+index 51a40bfd2..49ab001aa 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
-@@ -1,15 +1,71 @@
+@@ -1,15 +1,72 @@
  #include "hid/hid_sysex.h"
 +#include "dsp/drum_synth/drum_synth.h"
 +#include "extern.h"
@@ -34093,6 +34098,7 @@ index 51a40bfd2..6bd43de1c 100644
 +#include "playback/mode/session.h"
 +#include "playback/playback_handler.h"
  #include "processing/engines/audio_engine.h"
++#include "processing/engines/cpu_meter.h"
 +#include "processing/sound/drum_synth_params.h"
 +#include "processing/sound/sound_drum.h"
 +#include "processing/sound/sound_instrument.h"
@@ -34110,7 +34116,7 @@ index 51a40bfd2..6bd43de1c 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +73,4822 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +74,5075 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -34205,7 +34211,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	const Source& source = sound->sources[0];
 +	switch (source.oscType) {
 +	case OscType::DRUM_SYNTH:
-+		return static_cast<uint8_t>(source.drumPatch.engine()) & 0x7F;
++		return static_cast<uint8_t>(source.drumPatch().engine()) & 0x7F;
 +	case OscType::DX7:
 +		return kCodeDx7;
 +	case OscType::SAMPLE:
@@ -34219,7 +34225,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	if (sound == nullptr || sound->sources[0].oscType != OscType::DRUM_SYNTH) {
 +		return 0;
 +	}
-+	const auto& patch = sound->sources[0].drumPatch;
++	const auto& patch = sound->sources[0].drumPatch();
 +	if (patch.engine() == Engine::RINGS) {
 +		return patch.get(deluge::dsp::drum_synth::Patch::RINGS_MODEL) & 0x7F;
 +	}
@@ -35271,7 +35277,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	numEngineNames = 0;
 +	if (drumEngine && patched != nullptr) {
 +		// Drum and synth engines: every pad of the engine's layout that holds one of its controls
-+		const auto engine = sound->sources[0].drumPatch.engine();
++		const auto engine = sound->sources[0].drumPatch().engine();
 +		uint32_t seen = 0;
 +		for (int32_t x = 0; x < kDisplayWidth && engineCount < kMaxEngineKnobs; x++) {
 +			for (int32_t y = 0; y < kDisplayHeight && engineCount < kMaxEngineKnobs; y++) {
@@ -35322,7 +35328,7 @@ index 51a40bfd2..6bd43de1c 100644
 +		// BRUNO106's switches
 +		if (engine == Engine::BRUNO106) {
 +			using deluge::dsp::drum_synth::Patch;
-+			const auto& patch = sound->sources[0].drumPatch;
++			const auto& patch = sound->sources[0].drumPatch();
 +			const bool saw = patch.get(Patch::BRUNO_SAW) != 0;
 +			const bool pulse = patch.get(Patch::BRUNO_PULSE) != 0;
 +			const int32_t hpf = patch.get(Patch::BRUNO_HPF);
@@ -35593,7 +35599,7 @@ index 51a40bfd2..6bd43de1c 100644
 +
 +bool isBrunoSound(Sound* sound) {
 +	return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+	       && deluge::dsp::drum_synth::isBruno106(sound->sources[0].drumPatch.engine());
++	       && deluge::dsp::drum_synth::isBruno106(sound->sources[0].drumPatch().engine());
 +}
 +
 +int32_t panelFromStandard(int32_t value) {
@@ -35663,7 +35669,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	using deluge::dsp::drum_synth::Patch;
 +	PatchedParamSet* patched = params->getPatchedParamSet();
 +	PatchCableSet* cables = cablesOf(params);
-+	const auto& patch = sound->sources[0].drumPatch;
++	const auto& patch = sound->sources[0].drumPatch();
 +	panelFlagsFor(sound);
 +
 +	v[PANEL_LFO_RATE] = panelFromStandard(patched->getValue(P::GLOBAL_LFO_FREQ_1));
@@ -35875,7 +35881,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	using deluge::dsp::drum_synth::Patch;
 +	PatchedParamSet* patched = params->getPatchedParamSet();
 +	PatchCableSet* cables = cablesOf(params);
-+	auto& patch = sound->sources[0].drumPatch;
++	auto& patch = sound->sources[0].editDrumPatch();
 +	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
 +	// A cable's new amount, keeping the way it points (remembered through 0, see readPanel)
 +	auto signed_ = [&](int32_t which, PatchSource source, int32_t param, int32_t amount) {
@@ -36183,7 +36189,7 @@ index 51a40bfd2..6bd43de1c 100644
 +
 +bool isBrophetSound(Sound* sound) {
 +	return sound->sources[0].oscType == OscType::DRUM_SYNTH
-+	       && deluge::dsp::drum_synth::isBrophet(sound->sources[0].drumPatch.engine());
++	       && deluge::dsp::drum_synth::isBrophet(sound->sources[0].drumPatch().engine());
 +}
 +
 +/// A cable's sign, remembered through 0 (the Deluge deletes a cable at 0)
@@ -36200,7 +36206,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	PatchedParamSet* patched = params->getPatchedParamSet();
 +	UnpatchedParamSet* unpatched = params->getUnpatchedParamSet();
 +	PatchCableSet* cables = cablesOf(params);
-+	const auto& patch = sound->sources[0].drumPatch;
++	const auto& patch = sound->sources[0].drumPatch();
 +	panelFlagsFor(sound);
 +	for (int32_t id = 0; id < kNumBrophetPanel; id++) {
 +		const BrophetControl& c = kBrophet[id];
@@ -36248,7 +36254,7 @@ index 51a40bfd2..6bd43de1c 100644
 +void applyBrophet(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params, int32_t id,
 +                  int32_t pos) {
 +	const BrophetControl& c = kBrophet[id];
-+	auto& patch = sound->sources[0].drumPatch;
++	auto& patch = sound->sources[0].editDrumPatch();
 +	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
 +	switch (c.kind) {
 +	case BKind::STANDARD:
@@ -36695,7 +36701,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	namespace ds = deluge::dsp::drum_synth;
 +	const Source& source = sound->sources[0];
 +	if (source.oscType == OscType::DRUM_SYNTH) {
-+		const auto engine = source.drumPatch.engine();
++		const auto engine = source.drumPatch().engine();
 +		return ds::isTribe(engine)      ? 4
 +		       : ds::isCyc(engine)      ? 5
 +		       : ds::isLxr(engine)      ? 6
@@ -36762,7 +36768,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	if (id < 0 || id >= drumPanelCount(kind)) {
 +		return {DKind::NONE};
 +	}
-+	const Engine engine = sound->sources[0].drumPatch.engine();
++	const Engine engine = sound->sources[0].drumPatch().engine();
 +	switch (kind) {
 +	case 4:
 +		return kTribePanel[id];
@@ -36832,7 +36838,7 @@ index 51a40bfd2..6bd43de1c 100644
 +int32_t readDrumPanel(Sound* sound, ParamManagerForTimeline* params, uint8_t kind, int32_t* v) {
 +	PatchedParamSet* patched = params->getPatchedParamSet();
 +	UnpatchedParamSet* unpatched = params->getUnpatchedParamSet();
-+	const auto& patch = sound->sources[0].drumPatch;
++	const auto& patch = sound->sources[0].drumPatch();
 +	DxPatch* dx = sound->sources[0].dxPatch;
 +	const int32_t count = drumPanelCount(kind);
 +	for (int32_t id = 0; id < count; id++) {
@@ -36926,13 +36932,13 @@ index 51a40bfd2..6bd43de1c 100644
 +/// note row index and name (a synth sends none), then a name (DX7: the voice's; others empty).
 +int32_t putDrumPanelExtras(uint8_t* out, Sound* sound, uint8_t kind) {
 +	using Engine = deluge::dsp::drum_synth::Engine;
-+	const Engine engine = sound->sources[0].drumPatch.engine();
++	const Engine engine = sound->sources[0].drumPatch().engine();
 +	int32_t i = 0;
 +	out[i++] = kind == 4    ? static_cast<int32_t>(engine) - static_cast<int32_t>(Engine::TR_KICK)
 +	           : kind == 5  ? static_cast<int32_t>(engine) - static_cast<int32_t>(Engine::CYC_KIK)
 +	           : kind == 6  ? static_cast<int32_t>(engine)
 +	           : kind == 9  ? (engine == Engine::IIA ? 1 : 0)
-+	           : kind == 10 ? std::min<int32_t>(sound->sources[0].drumPatch.get(DP::RINGS_MODEL), 4)
++	           : kind == 10 ? std::min<int32_t>(sound->sources[0].drumPatch().get(DP::RINGS_MODEL), 4)
 +	                        : 0;
 +	const int32_t countAt = i++;
 +	const int32_t selectedAt = i++;
@@ -37023,7 +37029,7 @@ index 51a40bfd2..6bd43de1c 100644
 +/// BRIBERING's strings per voice, as its Poly menu sets them (see setRingsVoiceLimit)
 +void panelRingsVoiceLimit(Sound* sound) {
 +	namespace rings = deluge::dsp::drum_synth::rings;
-+	const auto& patch = sound->sources[0].drumPatch;
++	const auto& patch = sound->sources[0].drumPatch();
 +	const auto m = static_cast<rings::Model>(patch.get(DP::RINGS_MODEL));
 +	if (m == rings::Model::SYMPATHETIC || m == rings::Model::CHORD) {
 +		sound->maxVoiceCount = (patch.get(DP::RINGS_POLY) != 0) ? 2 : 4;
@@ -37037,7 +37043,7 @@ index 51a40bfd2..6bd43de1c 100644
 +               int32_t id, int32_t pos) {
 +	namespace ds = deluge::dsp::drum_synth;
 +	const DrumPanelControl c = drumPanelControl(sound, kind, id);
-+	auto& patch = sound->sources[0].drumPatch;
++	auto& patch = sound->sources[0].editDrumPatch();
 +	DxPatch* dx = sound->sources[0].dxPatch;
 +	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
 +	char memory[MODEL_STACK_MAX_SIZE];
@@ -38149,7 +38155,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	if (k.group == 8) {
 +		// Switches: pos is the choice, as PARAMS numbers them
 +		if (drumEngine && isBrunoSound(sound)) {
-+			auto& patch = sound->sources[0].drumPatch;
++			auto& patch = sound->sources[0].editDrumPatch();
 +			const bool chorus = sound->getModFXType() == ModFXType::BRUNO_CHORUS;
 +			if (k.x == 2 && k.y == 2) {
 +				patch.set(Patch::BRUNO_SAW, pos != 0);
@@ -38531,10 +38537,263 @@ index 51a40bfd2..6bd43de1c 100644
 +	}
 +	return pressMenuButton(deluge::hid::button::SELECT_ENC, true);
 +}
++
++// ---- CPU stream (host 03 12 <period>, reply 0x59 CPU) ----
++// Raw running totals, so a computer can work out load over any window from two messages. Separate from the
++// subscription above: building the companion screen's state costs CPU, which would show up in what's measured.
++constexpr uint8_t kCpuHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x59};
++constexpr uint8_t kCpuVersion = 2;
++constexpr int32_t kCpuBodyMax = 96 + deluge::cpu_meter::kNumKinds * 18 + deluge::cpu_meter::kNumSections * 9;
++MIDICable* cpuCable = nullptr;
++uint32_t cpuUntil = 0;
++int32_t cpuPeriodMs = 100;
++uint8_t cpuSeq = 0;
++
++int32_t put28(uint8_t* out, uint32_t v) {
++	out[0] = (v >> 21) & 0x7F;
++	out[1] = (v >> 14) & 0x7F;
++	out[2] = (v >> 7) & 0x7F;
++	out[3] = v & 0x7F;
++	return 4;
++}
++
++int32_t put14(uint8_t* out, uint32_t v) {
++	v = std::min<uint32_t>(v, 0x3FFF);
++	out[0] = (v >> 7) & 0x7F;
++	out[1] = v & 0x7F;
++	return 2;
++}
++
++/// Free bytes in a memory region, and its biggest free block (empty spaces are kept sorted by length)
++void regionFree(int32_t region, uint32_t& total, uint32_t& largest) {
++	auto& spaces = GeneralMemoryAllocator::get().regions[region].emptySpaces;
++	total = 0;
++	largest = 0;
++	for (int32_t i = 0; i < spaces.getNumElements(); i++) {
++		auto* record = static_cast<EmptySpaceRecord*>(spaces.getElementAddress(i));
++		total += record->length;
++		largest = std::max(largest, record->length);
++	}
++}
++
++int32_t buildCpu(uint8_t* out) {
++	namespace cpu = deluge::cpu_meter;
++	int32_t i = 0;
++	out[i++] = kCpuVersion;
++	out[i++] = cpuSeq;
++	cpuSeq = (cpuSeq + 1) & 0x7F;
++	out[i++] = playbackHandler.isEitherClockActive() ? 1 : 0;
++	for (const cpu::Counter* c : {&cpu::audio, &cpu::voices, &cpu::drumSynth}) {
++		i += put28(out + i, c->ticks);
++		i += put28(out + i, c->samples);
++	}
++	i += put28(out + i, cpu::peakTicks);
++	i += put14(out + i, cpu::peakSamples);
++	i += put14(out + i, cpu::maxRenderSamples);
++	cpu::clearPeak();
++	i += put14(out + i, AudioEngine::getNumVoices());
++	i += put14(out + i, AudioEngine::getNumAudio());
++	out[i++] = std::clamp<int32_t>(AudioEngine::cpuDireness, 0, 127);
++	i += put28(out + i, cpu::culls);
++	uint32_t total, largest;
++	regionFree(MEMORY_REGION_INTERNAL, total, largest);
++	i += put28(out + i, total);
++	i += put28(out + i, largest);
++	regionFree(MEMORY_REGION_INTERNAL_SMALL, total, largest);
++	i += put28(out + i, total);
++	i += put28(out + i, largest);
++	// SDRAM: general and small-object regions (sample cache, the stealable region, isn't counted: it fills by design)
++	regionFree(MEMORY_REGION_EXTERNAL, total, largest);
++	i += put28(out + i, total);
++	i += put28(out + i, largest);
++	regionFree(MEMORY_REGION_EXTERNAL_SMALL, total, largest);
++	i += put28(out + i, total);
++	i += put28(out + i, largest);
++	const int32_t countAt = i++;
++	int32_t count = 0;
++	for (int32_t k = 0; k < cpu::kNumKinds; k++) {
++		if (cpu::kinds[k].samples == 0) {
++			continue; // Never played since power on
++		}
++		out[i++] = k;
++		i += put28(out + i, cpu::kinds[k].ticks);
++		i += put28(out + i, cpu::kinds[k].samples);
++		count++;
++	}
++	out[countAt] = count;
++	// v2: whole Sound::render per kind (voices plus the row's own processing), then the parts of the render
++	const int32_t soundCountAt = i++;
++	count = 0;
++	for (int32_t k = 0; k < cpu::kNumKinds; k++) {
++		if (cpu::soundKinds[k].samples == 0) {
++			continue;
++		}
++		out[i++] = k;
++		i += put28(out + i, cpu::soundKinds[k].ticks);
++		i += put28(out + i, cpu::soundKinds[k].samples);
++		count++;
++	}
++	out[soundCountAt] = count;
++	out[i++] = cpu::kNumSections;
++	for (const cpu::Counter& c : cpu::sections) {
++		i += put28(out + i, c.ticks);
++		i += put28(out + i, c.samples);
++	}
++	return i;
++}
++
++// ---- RAM map (host 03 13 <region>, reply 0x70 RAMMAP) ----
++// A developer message, numbered well clear of the companion screen's 0x4x / 0x5x ones.
++// Walks one memory region's spaces and sends its live allocations grouped by exact size, biggest total first, so a
++// computer can tell what a kit's rows are made of by comparing maps. Same layout the allocator keeps: a 4-byte
++// header (type | size) before each space, a 4-byte footer after it.
++constexpr uint8_t kRamMapHeader[7] = {0xF0, 0x00, 0x21, 0x7B, 0x01, 0x02, 0x70};
++constexpr int32_t kRamMapSizes = 160; ///< Distinct sizes kept; the rest go in one "other" total
++constexpr int32_t kRamMapSend = 48;   ///< Sizes sent
++int32_t pendingRamMap = -1;
++
++int32_t buildRamMap(int32_t region, uint8_t* out) {
++	struct Bucket {
++		uint32_t size;
++		uint32_t count;
++	};
++	static Bucket buckets[kRamMapSizes];
++	int32_t numBuckets = 0;
++	uint32_t otherBytes = 0;
++	uint32_t otherCount = 0;
++	uint32_t allocatedBytes = 0;
++	uint32_t allocatedCount = 0;
++	uint32_t stealableBytes = 0;
++	uint32_t emptyBytes = 0;
++	bool corrupt = false;
++
++	MemoryRegion& r = GeneralMemoryAllocator::get().regions[region];
++	uint32_t address = r.start + 8;
++	for (int32_t guard = 0; address < r.end && guard < 200000; guard++) {
++		const uint32_t header = *reinterpret_cast<uint32_t*>(address - 4);
++		const uint32_t size = header & SPACE_SIZE_MASK;
++		const uint32_t type = header & SPACE_TYPE_MASK;
++		if (size == 0 || address + size > r.end + 8) {
++			corrupt = true;
++			break;
++		}
++		if (type == SPACE_HEADER_ALLOCATED) {
++			allocatedBytes += size;
++			allocatedCount++;
++			int32_t b = 0;
++			while (b < numBuckets && buckets[b].size != size) {
++				b++;
++			}
++			if (b < numBuckets) {
++				buckets[b].count++;
++			}
++			else if (numBuckets < kRamMapSizes) {
++				buckets[numBuckets++] = {size, 1};
++			}
++			else {
++				otherBytes += size;
++				otherCount++;
++			}
++		}
++		else if (type == SPACE_HEADER_STEALABLE) {
++			stealableBytes += size;
++		}
++		else {
++			emptyBytes += size;
++		}
++		address += size + 8;
++	}
++	// Biggest total first
++	std::sort(buckets, buckets + numBuckets,
++	          [](const Bucket& a, const Bucket& b) { return uint64_t{a.size} * a.count > uint64_t{b.size} * b.count; });
++	const int32_t sent = std::min(numBuckets, kRamMapSend);
++	for (int32_t b = sent; b < numBuckets; b++) {
++		otherBytes += buckets[b].size * buckets[b].count;
++		otherCount += buckets[b].count;
++	}
++
++	int32_t i = 0;
++	out[i++] = 1; // Version
++	out[i++] = region;
++	out[i++] = corrupt ? 1 : 0;
++	i += put28(out + i, r.end - r.start);
++	i += put28(out + i, allocatedBytes);
++	i += put28(out + i, allocatedCount);
++	i += put28(out + i, emptyBytes);
++	i += put28(out + i, stealableBytes);
++	i += put28(out + i, otherBytes);
++	i += put28(out + i, otherCount);
++	out[i++] = sent;
++	for (int32_t b = 0; b < sent; b++) {
++		i += put28(out + i, buckets[b].size);
++		i += put28(out + i, buckets[b].count);
++	}
++	return i;
++}
++
 +} // namespace
++
++void HIDSysex::sendCpu() {
++	if (cpuCable == nullptr) {
++		return;
++	}
++	if (AudioEngine::audioSampleTimer > cpuUntil) {
++		cpuCable = nullptr; // No keepalive: stop
++		return;
++	}
++	// Keep the per-voice timing on while streaming, as the CPU load menu does
++	deluge::cpu_meter::rendersToTimeVoices = deluge::cpu_meter::kRendersPerRefresh;
++	if (pendingRamMap >= 0 && cpuCable->sendBufferSpace() >= 11 + 7 * 4 + kRamMapSend * 8 + 24) {
++		uint8_t map[3 + 7 * 4 + 1 + kRamMapSend * 8];
++		const int32_t len = buildRamMap(pendingRamMap, map);
++		if (sendFramed(*cpuCable, kRamMapHeader, false, map, len)) {
++			pendingRamMap = -1;
++		}
++	}
++	if (cpuCable->sendBufferSpace() >= kCpuBodyMax + 24) {
++		uint8_t body[kCpuBodyMax];
++		const int32_t len = buildCpu(body);
++		sendFramed(*cpuCable, kCpuHeader, false, body, len);
++	}
++	uiTimerManager.setTimer(TimerName::COMPANION_CPU, cpuPeriodMs);
++}
++
++namespace {} // namespace
 +
 +void HIDSysex::requestState(MIDICable& cable, uint8_t* data, int32_t len) {
 +	if (len < 3) {
++		return;
++	}
++	if (data[2] == 19) {
++		// 19 <region> = send one 0x70 RAMMAP of that memory region (1 internal, 2 external, 3 external small,
++		// 4 internal small), from the CPU stream's timer so it never runs inside an allocation
++		if (len >= 4 && data[3] >= 1 && data[3] <= 4) {
++			pendingRamMap = data[3];
++			if (cpuCable == nullptr) {
++				cpuCable = &cable;
++				cpuUntil = AudioEngine::audioSampleTimer + kSampleRate;
++			}
++			uiTimerManager.setTimer(TimerName::COMPANION_CPU, 1);
++		}
++		return;
++	}
++	if (data[2] == 18) {
++		// 18 <period> = stream 0x59 CPU every period x 10 ms (0 stops). Repeat about once a second to keep it going:
++		// it stops 3 s after the last one. Doesn't subscribe to the rest of the companion screen.
++		if (len < 4 || data[3] == 0) {
++			cpuCable = nullptr;
++			return;
++		}
++		const bool wasStreaming = cpuCable == &cable && AudioEngine::audioSampleTimer <= cpuUntil;
++
++		cpuCable = &cable;
++		cpuUntil = AudioEngine::audioSampleTimer + 3 * kSampleRate;
++		cpuPeriodMs = std::clamp<int32_t>(data[3] * 10, 20, 1000);
++		if (!wasStreaming) {
++			deluge::cpu_meter::rendersToTimeVoices = deluge::cpu_meter::kRendersPerRefresh;
++			deluge::cpu_meter::clearPeak();
++			uiTimerManager.setTimer(TimerName::COMPANION_CPU, cpuPeriodMs);
++		}
 +		return;
 +	}
 +	if (data[2] >= 3 && data[2] <= 5) {
@@ -38933,7 +39192,7 @@ index 51a40bfd2..6bd43de1c 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +4907,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +5161,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -38944,7 +39203,7 @@ index 51a40bfd2..6bd43de1c 100644
  	default:
  		break;
  	}
-@@ -79,6 +4955,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +5209,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -38953,7 +39212,7 @@ index 51a40bfd2..6bd43de1c 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +5114,460 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +5368,460 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -39415,7 +39674,7 @@ index 51a40bfd2..6bd43de1c 100644
 +	pendingPick = -1;
 +}
 diff --git a/src/deluge/hid/hid_sysex.h b/src/deluge/hid/hid_sysex.h
-index 1bb0b8a2b..2eb78e0ab 100644
+index 1bb0b8a2b..2d42bc16b 100644
 --- a/src/deluge/hid/hid_sysex.h
 +++ b/src/deluge/hid/hid_sysex.h
 @@ -1,5 +1,6 @@
@@ -39425,7 +39684,7 @@ index 1bb0b8a2b..2eb78e0ab 100644
  
  namespace HIDSysex {
  void requestOLEDDisplay(MIDICable& cable, uint8_t* data, int32_t len);
-@@ -10,4 +11,19 @@ void sendOLEDDataDelta(MIDICable& cable, bool force);
+@@ -10,4 +11,22 @@ void sendOLEDDataDelta(MIDICable& cable, bool force);
  void send7SegData(MIDICable& cable);
  void sendDisplayIfChanged();
  void readBlock(MIDICable& cable);
@@ -39442,6 +39701,9 @@ index 1bb0b8a2b..2eb78e0ab 100644
 +void companionCopyText(char* dest, std::string_view text, int16_t& stringIndex);
 +/// Remember the OLED's popup text, for the companion screen in OLED mode
 +void companionNoteOledPopup(char const* text);
++/// CPU stream: host 03 12 <period x 10 ms> (0 stops; repeat about once a second, it stops 3 s after the last) gets
++/// 0x59 CPU with raw render time totals, voices, culls and free on-chip RAM. Runs from the COMPANION_CPU UI timer.
++void sendCpu();
 +/// Run what the tablet tapped (picker option or browser action), from the COMPANION_PICK UI timer
 +void runPendingPick();
  } // namespace HIDSysex
@@ -39568,6 +39830,114 @@ index 72bb02468..386bcb16d 100644
  }
  
  /// used to forward midi messages to specific tracks
+diff --git a/src/deluge/memory/lazy_block.h b/src/deluge/memory/lazy_block.h
+new file mode 100644
+index 000000000..e5646d53b
+--- /dev/null
++++ b/src/deluge/memory/lazy_block.h
+@@ -0,0 +1,71 @@
++/*
++ * Copyright © 2026 thisisbribery
++ *
++ * This file is part of The Synthstrom Audible Deluge Firmware.
++ *
++ * The Synthstrom Audible Deluge Firmware is free software: you can redistribute it and/or modify it under the
++ * terms of the GNU General Public License as published by the Free Software Foundation,
++ * either version 3 of the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
++ * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
++ * See the GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License along with this program.
++ * If not, see <https://www.gnu.org/licenses/>.
++ */
++
++#pragma once
++
++#include "memory/general_memory_allocator.h"
++#include <new>
++
++namespace deluge::memory {
++
++/// A T owned by pointer, made on the fast heap the first time something needs it. For state only some sounds use:
++/// keeping it out of the object keeps Sound (and so every kit row) inside its allocation size class.
++template <typename T>
++class LazyBlock {
++public:
++	LazyBlock() = default;
++	~LazyBlock() { reset(); }
++	LazyBlock(const LazyBlock&) = delete;
++	LazyBlock& operator=(const LazyBlock&) = delete;
++
++	/// The block, or nullptr if nothing has needed it yet
++	[[nodiscard]] T* get() const { return block_; }
++
++	/// The block, made now if needed. nullptr only if there's no memory left for it
++	[[nodiscard]] T* getOrMake() {
++		if (block_ == nullptr) [[unlikely]] {
++			make();
++		}
++		return block_;
++	}
++
++	void reset() {
++		if (block_ != nullptr) {
++			free();
++		}
++	}
++
++private:
++	/// Out of line: the allocator call would otherwise be inlined at every getOrMake(), and this code runs from on-chip
++	/// RAM too
++	[[gnu::noinline, gnu::cold]] void make() {
++		void* address = GeneralMemoryAllocator::get().allocMaxSpeed(sizeof(T));
++		if (address != nullptr) {
++			block_ = new (address) T();
++		}
++	}
++
++	[[gnu::noinline, gnu::cold]] void free() {
++		block_->~T();
++		GeneralMemoryAllocator::get().dealloc(block_);
++		block_ = nullptr;
++	}
++
++	T* block_ = nullptr;
++};
++
++} // namespace deluge::memory
+diff --git a/src/deluge/memory/object_pool.h b/src/deluge/memory/object_pool.h
+index a3eb6d175..81487ffc4 100644
+--- a/src/deluge/memory/object_pool.h
++++ b/src/deluge/memory/object_pool.h
+@@ -24,10 +24,14 @@ namespace deluge::memory {
+ /// @brief A simple object pool implementation
+ /// @tparam T The type of object to pool
+ /// @tparam Alloc The allocator to use for the pool
++/// @tparam kInitialSize Objects made up front
++/// @tparam kKeepPeak Grow to the most objects ever in use at once and keep them, so after the first time a count is
++/// reached it never allocates again (else objects past the capacity are freed on recycle)
+ /// @note ObjectPool instances are thread-local singletons
+-template <typename T, template <typename> typename Alloc = std::allocator>
++template <typename T, template <typename> typename Alloc = std::allocator, size_t kInitialSize = 48,
++          bool kKeepPeak = false>
+ class ObjectPool {
+-	static constexpr size_t kDefaultSize = 48;
++	static constexpr size_t kDefaultSize = kInitialSize;
+ 	ObjectPool() { repopulate(); };
+ 
+ public:
+@@ -99,6 +103,9 @@ public:
+ 		T* obj = nullptr;
+ 		if (objects_.empty()) {
+ 			obj = alloc_.allocate(1);
++			if constexpr (kKeepPeak) {
++				capacity_++; // Kept when it comes back
++			}
+ 		}
+ 		else {
+ 			obj = objects_.top();
 diff --git a/src/deluge/model/action/action.h b/src/deluge/model/action/action.h
 index e781b4179..e40c57ca3 100644
 --- a/src/deluge/model/action/action.h
@@ -41133,7 +41503,7 @@ index 000000000..61180b22b
 +
 +} // namespace deluge::default_instruments
 diff --git a/src/deluge/model/instrument/kit.cpp b/src/deluge/model/instrument/kit.cpp
-index b742ae70e..0afe8a7ea 100644
+index b742ae70e..12afd6b7d 100644
 --- a/src/deluge/model/instrument/kit.cpp
 +++ b/src/deluge/model/instrument/kit.cpp
 @@ -30,6 +30,7 @@
@@ -41144,7 +41514,26 @@ index b742ae70e..0afe8a7ea 100644
  #include "model/drum/gate_drum.h"
  #include "model/drum/midi_drum.h"
  #include "model/drum/non_audio_drum.h"
-@@ -117,6 +118,14 @@ bool Kit::writeDataToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Son
+@@ -41,11 +42,18 @@
+ #include "playback/mode/playback_mode.h"
+ #include "playback/mode/session.h"
+ #include "processing/engines/audio_engine.h"
++#include "processing/engines/cpu_meter.h"
+ #include "processing/sound/sound_drum.h"
+ #include "processing/stem_export/stem_export.h"
+ #include "storage/audio/audio_file_manager.h"
+ #include "storage/storage_manager.h"
+ #include <cstring>
++#include <optional>
++
++// The allocator rounds each allocation (plus its 8-byte header) up to a power of two, so one byte past 2040 makes every
++// kit row and kit take 4 KB of on-chip RAM instead of 2 KB. Move state only some sounds use into a LazyBlock instead.
++static_assert(sizeof(SoundDrum) <= 2040, "SoundDrum must fit a 2 KB allocation: see memory/lazy_block.h");
++static_assert(sizeof(Kit) <= 2040, "Kit must fit a 2 KB allocation: see memory/lazy_block.h");
+ 
+ namespace params = deluge::modulation::params;
+ 
+@@ -117,6 +125,14 @@ bool Kit::writeDataToFile(Serializer& writer, Clip* clipForSavingOutputOnly, Son
  	}
  
  	GlobalEffectableForClip::writeAttributesToFile(writer, clipForSavingOutputOnly == nullptr);
@@ -41159,7 +41548,7 @@ index b742ae70e..0afe8a7ea 100644
  
  	writer.writeOpeningTagEnd();
  	// Attributes end
-@@ -300,6 +309,27 @@ doReadDrum:
+@@ -300,6 +316,27 @@ doReadDrum:
  			reader.match(']');
  			reader.exitTag("soundSources");
  		}
@@ -41187,7 +41576,29 @@ index b742ae70e..0afe8a7ea 100644
  		else if (!strcmp(tagName, "selectedDrumIndex")) {
  			selectedDrumIndex = reader.readTagOrAttributeValueInt();
  			reader.exitTag("selectedDrumIndex");
-@@ -1377,6 +1407,83 @@ void Kit::noteOffPreKitArp(ModelStackWithThreeMainThings* modelStack, Drum* drum
+@@ -538,6 +575,8 @@ bool Kit::renderGlobalEffectableForClip(ModelStackWithTimelineCounter* modelStac
+                                         int32_t amplitudeAtStart, int32_t amplitudeAtEnd) {
+ 	bool rendered = false;
+ 	// Render Drums. Traverse backwards, in case one stops rendering (removing itself from the list) as we render it
++	std::optional<deluge::cpu_meter::Scope> rowsTimer;
++	rowsTimer.emplace(deluge::cpu_meter::sections[deluge::cpu_meter::kSecKitRows], globalEffectableBuffer.size());
+ 	for (int32_t d = drumsWithRenderingActive.getNumElements() - 1; d >= 0; d--) {
+ 		Drum* thisDrum = (Drum*)drumsWithRenderingActive.getKeyAtIndex(d);
+ 
+@@ -585,8 +624,12 @@ bool Kit::renderGlobalEffectableForClip(ModelStackWithTimelineCounter* modelStac
+ 		rendered = true;
+ 	}
+ 
++	rowsTimer.reset();
++
+ 	// Tick ParamManagers
+ 	if (playbackHandler.isEitherClockActive() && !playbackHandler.ticksLeftInCountIn && isClipActive) {
++		deluge::cpu_meter::Scope ticksTimer(deluge::cpu_meter::sections[deluge::cpu_meter::kSecKitParamTicks],
++		                                    globalEffectableBuffer.size());
+ 
+ 		NoteRowVector* noteRows = &((InstrumentClip*)activeClip)->noteRows;
+ 
+@@ -1377,6 +1420,83 @@ void Kit::noteOffPreKitArp(ModelStackWithThreeMainThings* modelStack, Drum* drum
  	}
  }
  
@@ -42563,7 +42974,7 @@ index 701919156..d793ba43b 100644
  	}
  
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
-index fd80ba04f..d6b9e4477 100644
+index fd80ba04f..eb546fe09 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.cpp
 @@ -65,9 +65,6 @@ ModControllableAudio::ModControllableAudio() {
@@ -42623,7 +43034,7 @@ index fd80ba04f..d6b9e4477 100644
  }
  
  bool ModControllableAudio::hasBassAdjusted(ParamManager* paramManager) {
-@@ -276,12 +303,45 @@ bool ModControllableAudio::isSRREnabled(ParamManager* paramManager) {
+@@ -276,12 +303,66 @@ bool ModControllableAudio::isSRREnabled(ParamManager* paramManager) {
  	return (unpatchedParams->getValue(params::UNPATCHED_SAMPLE_RATE_REDUCTION) != -2147483648);
  }
  
@@ -42639,6 +43050,20 @@ index fd80ba04f..d6b9e4477 100644
 +	}
 +	crushTypeInFile = true;
 +}
++
++const deluge::dsp::Saturator& ModControllableAudio::configureSaturator(float unit) {
++	FxState* fx = fxState_.getOrMake();
++	if (fx == nullptr) [[unlikely]] {
++		// No memory for it: work it out each time instead
++		static deluge::dsp::Saturator scratch;
++		scratch.configure(saturation, unit);
++		return scratch;
++	}
++	fx->saturator.configure(saturation, unit);
++	fx->saturatorConfiguredFor = saturation;
++	fx->saturatorConfiguredUnit = unit;
++	return fx->saturator;
++}
  
 +void ModControllableAudio::processSRRAndBitcrushing(std::span<StereoSample> buffer, int32_t* postFXVolume,
 +                                                    ParamManager* paramManager, float unit) {
@@ -42648,7 +43073,9 @@ index fd80ba04f..d6b9e4477 100644
 +		sampleRateReductionOnLastTime = false;
 +		bool crushEnabled = isBitcrushingEnabled(paramManager);
 +		if (!srrEnabled && !crushEnabled) {
-+			crusherState_.active = false;
++			if (FxState* fx = fxState_.get()) {
++				fx->crusher.active = false;
++			}
 +			return;
 +		}
 +		UnpatchedParamSet* unpatchedParams = paramManager->getUnpatchedParamSet();
@@ -42662,17 +43089,22 @@ index fd80ba04f..d6b9e4477 100644
 +		                       ^ 0x80000000u)
 +		    * (1.f / 4294967295.f);
 +		auto config = deluge::dsp::Crusher::configure(crushType, crushEnabled, crushKnob, srrEnabled, rateKnob, unit);
-+		deluge::dsp::Crusher::process(config, reinterpret_cast<int32_t*>(buffer.data()), buffer.size(), crusherState_);
++		if (FxState* fx = fxState_.getOrMake()) {
++			deluge::dsp::Crusher::process(config, reinterpret_cast<int32_t*>(buffer.data()), buffer.size(),
++			                              fx->crusher);
++		}
 +		return;
 +	}
-+	crusherState_.active = false;
++	if (FxState* fx = fxState_.get()) {
++		fx->crusher.active = false;
++	}
 +
 +	uint32_t bitCrushMaskForSRR = 0xFFFFFFFF;
 +
  	// Bitcrushing ------------------------------------------------------------------------------
  	if (isBitcrushingEnabled(paramManager)) {
  		uint32_t positivePreset =
-@@ -409,9 +469,21 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
+@@ -409,9 +490,21 @@ void ModControllableAudio::writeAttributesToFile(Serializer& writer) {
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	writer.writeAttribute("hpfMode", (char*)lpfTypeToString(hpfMode));
  	writer.writeAttribute("filterRoute", (char*)filterRouteToString(filterRoute));
@@ -42686,17 +43118,17 @@ index fd80ba04f..d6b9e4477 100644
 +		if (modfx.brunoChorusDepth != 64) {
 +			writer.writeAttribute("brunoChorusDepth", modfx.brunoChorusDepth);
 +		}
-+	}
+ 	}
 +	// The drive is a param now, written with the others
 +	if (saturation.type != deluge::dsp::SaturationSettings{}.type) {
 +		writer.writeAttribute("satType", deluge::dsp::saturationTypeToString(saturation.type));
- 	}
++	}
 +	// Always written: a file without it is from before the crush types and loads as classic
 +	writer.writeAttribute("crushType", deluge::dsp::crushTypeToString(crushType));
  }
  
  void ModControllableAudio::writeTagsToFile(Serializer& writer) {
-@@ -503,6 +575,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
+@@ -503,6 +596,8 @@ void ModControllableAudio::writeParamAttributesToFile(Serializer& writer, ParamM
  	// Community Firmware parameters (always write them after the official ones, just before closing the parent tag)
  	unpatchedParams->writeParamAsAttribute(writer, "compressorThreshold", params::UNPATCHED_COMPRESSOR_THRESHOLD,
  	                                       writeAutomation, false, valuesForOverride);
@@ -42705,7 +43137,7 @@ index fd80ba04f..d6b9e4477 100644
  
  	unpatchedParams->writeParamAsAttribute(writer, "arpeggiatorGate", params::UNPATCHED_ARP_GATE, writeAutomation);
  	unpatchedParams->writeParamAsAttribute(writer, "noteProbability", params::UNPATCHED_NOTE_PROBABILITY,
-@@ -615,6 +689,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
+@@ -615,6 +710,10 @@ bool ModControllableAudio::readParamTagFromFile(Deserializer& reader, char const
  		                           readAutomationUpToPos);
  		reader.exitTag("compressorThreshold");
  	}
@@ -42716,7 +43148,7 @@ index fd80ba04f..d6b9e4477 100644
  
  	// Arpeggiator stuff
  
-@@ -724,6 +802,18 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -724,6 +823,18 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  		lpfMode = stringToLPFType(reader.readTagOrAttributeValue());
  		reader.exitTag("lpfMode");
  	}
@@ -42735,7 +43167,7 @@ index fd80ba04f..d6b9e4477 100644
  	else if (!strcmp(tagName, "hpfMode")) {
  		hpfMode = stringToLPFType(reader.readTagOrAttributeValue());
  		reader.exitTag("hpfMode");
-@@ -734,9 +824,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
+@@ -734,9 +845,27 @@ Error ModControllableAudio::readTagFromFile(Deserializer& reader, char const* ta
  	}
  
  	else if (!strcmp(tagName, "clippingAmount")) {
@@ -42764,7 +43196,7 @@ index fd80ba04f..d6b9e4477 100644
  
  	// Arpeggiator
  
-@@ -806,6 +914,7 @@ doReadPatchedParam:
+@@ -806,6 +935,7 @@ doReadPatchedParam:
  					PatchedParamSet* patchedParams = (PatchedParamSet*)patchedParamsSummary->paramCollection;
  					patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_DELAY_FEEDBACK,
  					                         readAutomationUpToPos);
@@ -42772,7 +43204,7 @@ index fd80ba04f..d6b9e4477 100644
  				}
  				reader.exitTag();
  			}
-@@ -1439,6 +1548,10 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
+@@ -1439,6 +1569,10 @@ char const* ModControllableAudio::getLPFModeDisplayName() {
  		return l10n::get(STRING_FOR_24DB_LADDER);
  	case FilterMode::TRANSISTOR_24DB_DRIVE:
  		return l10n::get(STRING_FOR_DRIVE);
@@ -42784,10 +43216,10 @@ index fd80ba04f..d6b9e4477 100644
  		return l10n::get(STRING_FOR_SVF_BAND);
  	case FilterMode::SVF_NOTCH:
 diff --git a/src/deluge/model/mod_controllable/mod_controllable_audio.h b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-index 64f25db18..b8527236b 100644
+index 64f25db18..4491b9368 100644
 --- a/src/deluge/model/mod_controllable/mod_controllable_audio.h
 +++ b/src/deluge/model/mod_controllable/mod_controllable_audio.h
-@@ -20,7 +20,9 @@
+@@ -20,9 +20,12 @@
  #include "definitions_cxx.hpp"
  #include "deluge/dsp/granular/GranularProcessor.h"
  #include "dsp/compressor/rms_feedback.h"
@@ -42796,8 +43228,11 @@ index 64f25db18..b8527236b 100644
 +#include "dsp/saturator.h"
  #include "dsp/stereo_sample.h"
  #include "hid/button.h"
++#include "memory/lazy_block.h"
  #include "model/fx/stutterer.h"
-@@ -58,7 +60,9 @@ public:
+ #include "model/mod_controllable/ModFXProcessor.h"
+ #include "model/mod_controllable/filters/filter_config.h"
+@@ -58,7 +61,9 @@ public:
  	void writeTagsToFile(Serializer& writer);
  	virtual Error readTagFromFile(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
  	                              int32_t readAutomationUpToPos, ArpeggiatorSettings* arpSettings, Song* song);
@@ -42808,7 +43243,7 @@ index 64f25db18..b8527236b 100644
  	static void writeParamAttributesToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
  	                                       int32_t* valuesForOverride = nullptr);
  	static void writeParamTagsToFile(Serializer& writer, ParamManager* paramManager, bool writeAutomation,
-@@ -66,10 +70,22 @@ public:
+@@ -66,10 +71,22 @@ public:
  	static bool readParamTagFromFile(Deserializer& reader, char const* tagName, ParamManagerForTimeline* paramManager,
  	                                 int32_t readAutomationUpToPos);
  	static void initParams(ParamManager* paramManager);
@@ -42831,7 +43266,7 @@ index 64f25db18..b8527236b 100644
  	virtual bool setModFXType(ModFXType newType);
  	bool offerReceivedCCToLearnedParamsForClip(MIDICable& cable, uint8_t channel, uint8_t ccNumber, uint8_t value,
  	                                           ModelStackWithTimelineCounter* modelStack, int32_t noteRowIndex = -1);
-@@ -104,7 +120,36 @@ public:
+@@ -104,7 +121,43 @@ public:
  	StutterConfig stutterConfig;
  
  	bool sampleRateReductionOnLastTime;
@@ -42841,7 +43276,6 @@ index 64f25db18..b8527236b 100644
 +	deluge::dsp::CrushType crushType = deluge::dsp::CrushType::HARD;
 +	bool crushTypeInFile = false;
 +	void resolveLoadedCrushType(ParamManager* paramManager);
-+	deluge::dsp::Crusher::State crusherState_;
 +	// Saturation. Song doesn't use this, only sounds, kits and audio clips. The drive is the UNPATCHED_SATURATION
 +	// param, copied in by setSaturationDriveFromParams() before each render.
 +	deluge::dsp::SaturationSettings saturation;
@@ -42856,16 +43290,24 @@ index 64f25db18..b8527236b 100644
 +	/// Saturator set up for the current settings, only recalculated when they change.
 +	/// unit is Saturator::kVoiceUnit for a synth voice, kClipUnit for a whole kit or audio clip.
 +	const deluge::dsp::Saturator& getSaturator(float unit) {
-+		if (!(saturation == saturatorConfiguredFor_) || unit != saturatorConfiguredUnit_) {
-+			saturator_.configure(saturation, unit);
-+			saturatorConfiguredFor_ = saturation;
-+			saturatorConfiguredUnit_ = unit;
++		FxState* fx = fxState_.get();
++		if (fx != nullptr && saturation == fx->saturatorConfiguredFor && unit == fx->saturatorConfiguredUnit)
++		    [[likely]] {
++			return fx->saturator;
 +		}
-+		return saturator_;
++		return configureSaturator(unit);
 +	}
-+	deluge::dsp::Saturator saturator_;
-+	deluge::dsp::SaturationSettings saturatorConfiguredFor_{.drive = -1.f}; // forces the first configure
-+	float saturatorConfiguredUnit_ = 0.f;
++	/// getSaturator() when the settings changed or it hasn't been made yet
++	const deluge::dsp::Saturator& configureSaturator(float unit);
++	/// The new crush types' state and the configured saturator: made the first time either is used, so a sound
++	/// without them doesn't carry them (keeping a kit row's Sound inside a 2 KB allocation)
++	struct FxState {
++		deluge::dsp::Crusher::State crusher;
++		deluge::dsp::Saturator saturator;
++		deluge::dsp::SaturationSettings saturatorConfiguredFor{.drive = -1.f}; // forces the first configure
++		float saturatorConfiguredUnit = 0.f;
++	};
++	deluge::memory::LazyBlock<FxState> fxState_;
  	FilterMode lpfMode;
  	FilterMode hpfMode;
  	FilterRoute filterRoute;
@@ -43241,7 +43683,7 @@ index a39f698ae..28cb341de 100644
  
  	/**
 diff --git a/src/deluge/model/song/song.cpp b/src/deluge/model/song/song.cpp
-index d935c3c5f..5b3ba7e92 100644
+index d935c3c5f..8e847eeb0 100644
 --- a/src/deluge/model/song/song.cpp
 +++ b/src/deluge/model/song/song.cpp
 @@ -40,10 +40,14 @@
@@ -43259,15 +43701,17 @@ index d935c3c5f..5b3ba7e92 100644
  #include "model/sample/sample_recorder.h"
  #include "model/scale/preset_scales.h"
  #include "model/scale/scale_change.h"
-@@ -58,6 +62,7 @@
+@@ -57,7 +61,9 @@
+ #include "playback/playback_handler.h"
  #include "processing/audio_output.h"
  #include "processing/engines/audio_engine.h"
++#include "processing/engines/cpu_meter.h"
  #include "processing/engines/cv_engine.h"
 +#include "processing/sound/sound_drum.h"
  #include "processing/sound/sound_instrument.h"
  #include "processing/stem_export/stem_export.h"
  #include "storage/flash_storage.h"
-@@ -161,6 +166,11 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
+@@ -161,6 +167,11 @@ Song::Song() : backedUpParamManagers(sizeof(BackedUpParamManager)) {
  	swingAmount = 0;
  
  	swingInterval = FlashStorage::defaultSwingInterval;
@@ -43279,7 +43723,7 @@ index d935c3c5f..5b3ba7e92 100644
  
  	songViewYScroll = 1 - kDisplayHeight;
  	arrangementYScroll = -kDisplayHeight;
-@@ -407,13 +417,16 @@ bool Song::ensureAtLeastOneSessionClip() {
+@@ -407,13 +418,16 @@ bool Song::ensureAtLeastOneSessionClip() {
  
  	std::expected<FileItem*, Error> result;
  
@@ -43297,7 +43741,7 @@ index d935c3c5f..5b3ba7e92 100644
  	if (error != Error::NONE) {
  		goto couldntLoad;
  	}
-@@ -444,7 +457,7 @@ couldntLoad:
+@@ -444,7 +458,7 @@ couldntLoad:
  			while (1) {}
  		}
  
@@ -43306,7 +43750,7 @@ index d935c3c5f..5b3ba7e92 100644
  		if (error != Error::NONE) {
  			display->displayError(error);
  			while (1) {}
-@@ -456,7 +469,16 @@ couldntLoad:
+@@ -456,7 +470,16 @@ couldntLoad:
  			while (1) {}
  		}
  
@@ -43324,7 +43768,7 @@ index d935c3c5f..5b3ba7e92 100644
  		display->displayError(error); // E.g. show the CARD error.
  	}
  
-@@ -1214,6 +1236,19 @@ weAreInArrangementEditorOrInClipInstance:
+@@ -1214,6 +1237,19 @@ weAreInArrangementEditorOrInClipInstance:
  	writer.writeAttribute("inputTickMagnitude", getInputTickMagnitude());
  	writer.writeAttribute("swingAmount", swingAmount);
  	writer.writeAbsoluteSyncLevelToFile(this, "swingInterval", (SyncLevel)swingInterval, true);
@@ -43344,7 +43788,7 @@ index d935c3c5f..5b3ba7e92 100644
  
  	if (tripletsOn) {
  		writer.writeAttribute("tripletsLevel", tripletsLevel);
-@@ -1428,6 +1463,14 @@ Error Song::readFromFile(Deserializer& reader) {
+@@ -1428,6 +1464,14 @@ Error Song::readFromFile(Deserializer& reader) {
  
  	outputClipInstanceListIsCurrentlyInvalid = true;
  
@@ -43359,7 +43803,7 @@ index d935c3c5f..5b3ba7e92 100644
  	D_PRINTLN("");
  	D_PRINTLN("loading song!!!!!!!!!!!!!!");
  
-@@ -1710,6 +1753,42 @@ unknownTag:
+@@ -1710,6 +1754,42 @@ unknownTag:
  				reader.exitTag("swingInterval");
  			}
  
@@ -43402,7 +43846,7 @@ index d935c3c5f..5b3ba7e92 100644
  			else if (!strcmp(tagName, "tripletsLevel")) {
  				tripletsLevel = reader.readTagOrAttributeValueInt();
  				reader.exitTag("tripletsLevel");
-@@ -2337,6 +2416,7 @@ skipInstance:
+@@ -2337,6 +2417,7 @@ skipInstance:
  
  	AudioEngine::logAction("aaa4.2");
  
@@ -43410,7 +43854,20 @@ index d935c3c5f..5b3ba7e92 100644
  	setupPatchingForAllParamManagers();
  	AudioEngine::logAction("aaa4.3");
  
-@@ -2623,7 +2703,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
+@@ -2522,6 +2603,12 @@ void Song::renderAudio(std::span<StereoSample> outputBuffer, int32_t* reverbBuff
+ 		    (output->getActiveClip() && isClipActive(output->getActiveClip()->getClipBeingRecordedFrom()));
+ 		ENTER_CRITICAL_SECTION();
+ 		if (output->shouldRenderInSong()) {
++			namespace cpu = deluge::cpu_meter;
++			const auto section = output->type == OutputType::SYNTH   ? cpu::kSecTrackSynth
++			                     : output->type == OutputType::KIT   ? cpu::kSecTrackKit
++			                     : output->type == OutputType::AUDIO ? cpu::kSecTrackAudio
++			                                                         : cpu::kSecTrackOther;
++			cpu::Scope t(cpu::sections[section], outputBuffer.size());
+ 			output->renderOutput(modelStack, outputBuffer, reverbBuffer, volumePostFX >> 1, sideChainHitPending,
+ 			                     !isClipActiveNow, isClipActiveNow);
+ 		}
+@@ -2623,7 +2710,7 @@ void Song::setTimePerTimerTick(uint64_t newTimeBig, bool shouldLogAction) {
  }
  
  bool Song::hasAnySwing() {
@@ -43419,7 +43876,7 @@ index d935c3c5f..5b3ba7e92 100644
  }
  
  void Song::resyncLFOs(bool reset_state) {
-@@ -3822,6 +3902,66 @@ void Song::setupPatchingForAllParamManagers() {
+@@ -3822,6 +3909,66 @@ void Song::setupPatchingForAllParamManagers() {
  	}
  }
  
@@ -43486,7 +43943,7 @@ index d935c3c5f..5b3ba7e92 100644
  // Returns NULL if couldn't find one.
  // Supply stealInto to have it delete the "backed up" element, putting the contents into stealInto.
  ParamManager* Song::getBackedUpParamManagerForExactClip(ModControllableAudio* modControllable, Clip* clip,
-@@ -4830,7 +4970,7 @@ bool Song::shouldOldOutputBeReplaced(Clip* clip, Availability* availabilityRequi
+@@ -4830,7 +4977,7 @@ bool Song::shouldOldOutputBeReplaced(Clip* clip, Availability* availabilityRequi
  	}
  }
  
@@ -43495,7 +43952,7 @@ index d935c3c5f..5b3ba7e92 100644
  	if (output->type == OutputType::AUDIO) {
  		return output;
  	}
-@@ -4931,13 +5071,13 @@ Output* Song::navigateThroughPresetsForInstrument(Output* output, int32_t offset
+@@ -4931,13 +5078,13 @@ Output* Song::navigateThroughPresetsForInstrument(Output* output, int32_t offset
  			((MIDIInstrument*)oldNonAudioInstrument)->channelSuffix = newChannelSuffix;
  		}
  
@@ -43512,7 +43969,7 @@ index d935c3c5f..5b3ba7e92 100644
  		if (results.error == Error::NO_ERROR_BUT_GET_OUT) {
  removeWorkingAnimationAndGetOut:
  			if (display->haveOLED()) {
-@@ -5073,39 +5213,43 @@ gotAnInstrument: {}
+@@ -5073,39 +5220,43 @@ gotAnInstrument: {}
  
  	// Synth or Kit
  	else {
@@ -43583,7 +44040,7 @@ index d935c3c5f..5b3ba7e92 100644
  		}
  
  		display->displayLoadingAnimationText("Loading");
-@@ -5334,6 +5478,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
+@@ -5334,6 +5485,8 @@ Instrument* Song::getNonAudioInstrumentToSwitchTo(OutputType newOutputType, Avai
  		if (availabilityRequirement == Availability::ANY) {
  			break;
  		}
@@ -43592,7 +44049,7 @@ index d935c3c5f..5b3ba7e92 100644
  		else if (availabilityRequirement == Availability::INSTRUMENT_AVAILABLE_IN_SESSION) {
  			if (!newInstrument || !getClipWithOutput(newInstrument, true)) {
  				break;
-@@ -5740,29 +5886,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
+@@ -5740,29 +5893,62 @@ Clip* Song::replaceInstrumentClipWithAudioClip(Clip* oldClip, int32_t clipIndex)
  	return newClip;
  }
  
@@ -43940,7 +44397,7 @@ index 000000000..6c4f55856
 +
 +} // namespace deluge::swing_style
 diff --git a/src/deluge/model/voice/voice.cpp b/src/deluge/model/voice/voice.cpp
-index a22b64aa9..a9e027141 100644
+index a22b64aa9..b1ee8f652 100644
 --- a/src/deluge/model/voice/voice.cpp
 +++ b/src/deluge/model/voice/voice.cpp
 @@ -50,12 +50,17 @@
@@ -44152,12 +44609,12 @@ index a22b64aa9..a9e027141 100644
  
 +	// A drum synth sound can ask for a steeper amp envelope
 +	const bool snappyAmp = sound.sources[0].oscType == OscType::DRUM_SYNTH
-+	                       && sound.sources[0].drumPatch.get(deluge::dsp::drum_synth::Patch::SNAPPY_DECAY) != 0;
++	                       && sound.sources[0].drumPatch().get(deluge::dsp::drum_synth::Patch::SNAPPY_DECAY) != 0;
 +
  	// Do envelopes - if they're patched to something (always do the first one though)
 +	// BROPHET's poly mod reads envelope 2 whether or not anything is patched to it
 +	const bool brophetEnvelope = sound.sources[0].oscType == OscType::DRUM_SYNTH
-+	                             && deluge::dsp::drum_synth::isBrophet(sound.sources[0].drumPatch.engine());
++	                             && deluge::dsp::drum_synth::isBrophet(sound.sources[0].drumPatch().engine());
  	for (int32_t e = 0; e < kNumEnvelopes; e++) {
 -		if (e == 0
 +		if (e == 0 || (e == 1 && brophetEnvelope)
@@ -44539,7 +44996,7 @@ index a22b64aa9..a9e027141 100644
 +			}
 +
 +			drumVoice->setPolyModEnvelope(sourceValues[util::to_underlying(PatchSource::ENVELOPE_1)]);
-+			drumVoice->render(sound.sources[s].drumPatch, modulatedDrumControls(*paramManager, sourceValues),
++			drumVoice->render(sound.sources[s].drumPatch(), modulatedDrumControls(*paramManager, sourceValues),
 +			                  renderBuffer, numSamples, phaseIncrement, sourceAmplitude, amplitudeIncrement);
 +
 +			if (stereoBuffer) {
@@ -44946,14 +45403,17 @@ index 1640f0db3..25458b22b 100644
 +	uint8_t loopWrapPhase{0};                 // 0=normal, 1=loopStart->sampleEnd, 2=sampleStart->loopEnd
  };
 diff --git a/src/deluge/model/voice/voice_unison_part_source.cpp b/src/deluge/model/voice/voice_unison_part_source.cpp
-index bdee9c1f6..4d156621f 100644
+index bdee9c1f6..fbac27564 100644
 --- a/src/deluge/model/voice/voice_unison_part_source.cpp
 +++ b/src/deluge/model/voice/voice_unison_part_source.cpp
-@@ -29,6 +29,46 @@
+@@ -29,6 +29,49 @@
  #include "processing/source.h"
  #include "storage/multi_range/multisample_range.h"
  
-+using DrumVoicePool = deluge::memory::ObjectPool<deluge::dsp::drum_synth::Voice, deluge::memory::fast_allocator>;
++/// Kit rows on a drum engine play one voice each (Sound::noteOnPostArpeggiator), so this only ever needs one per engine
++/// row sounding at once: start with enough for an 8-row kit and keep the peak, rather than 48 up front (48 KB on-chip)
++using DrumVoicePool =
++    deluge::memory::ObjectPool<deluge::dsp::drum_synth::Voice, deluge::memory::fast_allocator, 8, true>;
 +
 +namespace {
 +/// RINGS' resonators. Each holds its strings' delay lines, tens of KB, so they live in SDRAM and only voices playing
@@ -44996,7 +45456,7 @@ index bdee9c1f6..4d156621f 100644
  VoiceUnisonPartSource::~VoiceUnisonPartSource() {
  	unassign(false);
  }
-@@ -61,7 +101,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+@@ -61,7 +104,15 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
  		if (samplesLate != 0u) {
  			return true; // We're finished in this case
  		}
@@ -45013,7 +45473,7 @@ index bdee9c1f6..4d156621f 100644
  	}
  
  	if (synthMode != SynthMode::FM
-@@ -84,6 +132,31 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
+@@ -84,6 +135,31 @@ bool VoiceUnisonPartSource::noteOn(Voice* voice, Source* source, VoiceSamplePlay
  
  		dxVoice->init(*patch, voice->noteCodeAfterArpeggiation, velocity);
  	}
@@ -45027,7 +45487,7 @@ index bdee9c1f6..4d156621f 100644
 +		}
 +		// RINGS needs its resonators too. A voice restarted on the same note keeps them ringing, as Rings does when
 +		// struck again; a new voice starts them from silence.
-+		if (deluge::dsp::drum_synth::isRings(source->drumPatch.engine())) {
++		if (deluge::dsp::drum_synth::isRings(source->drumPatch().engine())) {
 +			if (ringsVoice == nullptr) {
 +				ringsVoice = RingsVoicePool::acquire();
 +				if (ringsVoice == nullptr) {
@@ -45040,12 +45500,12 @@ index bdee9c1f6..4d156621f 100644
 +			ringsVoice = nullptr;
 +		}
 +		drumVoice->setRings(ringsVoice);
-+		drumVoice->trigger(source->drumPatch);
++		drumVoice->trigger(source->drumPatch());
 +	}
  	else {
  		if (oscRetriggerPhase != 0xFFFFFFFF) {
  			oscPos = getOscInitialPhaseForZero(source->oscType) + oscRetriggerPhase;
-@@ -110,6 +183,16 @@ void VoiceUnisonPartSource::unassign(bool deletingSong) {
+@@ -110,6 +186,16 @@ void VoiceUnisonPartSource::unassign(bool deletingSong) {
  		dxVoice = nullptr;
  	}
  
@@ -46738,7 +47198,7 @@ index 98ff45ddd..1943aaffa 100644
  	void commandEditSwingInterval(int8_t offset);
  	void commandNudgeClock(int8_t offset);
 diff --git a/src/deluge/processing/engines/audio_engine.cpp b/src/deluge/processing/engines/audio_engine.cpp
-index 818e72233..e16d40ea7 100644
+index 818e72233..88bb03d22 100644
 --- a/src/deluge/processing/engines/audio_engine.cpp
 +++ b/src/deluge/processing/engines/audio_engine.cpp
 @@ -39,6 +39,7 @@
@@ -46782,7 +47242,31 @@ index 818e72233..e16d40ea7 100644
  	                              | std::views::transform(&Sound::getLowestPriorityVoice);
  	auto it = std::ranges::max_element(lowest_priority_voices, [](const auto& a, const auto& b) {
  		return a->getPriorityRating() < b->getPriorityRating();
-@@ -765,6 +771,7 @@ bool calledFromScheduler = false;
+@@ -473,6 +479,7 @@ void cullVoices(size_t numSamples, int32_t numAudio, int32_t numVoice) {
+ 			}
+ 			// soft cull
+ 			forceReleaseOneVoice(numSamples);
++			cpu_meter::culls += num_to_cull;
+ 
+ #if ALPHA_OR_BETA_VERSION
+ 			logAction("hard cull");
+@@ -486,6 +493,7 @@ void cullVoices(size_t numSamples, int32_t numAudio, int32_t numVoice) {
+ 		else if (num_samples_over_limit >= 0) {
+ 			if (last_num_samples_over > 0 && num_samples_over_limit >= last_num_samples_over) {
+ 				forceReleaseOneVoice(numSamples);
++				cpu_meter::culls++;
+ 				if (numRoutines > 0) {
+ 					culled = true;
+ 					D_PRINTLN("culling in second routine");
+@@ -498,6 +506,7 @@ void cullVoices(size_t numSamples, int32_t numAudio, int32_t numVoice) {
+ 		if (num_samples_over_limit >= 40) {
+ 			D_PRINTLN("under min voices but culling anyway");
+ 			terminateOneVoice(numSamples);
++			cpu_meter::culls++;
+ 			culled = true;
+ 		}
+ 	}
+@@ -765,6 +774,7 @@ bool calledFromScheduler = false;
  	windowSamplesBeforeLappingPlayHead = numSamples;
  	setMIDIDueAtWindowOffset(0);
  
@@ -46790,20 +47274,52 @@ index 818e72233..e16d40ea7 100644
  	flushMIDIGateBuffers();
  	setDireness(numSamples);
  
-@@ -792,7 +799,12 @@ bool calledFromScheduler = false;
+@@ -792,7 +802,14 @@ bool calledFromScheduler = false;
  
  	numSamplesLastTime = numSamples;
  
 +	uint32_t renderStartTicks = getSystemTicks();
  	renderAudio(numSamples);
-+	cpu_meter::audio.add(renderStartTicks, getSystemTicks(), numSamples);
++	const uint32_t renderEndTicks = getSystemTicks();
++	cpu_meter::audio.add(renderStartTicks, renderEndTicks, numSamples);
 +	if (cpu_meter::rendersToTimeVoices > 0) {
 +		cpu_meter::rendersToTimeVoices--;
++		cpu_meter::notePeak(renderEndTicks - renderStartTicks, numSamples);
 +	}
  
  	scheduleMidiGateOutISR(numSamples);
  
-@@ -1086,8 +1098,8 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
+@@ -846,13 +863,22 @@ void renderAudio(size_t numSamples) {
+ 		currentSong->renderAudio(renderingBuffer, reverbBuffer.data(), sideChainHitPending);
+ 	}
+ 
+-	renderReverb(numSamples);
+-
+-	renderSamplePreview(numSamples);
+-
+-	renderSongFX(numSamples);
+-
+-	metronome.render(renderingBuffer);
++	{
++		cpu_meter::Scope t(cpu_meter::sections[cpu_meter::kSecReverb], numSamples);
++		renderReverb(numSamples);
++	}
++	{
++		cpu_meter::Scope t(cpu_meter::sections[cpu_meter::kSecPreview], numSamples);
++		renderSamplePreview(numSamples);
++	}
++	{
++		cpu_meter::Scope t(cpu_meter::sections[cpu_meter::kSecSongFx], numSamples);
++		renderSongFX(numSamples);
++	}
++	{
++		cpu_meter::Scope t(cpu_meter::sections[cpu_meter::kSecMetronome], numSamples);
++		metronome.render(renderingBuffer);
++	}
+ 
+ 	approxRMSLevel = envelopeFollower.calcApproxRMS(renderingBuffer);
+ 
+@@ -1086,8 +1112,8 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
  	if (currentSong) {
  		currentSong->globalEffectable.setupFilterSetConfig(&masterVolumeAdjustmentL, &currentSong->paramManager);
  		currentSong->globalEffectable.processFilters(renderingBuffer);
@@ -46814,7 +47330,7 @@ index 818e72233..e16d40ea7 100644
  
  		masterVolumeAdjustmentR = masterVolumeAdjustmentL; // This might have changed in the above function calls
  
-@@ -1122,6 +1134,9 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
+@@ -1122,6 +1148,9 @@ void renderSongFX(size_t numSamples) { // LPF and stutter for song (must happen
  		masterVolumeAdjustmentL = ONE_Q31;
  		masterVolumeAdjustmentR = ONE_Q31;
  		logAction("mastercomp end");
@@ -46826,10 +47342,10 @@ index 818e72233..e16d40ea7 100644
  void setMonitoringMode() { // Monitoring setup
 diff --git a/src/deluge/processing/engines/cpu_meter.h b/src/deluge/processing/engines/cpu_meter.h
 new file mode 100644
-index 000000000..c6b505e0c
+index 000000000..ad0e19a37
 --- /dev/null
 +++ b/src/deluge/processing/engines/cpu_meter.h
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,132 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -46849,6 +47365,7 @@ index 000000000..c6b505e0c
 +
 +#pragma once
 +
++#include "scheduler_api.h"
 +#include <cstdint>
 +
 +/// Running totals of time spent in the audio render, for the CPU load menu. Times are getSystemTicks() counts
@@ -46876,6 +47393,81 @@ index 000000000..c6b505e0c
 +/// Timing every voice reads the timer twice per voice per render, so voices and drumSynth only count while the CPU
 +/// load menu keeps asking for them: it tops this up, and each render takes one off.
 +inline int32_t rendersToTimeVoices = 0;
++
++/// Whole voice time by kind of sound, for the companion CPU stream: drum_synth engines by their Engine number, then the
++/// kinds below. samples = voice-samples (output samples for the 303, which has no voices).
++constexpr int32_t kMaxEngines = 40;
++enum Kind : int32_t {
++	kKindSample = kMaxEngines, ///< Sample oscillators (and audio input)
++	kKindSubtractive,          ///< Deluge oscillators: saw, square, wavetable, DX7 and the rest
++	kKindFm,
++	kKindRingmod,
++	kKindTb303,
++	kNumKinds,
++};
++inline Counter kinds[kNumKinds];
++
++/// Whole Sound::render per kind (the row or synth track's own processing around its voices, plus the voices), so the
++/// time outside voices = soundKinds - kinds
++inline Counter soundKinds[kNumKinds];
++
++/// Parts of the render, for the companion CPU stream. samples = output samples.
++enum Section : int32_t {
++	kSecTrackSynth, ///< Synth tracks, whole (their Sound, voices, track FX)
++	kSecTrackKit,   ///< Kit tracks, whole (rows, kit FX)
++	kSecTrackAudio, ///< Audio tracks
++	kSecTrackOther, ///< MIDI and CV tracks
++	kSecKitRows,    ///< Inside kit tracks: rendering the rows (each row's Sound), so kit FX = kit - rows - param ticks
++	kSecKitParamTicks, ///< Inside kit tracks: ticking interpolating row params while playing
++	kSecReverb,
++	kSecSongFx,  ///< Song LPF / HPF / stutter / master chain
++	kSecPreview, ///< Sample browser preview
++	kSecMetronome,
++	kNumSections,
++};
++inline Counter sections[kNumSections];
++
++/// Times a block into a counter while voices are being timed (CPU load menu or companion stream), else costs a check
++struct Scope {
++	Counter& counter;
++	uint32_t numSamples;
++	uint32_t start;
++	bool on;
++	Scope(Counter& c, uint32_t n) : counter(c), numSamples(n), on(rendersToTimeVoices > 0) {
++		start = on ? getSystemTicks() : 0;
++	}
++	~Scope() {
++		if (on) {
++			counter.add(start, getSystemTicks(), numSamples);
++		}
++	}
++	Scope(const Scope&) = delete;
++	Scope& operator=(const Scope&) = delete;
++};
++
++/// Voices cut by the CPU cull, ever (left to wrap)
++inline uint32_t culls = 0;
++
++/// Slowest render (per sample) since the reader last cleared it, from renders of 32 samples or more, and the longest
++/// render. Only kept while voices are being timed.
++inline uint32_t peakTicks = 0;
++inline uint32_t peakSamples = 0;
++inline uint32_t maxRenderSamples = 0;
++inline void notePeak(uint32_t ticks, uint32_t numSamples) {
++	if (numSamples > maxRenderSamples) {
++		maxRenderSamples = numSamples;
++	}
++	if (numSamples >= 32 && uint64_t{ticks} * peakSamples >= uint64_t{peakTicks} * numSamples) {
++		peakTicks = ticks;
++		peakSamples = numSamples;
++	}
++}
++inline void clearPeak() {
++	peakTicks = 0;
++	peakSamples = 0;
++	maxRenderSamples = 0;
++}
++
 +[[nodiscard]] inline bool timingVoices() {
 +	return rendersToTimeVoices > 0;
 +}
@@ -47285,7 +47877,7 @@ index 000000000..977170333
 +
 +} // namespace deluge::dsp::drum_synth
 diff --git a/src/deluge/processing/sound/sound.cpp b/src/deluge/processing/sound/sound.cpp
-index 5f4a82450..139a45120 100644
+index 5f4a82450..dacb8c2f7 100644
 --- a/src/deluge/processing/sound/sound.cpp
 +++ b/src/deluge/processing/sound/sound.cpp
 @@ -32,6 +32,7 @@
@@ -47362,22 +47954,22 @@ index 5f4a82450..139a45120 100644
 +
 +	sources[0].oscType = OscType::DRUM_SYNTH;
 +	if (gin) {
-+		sources[0].drumPatch.setGinSound(ginKitSound);
++		sources[0].editDrumPatch().setGinSound(ginKitSound);
 +	}
 +	else if (cyc) {
-+		sources[0].drumPatch.setCycPreset(cycEngine);
++		sources[0].editDrumPatch().setCycPreset(cycEngine);
 +	}
 +	else if (ultrakik) {
-+		sources[0].drumPatch.setUltrakikPreset();
++		sources[0].editDrumPatch().setUltrakikPreset();
 +	}
 +	else if (tribeRow != nullptr) {
-+		sources[0].drumPatch.setTribe(*tribeRow);
++		sources[0].editDrumPatch().setTribe(*tribeRow);
 +	}
 +	else {
-+		sources[0].drumPatch.setPreset(preset);
++		sources[0].editDrumPatch().setPreset(preset);
 +	}
-+	sources[0].drumPatch.set(deluge::dsp::drum_synth::Patch::SNAPPY_DECAY,
-+	                         deluge::dsp::drum_synth::snappyByDefault(sources[0].drumPatch.engine()) ? 1 : 0);
++	sources[0].editDrumPatch().set(deluge::dsp::drum_synth::Patch::SNAPPY_DECAY,
++	                               deluge::dsp::drum_synth::snappyByDefault(sources[0].drumPatch().engine()) ? 1 : 0);
 +	sources[0].transpose = row.transpose;
 +	sources[0].setCents(row.cents);
 +	sources[1].oscType = OscType::SINE;
@@ -47404,7 +47996,7 @@ index 5f4a82450..139a45120 100644
 +	// The engine's continuous settings live on Deluge params
 +	const auto controls = gin                     ? deluge::dsp::drum_synth::ginControlsFor(ginKitSound)
 +	                      : (tribeRow != nullptr) ? deluge::dsp::drum_synth::tribeControlsFor(*tribeRow)
-+	                                              : deluge::dsp::drum_synth::controlsFromPatch(sources[0].drumPatch);
++	                                              : deluge::dsp::drum_synth::controlsFromPatch(sources[0].drumPatch());
 +	for (int32_t i = 0; i < deluge::dsp::drum_synth::DrumControls::NUM_SLOTS; i++) {
 +		patchedParams->params[deluge::dsp::drum_synth::kDrumControlParams[i]].setCurrentValueBasicForSetup(
 +		    controls.values[i]);
@@ -47420,7 +48012,7 @@ index 5f4a82450..139a45120 100644
 +	}
 +
 +	// Custom 1 tunes the drum; Custom 2 / Custom 3 carry the engine's key settings
-+	setDrumSynthKnobs(sources[0].drumPatch.engine());
++	setDrumSynthKnobs(sources[0].drumPatch().engine());
 +
 +	paramManager->getPatchCableSet()->numPatchCables = 1;
 +	paramManager->getPatchCableSet()->patchCables[0].setup(
@@ -47450,12 +48042,12 @@ index 5f4a82450..139a45120 100644
 +void Sound::resetOldDrumSynthControls(ParamManager* paramManager) {
 +	using deluge::dsp::drum_synth::DrumControls;
 +	using deluge::dsp::drum_synth::kDrumControlParams;
-+	if (sources[0].oscType != OscType::DRUM_SYNTH || !sources[0].drumPatch.needsControlDefaults()
++	if (sources[0].oscType != OscType::DRUM_SYNTH || !sources[0].drumPatch().needsControlDefaults()
 +	    || !paramManager->containsAnyMainParamCollections()) {
 +		return;
 +	}
 +	PatchedParamSet* patchedParams = paramManager->getPatchedParamSet();
-+	const deluge::dsp::drum_synth::Patch& patch = sources[0].drumPatch;
++	const deluge::dsp::drum_synth::Patch& patch = sources[0].drumPatch();
 +	// Saved before the drive and decay controls existed: their params hold whatever they held, so start them neutral
 +	if (patch.savedBeforeControls()) {
 +		patchedParams->params[kDrumControlParams[DrumControls::COMMON_DECAY]].setCurrentValueBasicForSetup(
@@ -47487,7 +48079,7 @@ index 5f4a82450..139a45120 100644
 +	if (sources[0].oscType != OscType::DRUM_SYNTH) {
 +		return;
 +	}
-+	const Engine engine = sources[0].drumPatch.engine();
++	const Engine engine = sources[0].drumPatch().engine();
 +	// The LXR drum voice and GIN play toms and more too, so those go by name, as kick samples do
 +	const bool named =
 +	    name != nullptr && (strcasestr(name, "kick") || strcasestr(name, "kik") || strcasestr(name, "bd"));
@@ -47683,7 +48275,7 @@ index 5f4a82450..139a45120 100644
 +		return nullptr;
 +	}
 +
-+	const auto engine = sources[0].drumPatch.engine();
++	const auto engine = sources[0].drumPatch().engine();
 +	if (deluge::dsp::drum_synth::isBrophet(engine)) {
 +		const auto name = deluge::dsp::drum_synth::brophetKnobName(slot);
 +		return (name == EMPTY_STRING) ? nullptr : deluge::l10n::get(name);
@@ -47896,7 +48488,37 @@ index 5f4a82450..139a45120 100644
  	      || (modelStackWithSoundFlags->checkSourceEverActive(1))
  	      || (paramManager->getPatchedParamSet()->params[params::LOCAL_NOISE_VOLUME].containsSomething(-2147483648))))
  	    [[unlikely]] {
-@@ -1646,7 +2146,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1609,21 +2109,25 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+ 
+ 	auto* paramManager = static_cast<ParamManagerForTimeline*>(modelStack->paramManager);
+ 
++	// A kit row on a drum engine is one voice, like a drum machine: a new hit retriggers it, whatever the gate or
++	// polyphony setting, so ratchets and long notes never stack voices
++	const bool monoEngineRow = isDrum() && sources[0].oscType == OscType::DRUM_SYNTH;
++
+ 	// If not polyphonic, stop any notes which are releasing, now
+-	if (!voices_.empty() && polyphonic != PolyphonyMode::POLY) [[unlikely]] {
++	if (!voices_.empty() && (polyphonic != PolyphonyMode::POLY || monoEngineRow)) [[unlikely]] {
+ 		for (auto it = voices_.begin(); it != voices_.end();) {
+ 			ActiveVoice& voice = *it;
+ 			// if it's not MONO, and the envelope is not in release and we're allowing note tails, this is a legato
+ 			// voice
+-			if (polyphonic != PolyphonyMode::MONO && voice->envelopes[0].state < EnvelopeStage::RELEASE
+-			    && allowNoteTails(modelStack, true)) {
++			if (polyphonic != PolyphonyMode::MONO && !monoEngineRow
++			    && voice->envelopes[0].state < EnvelopeStage::RELEASE && allowNoteTails(modelStack, true)) {
+ 				voiceForLegato = &voice;
+ 				break;
+ 			}
+ 
+ 			// If FM, or no active sources are samples, or still sounding after fast-release, unassign
+ 			bool needs_unassign = //<
+-			    synthMode == SynthMode::FM
++			    synthMode == SynthMode::FM || monoEngineRow
+ 			    || std::ranges::any_of(std::views::iota(0, kNumSources),
+ 			                           [&](int32_t s) {
+ 				                           return isSourceActiveCurrently(s, paramManager)
+@@ -1646,7 +2150,17 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		}
  	}
  
@@ -47915,7 +48537,7 @@ index 5f4a82450..139a45120 100644
  		(*voiceForLegato)->changeNoteCode(modelStack, noteCodePreArp, noteCodePostArp, fromMIDIChannel, mpeValues);
  	}
  	else {
-@@ -1654,6 +2164,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1654,6 +2168,11 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  			const ActiveVoice& voice = voiceToReuse != nullptr ? *voiceToReuse : this->acquireVoice();
  			int32_t envelopePositions[kNumEnvelopes];
  
@@ -47927,7 +48549,7 @@ index 5f4a82450..139a45120 100644
  			if (voiceToReuse != nullptr) [[unlikely]] {
  				// The osc phases and stuff will remain
  				for (int32_t e = 0; e < kNumEnvelopes; e++) {
-@@ -1692,6 +2207,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1692,6 +2211,8 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  
  	lastNoteCode = noteCodePostArp; // Store for porta. We store that at both note-on and note-off.
  
@@ -47936,7 +48558,7 @@ index 5f4a82450..139a45120 100644
  	// Send midi out for sound drums
  	if (outputMidiChannel != MIDI_CHANNEL_NONE) {
  		int32_t outputNoteCode = noteCodePostArp;
-@@ -1708,9 +2225,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1708,9 +2229,9 @@ void Sound::noteOnPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendNote(this, true, outputNoteCode, velocity, outputMidiChannel, 0);
  
  		// If the note doesn't have a tail (for ONCE samples for example and if ARP is OFF), we will never get a noteOff
@@ -47948,7 +48570,7 @@ index 5f4a82450..139a45120 100644
  		}
  	}
  }
-@@ -1778,6 +2295,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
+@@ -1778,6 +2299,8 @@ void Sound::allNotesOff(ModelStackWithThreeMainThings* modelStack, ArpeggiatorBa
  
  // noteCode = ALL_NOTES_OFF (default) means stop *any* voice, regardless of noteCode
  void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t noteCode) {
@@ -47957,7 +48579,7 @@ index 5f4a82450..139a45120 100644
  	// Send midi note offs out for specific notes,
  	// but only if the type of sound allows note tails (if not, note off was already sent right after its note on)
  	if (outputMidiChannel != MIDI_CHANNEL_NONE && allowNoteTails(modelStack, true)) {
-@@ -1865,6 +2384,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
+@@ -1865,6 +2388,16 @@ void Sound::noteOffPostArpeggiator(ModelStackWithSoundFlags* modelStack, int32_t
  		midiEngine.sendAllNotesOff(this, outputMidiChannel, kMIDIOutputFilterNoMPE);
  	}
  
@@ -47974,7 +48596,7 @@ index 5f4a82450..139a45120 100644
  	if (voices_.empty()) {
  		return;
  	}
-@@ -1927,6 +2456,11 @@ justSwitchOff:
+@@ -1927,6 +2460,11 @@ justSwitchOff:
  bool Sound::allowNoteTails(ModelStackWithSoundFlags* modelStack, bool disregardSampleLoop) {
  	// Return yes unless all active sources are play-once samples, or envelope 0 has no sustain
  
@@ -47986,7 +48608,7 @@ index 5f4a82450..139a45120 100644
  	// If arp on, then definitely yes
  	ArpeggiatorSettings* arpSettings = getArpSettings((InstrumentClip*)modelStack->getTimelineCounterAllowNull());
  	if ((arpSettings != nullptr) && arpSettings->mode != ArpMode::OFF) {
-@@ -2176,7 +2710,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
+@@ -2176,7 +2714,7 @@ void Sound::reassessRenderSkippingStatus(ModelStackWithSoundFlags* modelStack, b
  	// A note that couldn't get a voice yet is only ever started from render(), so we must keep rendering while one is
  	// pending - otherwise it'd stay pending forever (issue #2262)
  	bool skippingStatusNow =
@@ -47995,20 +48617,46 @@ index 5f4a82450..139a45120 100644
  	     && ((arpSettings == nullptr) || !getArp()->hasAnyInputNotesActive() || arpSettings->mode == ArpMode::OFF)
  	     && !getArp()->hasPendingNotes(arpSettings));
  
-@@ -2385,6 +2919,12 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2381,9 +2919,38 @@ void Sound::process_postarp_notes(ModelStackWithSoundFlags* modelStackWithSoundF
+ 	}
+ }
+ 
++static_assert(util::to_underlying(deluge::dsp::drum_synth::Engine::NUM_ENGINES) <= deluge::cpu_meter::kMaxEngines);
++
++/// Which companion CPU stream bucket a sound's voices count in: its drum engine if it has one, else its synth mode
++static int32_t cpuMeterKind(const Sound& sound) {
++	namespace cpu = deluge::cpu_meter;
++	if (sound.synthMode == SynthMode::FM) {
++		return cpu::kKindFm;
++	}
++	if (sound.synthMode == SynthMode::RINGMOD) {
++		return cpu::kKindRingmod;
++	}
++	const Source& source = sound.sources[0];
++	if (source.oscType == OscType::DRUM_SYNTH) {
++		return util::to_underlying(source.drumPatch().engine());
++	}
++	if (source.oscType == OscType::SAMPLE || source.oscType == OscType::INPUT_L || source.oscType == OscType::INPUT_R
++	    || source.oscType == OscType::INPUT_STEREO) {
++		return cpu::kKindSample;
++	}
++	return cpu::kKindSubtractive;
++}
++
+ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSample> output, int32_t* reverbBuffer,
                     int32_t sideChainHitPending, int32_t reverbAmountAdjust, bool shouldLimitDelayFeedback,
                     int32_t pitchAdjust, SampleRecorder* recorder) {
- 
-+	// By the time a sound plays, everything loaded with it has been through resetOldDrumSynthControls()
-+	if (sources[0].drumPatch.needsControlDefaults()) {
-+		resetOldDrumSynthControls(modelStack->paramManager);
-+		sources[0].drumPatch.clearNeedsControlDefaults();
-+	}
++	deluge::cpu_meter::Scope soundTimer(deluge::cpu_meter::soundKinds[cpuMeterKind(*this)], output.size());
 +
++	// By the time a sound plays, everything loaded with it has been through resetOldDrumSynthControls()
++	if (sources[0].drumPatch().needsControlDefaults()) {
++		resetOldDrumSynthControls(modelStack->paramManager);
++		sources[0].editDrumPatch().clearNeedsControlDefaults();
++	}
+ 
  	if (skippingRendering) {
  		compressor.gainReduction = 0;
- 		return;
-@@ -2392,6 +2932,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2392,6 +2959,9 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	ParamManagerForTimeline* paramManager = (ParamManagerForTimeline*)modelStack->paramManager;
  
@@ -48018,7 +48666,7 @@ index 5f4a82450..139a45120 100644
  	// Do global LFO
  	if (paramManager->getPatchCableSet()->isSourcePatchedToSomething(PatchSource::LFO_GLOBAL_1)) {
  		const auto patchSourceLFOGlobalUnderlying = util::to_underlying(PatchSource::LFO_GLOBAL_1);
-@@ -2496,18 +3039,31 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2496,18 +3066,31 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  
  	// Setup delay
  	Delay::State delayWorkingState{};
@@ -48053,7 +48701,7 @@ index 5f4a82450..139a45120 100644
  
  	// FIXME(@stellar-aria): if we have simulataneous sounds rendering, they'll overwrite
  	// each other in this buffer. It probably should be object or thread-local
-@@ -2517,12 +3073,18 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2517,12 +3100,24 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	std::span sound_mono{sound_memory, output.size()};
  	std::span sound_stereo{(StereoSample*)sound_memory, output.size()};
  
@@ -48070,12 +48718,22 @@ index 5f4a82450..139a45120 100644
 +		        || paramManager->getPatchCableSet()->doesParamHaveSomethingPatchedToIt(params::LOCAL_PAN));
 +
 +		if (renderingTb303) {
++			const bool timing303 = deluge::cpu_meter::timingVoices();
++			const uint32_t start303 = timing303 ? getSystemTicks() : 0;
 +			renderTb303(paramManager, sound_mono);
++			if (timing303) {
++				deluge::cpu_meter::kinds[deluge::cpu_meter::kKindTb303].add(start303, getSystemTicks(),
++				                                                            sound_mono.size());
++			}
 +		}
  
  		// Setup filters
  		bool thisHasFilters = hasFilters();
-@@ -2541,9 +3103,14 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2538,12 +3133,20 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+ 		    thisHasFilters
+ 		    && (paramManager->getPatchCableSet()->doesParamHaveSomethingPatchedToIt(params::LOCAL_HPF_FREQ)
+ 		        || (hpfFreq != std::numeric_limits<q31_t>::min()) || (hpfMorph > std::numeric_limits<q31_t>::min()));
++		const int32_t cpuKind = cpuMeterKind(*this);
  		for (auto it = voices_.begin(); it != voices_.end();) {
  			ActiveVoice& voice = *it;
  
@@ -48085,12 +48743,14 @@ index 5f4a82450..139a45120 100644
  			    voice->render(modelStackWithSoundFlags, sound_mono.data(), sound_mono.size(), voice_rendered_in_stereo,
  			                  applyingPanAtVoiceLevel, sourcesChanged, doLPF, doHPF, pitchAdjust);
 +			if (timing) {
-+				deluge::cpu_meter::voices.add(startTicks, getSystemTicks(), sound_mono.size());
++				const uint32_t endTicks = getSystemTicks();
++				deluge::cpu_meter::voices.add(startTicks, endTicks, sound_mono.size());
++				deluge::cpu_meter::kinds[cpuKind].add(startTicks, endTicks, sound_mono.size());
 +			}
  			if (!stillGoing) {
  				this->checkVoiceExists(voice, "E201");
  				this->freeActiveVoice(voice, modelStackWithSoundFlags, false);
-@@ -2605,9 +3172,25 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
+@@ -2605,9 +3208,27 @@ void Sound::render(ModelStackWithThreeMainThings* modelStack, std::span<StereoSa
  	int32_t modFXDepth = paramFinalValues[params::GLOBAL_MOD_FX_DEPTH - params::FIRST_GLOBAL];
  	int32_t modFXRate = paramFinalValues[params::GLOBAL_MOD_FX_RATE - params::FIRST_GLOBAL];
  
@@ -48099,14 +48759,16 @@ index 5f4a82450..139a45120 100644
 +	{
 +		namespace ds = deluge::dsp::drum_synth;
 +		const ds::bruno106::Hpf hpf =
-+		    (sources[0].oscType == OscType::DRUM_SYNTH && ds::isBruno106(sources[0].drumPatch.engine()))
-+		        ? static_cast<ds::bruno106::Hpf>(std::min<uint8_t>(sources[0].drumPatch.get(ds::Patch::BRUNO_HPF), 3))
++		    (sources[0].oscType == OscType::DRUM_SYNTH && ds::isBruno106(sources[0].drumPatch().engine()))
++		        ? static_cast<ds::bruno106::Hpf>(std::min<uint8_t>(sources[0].drumPatch().get(ds::Patch::BRUNO_HPF), 3))
 +		        : ds::bruno106::Hpf::FLAT;
 +		if (hpf != ds::bruno106::Hpf::FLAT) {
-+			brunoHpf_.process(sound_stereo, hpf);
++			if (EngineFxState* fx = engineFx_.getOrMake()) {
++				fx->brunoHpf.process(sound_stereo, hpf);
++			}
 +		}
-+		else {
-+			brunoHpf_.idle();
++		else if (EngineFxState* fx = engineFx_.get()) {
++			fx->brunoHpf.idle();
 +		}
 +	}
 +
@@ -48117,7 +48779,7 @@ index 5f4a82450..139a45120 100644
  	processStutter(sound_stereo, paramManager);
  
  	processReverbSendAndVolume(sound_stereo, reverbBuffer, postFXVolume, postReverbVolume, reverbSendAmount, 0, true);
-@@ -2893,21 +3476,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
+@@ -2893,21 +3514,35 @@ const uint8_t patchedParamsWhichShouldBeZeroIfNoKnobAssigned[] = {
      params::LOCAL_PITCH_ADJUST, params::LOCAL_OSC_A_PITCH_ADJUST, params::LOCAL_OSC_B_PITCH_ADJUST,
      params::LOCAL_MODULATOR_0_PITCH_ADJUST, params::LOCAL_MODULATOR_1_PITCH_ADJUST};
  
@@ -48153,14 +48815,14 @@ index 5f4a82450..139a45120 100644
  		ModelStackWithParamId* modelStackWithParamId =
  		    modelStackWithParamCollection->addParamId(patchedParamsWhichShouldBeZeroIfNoKnobAssigned[i]);
  		ModelStackWithAutoParam* modelStackWithAutoParam = modelStackWithParamId->paramCollection->getAutoParamFromId(
-@@ -2985,6 +3582,15 @@ void Sound::doneReadingFromFile() {
+@@ -2985,6 +3620,15 @@ void Sound::doneReadingFromFile() {
  	for (int32_t m = 0; m < kNumModulators; m++) {
  		recalculateModulatorTransposer(m, nullptr);
  	}
 +
 +	// Drum synth sounds all use the same gold knob layout, whenever they were saved
 +	if (sources[0].oscType == OscType::DRUM_SYNTH) {
-+		setDrumSynthKnobs(sources[0].drumPatch.engine());
++		setDrumSynthKnobs(sources[0].drumPatch().engine());
 +	}
 +	// So do 303s, including ones saved with v1.7's layout
 +	else if (synthMode == SynthMode::TB303) {
@@ -48169,7 +48831,7 @@ index 5f4a82450..139a45120 100644
  }
  
  // Set cents for master transpose
-@@ -3042,6 +3648,32 @@ void Sound::setupUnisonStereoSpread() {
+@@ -3042,6 +3686,32 @@ void Sound::setupUnisonStereoSpread() {
  	}
  }
  
@@ -48202,7 +48864,7 @@ index 5f4a82450..139a45120 100644
  void Sound::calculateEffectiveVolume() {
  	// volumeNeutralValueForUnison = (float)getParamNeutralValue(params::LOCAL_VOLUME) / sqrt(numUnison);
  	volumeNeutralValueForUnison = (float)134217728 / sqrtf(numUnison);
-@@ -3053,8 +3685,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3053,8 +3723,20 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	killAllVoices(); // This saves a lot of potential problems, to do with samples playing. E002 was being caused
  
  	SynthMode oldSynthMode = synthMode;
@@ -48223,7 +48885,7 @@ index 5f4a82450..139a45120 100644
  	// Change mod knob functions over. Switching *to* FM...
  	if (synthMode == SynthMode::FM && oldSynthMode != SynthMode::FM) {
  		for (int32_t f = 0; f < kNumModButtons; f++) {
-@@ -3099,6 +3743,100 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
+@@ -3099,6 +3781,101 @@ void Sound::setSynthMode(SynthMode value, Song* song) {
  	setupPatchingForAllParamManagers(song);
  }
  
@@ -48308,14 +48970,15 @@ index 5f4a82450..139a45120 100644
 +	tb303_->render(buffer, kOutputGain);
 +
 +	// The sound's saturation, at the same point and level the voices get it
-+	if (saturation.drive) {
++	EngineFxState* fx = saturation.drive ? engineFx_.getOrMake() : nullptr;
++	if (fx != nullptr) {
 +		if (saturation.type != deluge::dsp::SaturationType::CLASSIC) {
-+			getSaturator(deluge::dsp::Saturator::kVoiceUnit).process(buffer.data(), buffer.size(), tb303Saturation_);
++			getSaturator(deluge::dsp::Saturator::kVoiceUnit).process(buffer.data(), buffer.size(), fx->tb303Saturation);
 +		}
 +		else {
 +			int32_t shiftAmount = getShiftAmountForSaturation();
 +			for (q31_t& sample : buffer) {
-+				saturate(&sample, &tb303ClassicSaturation_, shiftAmount);
++				saturate(&sample, &fx->tb303ClassicSaturation, shiftAmount);
 +			}
 +		}
 +	}
@@ -48324,7 +48987,7 @@ index 5f4a82450..139a45120 100644
  void Sound::setModulatorTranspose(int32_t m, int32_t value, ModelStackWithSoundFlags* modelStack) {
  	modulatorTranspose[m] = value;
  	recalculateAllVoicePhaseIncrements(modelStack);
-@@ -3212,7 +3950,7 @@ bool Sound::anyNoteIsOn() {
+@@ -3212,7 +3989,7 @@ bool Sound::anyNoteIsOn() {
  		return (getArp()->hasAnyInputNotesActive());
  	}
  
@@ -48333,7 +48996,7 @@ index 5f4a82450..139a45120 100644
  }
  
  bool Sound::hasFilters() {
-@@ -3401,6 +4139,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3401,6 +4178,7 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  				return Error::INSUFFICIENT_RAM;
  			}
  			int len = reader.readTagOrAttributeValueHexBytes(patch->params, 156);
@@ -48341,29 +49004,29 @@ index 5f4a82450..139a45120 100644
  			reader.exitTag("dx7patch");
  		}
  		else if (!strcmp(tagName, "dx7randomdetune")) {
-@@ -3411,6 +4150,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3411,6 +4189,21 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			patch->random_detune = reader.readTagOrAttributeValueInt();
  			reader.exitTag("dx7randomdetune");
  		}
 +		else if (!strcmp(tagName, "drumSynth")) {
-+			auto& bytes = source->drumPatch.bytes();
++			auto& bytes = source->editDrumPatch().bytes();
 +			const int32_t length = reader.readTagOrAttributeValueHexBytes(bytes.data(), bytes.size());
-+			source->drumPatch.clampAll();
-+			source->drumPatch.loadedBytes(length);
++			source->editDrumPatch().clampAll();
++			source->editDrumPatch().loadedBytes(length);
 +			reader.exitTag("drumSynth");
 +		}
 +		else if (!strcmp(tagName, "drumSynthPatch")) {
 +			// Saved by the first, kick-and-tom-only test build
 +			uint8_t legacy[12];
 +			int32_t length = reader.readTagOrAttributeValueHexBytes(legacy, sizeof(legacy));
-+			source->drumPatch.readLegacyDrumBytes(legacy, length);
-+			source->drumPatch.loadedBytes(0);
++			source->editDrumPatch().readLegacyDrumBytes(legacy, length);
++			source->editDrumPatch().loadedBytes(0);
 +			reader.exitTag("drumSynthPatch");
 +		}
  		else if (!strcmp(tagName, "dx7enginemode")) {
  			DxPatch* patch = source->ensureDxPatch();
  			if (patch == nullptr) {
-@@ -3433,6 +4187,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
+@@ -3433,6 +4226,10 @@ Error Sound::readSourceFromFile(Deserializer& reader, int32_t s, ParamManagerFor
  			source->timeStretchAmount = reader.readTagOrAttributeValueInt();
  			reader.exitTag("timeStretchAmount");
  		}
@@ -48374,7 +49037,7 @@ index 5f4a82450..139a45120 100644
  		else if (!strcmp(tagName, "linearInterpolation")) {
  			if (reader.readTagOrAttributeValueInt()) {
  				source->sampleControls.interpolationMode = InterpolationMode::LINEAR;
-@@ -3643,6 +4401,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3643,6 +4440,9 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  		writer.writeAttribute("reversed", source->sampleControls.reversed);
  		writer.writeAttribute("timeStretchEnable", source->sampleControls.pitchAndSpeedAreIndependent);
  		writer.writeAttribute("timeStretchAmount", source->timeStretchAmount);
@@ -48384,19 +49047,19 @@ index 5f4a82450..139a45120 100644
  		if (source->sampleControls.interpolationMode == InterpolationMode::LINEAR) {
  			writer.writeAttribute("linearInterpolation", 1);
  		}
-@@ -3767,6 +4528,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
+@@ -3767,6 +4567,11 @@ void Sound::writeSourceToFile(Serializer& writer, int32_t s, char const* tagName
  			}
  			goto justCloseTag;
  		}
 +		else if (source->oscType == OscType::DRUM_SYNTH && synthMode != SynthMode::FM) {
-+			auto& bytes = source->drumPatch.bytes();
-+			writer.writeAttributeHexBytes("drumSynth", bytes.data(), bytes.size());
++			auto& bytes = source->drumPatch().bytes();
++			writer.writeAttributeHexBytes("drumSynth", const_cast<uint8_t*>(bytes.data()), bytes.size());
 +			goto justCloseTag;
 +		}
  		else {
  justCloseTag:
  			writer.closeTag();
-@@ -3856,6 +4622,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -3856,6 +4661,18 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		patchedParams->readParam(reader, patchedParamsSummary, params::LOCAL_FOLD, readAutomationUpToPos);
  		reader.exitTag("waveFold");
  	}
@@ -48415,7 +49078,7 @@ index 5f4a82450..139a45120 100644
  
  	else if (!strcmp(tagName, "envelope1")) {
  		reader.match('{');
-@@ -4038,9 +4816,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
+@@ -4038,9 +4855,20 @@ bool Sound::readParamTagFromFile(Deserializer& reader, char const* tagName, Para
  		reader.exitTag("delayRate");
  	}
  	else if (!strcmp(tagName, "delayFeedback")) {
@@ -48436,7 +49099,7 @@ index 5f4a82450..139a45120 100644
  	else if (!strcmp(tagName, "reverbAmount")) {
  		patchedParams->readParam(reader, patchedParamsSummary, params::GLOBAL_REVERB_AMOUNT, readAutomationUpToPos);
  		reader.exitTag("reverbAmount");
-@@ -4120,6 +4909,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4120,6 +4948,11 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  
  	patchedParams->writeParamAsAttribute(writer, "delayRate", params::GLOBAL_DELAY_RATE, writeAutomation);
  	patchedParams->writeParamAsAttribute(writer, "delayFeedback", params::GLOBAL_DELAY_FEEDBACK, writeAutomation);
@@ -48448,7 +49111,7 @@ index 5f4a82450..139a45120 100644
  
  	patchedParams->writeParamAsAttribute(writer, "reverbAmount", params::GLOBAL_REVERB_AMOUNT, writeAutomation);
  
-@@ -4133,6 +4927,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
+@@ -4133,6 +4966,10 @@ void Sound::writeParamsToFile(Serializer& writer, ParamManager* paramManager, bo
  	patchedParams->writeParamAsAttribute(writer, "hpfMorph", params::LOCAL_HPF_MORPH, writeAutomation);
  
  	patchedParams->writeParamAsAttribute(writer, "waveFold", params::LOCAL_FOLD, writeAutomation);
@@ -48459,7 +49122,7 @@ index 5f4a82450..139a45120 100644
  
  	writer.writeOpeningTagEnd();
  
-@@ -4182,6 +4980,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4182,6 +5019,10 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	}
  
  	writer.writeAttribute("mode", (char*)synthModeToString(synthMode));
@@ -48470,7 +49133,7 @@ index 5f4a82450..139a45120 100644
  
  	if (transpose != 0) {
  		writer.writeAttribute("transpose", transpose);
-@@ -4255,6 +5057,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
+@@ -4255,6 +5096,14 @@ void Sound::writeToFile(Serializer& writer, bool savingSong, ParamManager* param
  	writer.writeAttribute("spread", unisonStereoSpread, false);
  	writer.closeTag();
  
@@ -48485,7 +49148,7 @@ index 5f4a82450..139a45120 100644
  	if (paramManager) {
  		writer.writeOpeningTagBeginning("defaultParams", true);
  		Sound::writeParamsToFile(writer, paramManager, false);
-@@ -4441,6 +5251,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
+@@ -4441,6 +5290,22 @@ ModelStackWithAutoParam* Sound::getParamFromModEncoder(int32_t whichModEncoder,
  	if (isUIModeActive(UI_MODE_MACRO_SETTING_UP)) {
  		return modelStack->addParam(nullptr, nullptr, 0, nullptr); // "none"
  	}
@@ -48508,7 +49171,7 @@ index 5f4a82450..139a45120 100644
  	return getParamFromModEncoderDeeper(whichModEncoder, modelStack, allowCreation);
  }
  
-@@ -4818,6 +5644,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
+@@ -4818,6 +5683,11 @@ bool Sound::renderingVoicesInStereo(ModelStackWithSoundFlags* modelStack) {
  		return true;
  	}
  
@@ -48520,7 +49183,7 @@ index 5f4a82450..139a45120 100644
  	if (unisonStereoSpread && numUnison > 1) {
  		return true;
  	}
-@@ -4948,6 +5779,9 @@ void Sound::killAllVoices() {
+@@ -4948,6 +5818,9 @@ void Sound::killAllVoices() {
  		voice->setAsUnassigned(nullptr);
  	}
  	voices_.clear();
@@ -48531,19 +49194,20 @@ index 5f4a82450..139a45120 100644
  
  const Sound::ActiveVoice& Sound::getLowestPriorityVoice() const {
 diff --git a/src/deluge/processing/sound/sound.h b/src/deluge/processing/sound/sound.h
-index 504b075f1..5de300732 100644
+index 504b075f1..b0157ad63 100644
 --- a/src/deluge/processing/sound/sound.h
 +++ b/src/deluge/processing/sound/sound.h
-@@ -18,6 +18,8 @@
+@@ -18,6 +18,9 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
 +#include "dsp/drum_synth/bruno106_hpf.h"
 +#include "dsp/tb303/open303.h"
++#include "memory/lazy_block.h"
  #include "model/mod_controllable/mod_controllable_audio.h"
  #include "model/sample/sample_recorder.h"
  #include "model/voiced.h"
-@@ -38,6 +40,15 @@
+@@ -38,6 +41,15 @@
  struct CableGroup;
  class StereoSample;
  class Voice;
@@ -48559,7 +49223,7 @@ index 504b075f1..5de300732 100644
  class Kit;
  class ParamManagerForTimeline;
  class TimelineCounter;
-@@ -73,6 +84,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
+@@ -73,6 +85,31 @@ constexpr int32_t kDefaultSoundVolumeUserValue = 40;
  /// The depth of the VELOCITY -> LOCAL_VOLUME patch cable that Sound::setupAsSample() installs, as a user value.
  constexpr int32_t kSampleDrumVelocityCableUserValue = 50;
  
@@ -48591,7 +49255,7 @@ index 504b075f1..5de300732 100644
  class Sound : public ModControllableAudio, public virtual Voiced {
  public:
  	using ActiveVoice = AudioEngine::VoicePool::pointer_type;
-@@ -116,6 +152,7 @@ public:
+@@ -116,6 +153,7 @@ public:
  	alignas(8) ModKnob modKnobs[kNumModButtons][kNumPhysicalModKnobs];
  
  	int32_t sideChainSendLevel = 0;
@@ -48599,7 +49263,7 @@ index 504b075f1..5de300732 100644
  
  	PolyphonyMode polyphonic = PolyphonyMode::POLY;
  	uint8_t maxVoiceCount = 8;
-@@ -128,6 +165,16 @@ public:
+@@ -128,6 +166,16 @@ public:
  	int8_t unisonDetune = 8;
  	uint8_t unisonStereoSpread = 0;
  
@@ -48616,7 +49280,7 @@ index 504b075f1..5de300732 100644
  	// For sending MIDI notes for SoundDrums
  	uint8_t outputMidiChannel = MIDI_CHANNEL_NONE;
  	uint8_t outputMidiNoteForDrum = MIDI_NOTE_NONE;
-@@ -173,6 +220,7 @@ public:
+@@ -173,6 +221,7 @@ public:
  	virtual void setSkippingRendering(bool newSkipping);
  
  	ModFXType getModFXType() override;
@@ -48624,7 +49288,7 @@ index 504b075f1..5de300732 100644
  	bool setModFXType(ModFXType newType) final;
  
  	void patchedParamPresetValueChanged(uint8_t p, ModelStackWithSoundFlags* modelStack, int32_t oldValue,
-@@ -236,7 +284,30 @@ public:
+@@ -236,7 +285,30 @@ public:
  	[[nodiscard]] SynthMode getSynthMode() const { return synthMode; }
  
  	virtual bool isDrum() { return false; }
@@ -48655,7 +49319,7 @@ index 504b075f1..5de300732 100644
  	void recalculateAllVoicePhaseIncrements(ModelStackWithSoundFlags* modelStack);
  	void set_cents(int8_t new_cents);
  	Error loadAllAudioFiles(bool mayActuallyReadFiles);
-@@ -290,20 +361,38 @@ public:
+@@ -290,20 +362,38 @@ public:
  	ModelStackWithAutoParam* getParamFromMIDIKnob(MIDIKnob& knob, ModelStackWithThreeMainThings* modelStack) final;
  	virtual ArpeggiatorBase* getArp() = 0;
  	void possiblySetupDefaultExpressionPatching(ParamManager* paramManager);
@@ -48699,22 +49363,27 @@ index 504b075f1..5de300732 100644
  
  	/// @brief Get the number of active voices
  	[[nodiscard]] size_t numActiveVoices() const { return voices_.size(); }
-@@ -334,6 +423,7 @@ public:
+@@ -334,6 +424,15 @@ public:
  	virtual const char* getName() { return nullptr; }
  
  private:
-+	deluge::dsp::drum_synth::bruno106::HpfState brunoHpf_; ///< BRUNO106's HPF slider, on the summed voices
++	/// State only the 303 and BRUNO106 use, made the first time one renders, so it isn't in every sound (keeping a kit
++	/// row's Sound inside a 2 KB allocation)
++	struct EngineFxState {
++		deluge::dsp::drum_synth::bruno106::HpfState brunoHpf; ///< BRUNO106's HPF slider, on the summed voices
++		// The 303's saturation state, as each voice keeps its own
++		deluge::dsp::Saturator::Channel tb303Saturation{};
++		uint32_t tb303ClassicSaturation = 2147483648u;
++	};
++	deluge::memory::LazyBlock<EngineFxState> engineFx_;
  	uint32_t getGlobalLFOPhaseIncrement(LFO_ID lfoId, deluge::modulation::params::Global param);
  	void recalculateFineTuner();
  	void recalculateModulatorTransposer(uint8_t m, ModelStackWithSoundFlags* modelStack);
-@@ -366,6 +456,12 @@ private:
+@@ -366,6 +465,9 @@ private:
  	// we're constantly cycling between a minimum and maximum number of voices.
  	deluge::fast_vector<ActiveVoice> voices_;
  
 +	std::unique_ptr<deluge::dsp::tb303::Open303> tb303_;
-+	// The 303's saturation state, as each voice keeps its own
-+	deluge::dsp::Saturator::Channel tb303Saturation_{};
-+	uint32_t tb303ClassicSaturation_ = 2147483648u;
 +	void renderTb303(ParamManagerForTimeline* paramManager, std::span<q31_t> buffer);
 +
  	/// @brief Acquire a voice for use by a note
@@ -48840,23 +49509,55 @@ index 37cb92e0f..f640f660e 100644
  	ArpeggiatorSettings* arpSettings = getArpSettings();
  
  	if (arpSettings != nullptr
+diff --git a/src/deluge/processing/source.cpp b/src/deluge/processing/source.cpp
+index 10cfe866f..f5c886a0d 100644
+--- a/src/deluge/processing/source.cpp
++++ b/src/deluge/processing/source.cpp
+@@ -32,6 +32,17 @@
+ #include "util/functions.h"
+ #include <cstring>
+ 
++const deluge::dsp::drum_synth::Patch Source::kDefaultDrumPatch{};
++
++deluge::dsp::drum_synth::Patch& Source::editDrumPatch() {
++	if (auto* patch = drumPatch_.getOrMake()) [[likely]] {
++		return *patch;
++	}
++	static deluge::dsp::drum_synth::Patch scratch;
++	scratch = kDefaultDrumPatch;
++	return scratch;
++}
++
+ Source::Source() {
+ 
+ 	transpose = 0;
 diff --git a/src/deluge/processing/source.h b/src/deluge/processing/source.h
-index 20b6b2894..1974c207f 100644
+index 20b6b2894..a5add0be1 100644
 --- a/src/deluge/processing/source.h
 +++ b/src/deluge/processing/source.h
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,8 @@
  #pragma once
  
  #include "definitions_cxx.hpp"
 +#include "dsp/drum_synth/drum_synth.h"
++#include "memory/lazy_block.h"
  #include "model/sample/sample_controls.h"
  #include "storage/multi_range/multi_range_array.h"
  #include "util/phase_increment_fine_tuner.h"
-@@ -46,9 +47,11 @@ public:
+@@ -46,9 +48,20 @@ public:
  
  	DxPatch* dxPatch;
  	bool dxPatchChanged = false;
-+	deluge::dsp::drum_synth::Patch drumPatch;
++	/// The drum engine's settings, only made for a source that uses one: a source that never has reads the defaults.
++	/// Kept out of the Source so every kit row's Sound fits a 2 KB allocation.
++	[[nodiscard]] const deluge::dsp::drum_synth::Patch& drumPatch() const {
++		const auto* patch = drumPatch_.get();
++		return patch != nullptr ? *patch : kDefaultDrumPatch;
++	}
++	/// The settings to change, made now if needed (if there's no memory, changes go to a scratch copy and are lost)
++	deluge::dsp::drum_synth::Patch& editDrumPatch();
++	static const deluge::dsp::drum_synth::Patch kDefaultDrumPatch;
++	deluge::memory::LazyBlock<deluge::dsp::drum_synth::Patch> drumPatch_;
  	SampleRepeatMode repeatMode;
  
  	int8_t timeStretchAmount;

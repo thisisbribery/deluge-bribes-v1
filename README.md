@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.48
+# BRIBELUGE: Deluge Bribes FW v1.49
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.48`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.48), the exact commit the bin was built from, and a full source download on the [v1.47 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.47). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.49`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.49), the exact commit the bin was built from, and a full source download on the [v1.49 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.49). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -60,9 +60,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.48.bin`](firmware/deluge-bribes-v1.48.bin)
+[`firmware/deluge-bribes-v1.49.bin`](firmware/deluge-bribes-v1.49.bin)
 
-SHA-256: `aed6e853203755f1d49d38f0a0dd1becf2077a911598efecfcaf8833d4c72f68`
+SHA-256: `d806690d75549de751fc9e32e123b8ae105d52532382c0bdd08da240329e6ab1`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -78,7 +78,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.48.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.49.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -543,6 +543,7 @@ Its twelve continuous settings (everything on MOD1 and MOD2 except Pitch, Click 
 
 - The full settings list and a pad-per-setting editor (GIN has its own) are in the sound menu under **Drum synth** (**DRUM**). In the pad editor, turn the horizontal encoder or press **SCALE** (left) and **CROSS SCREEN** (right) to move between settings; both buttons are lit while it's open (new in v1.39.1). **Load preset** (**PRST**) there has the seven kit sounds and each DXIA and DIIA variant.
 - **SHIFT + press SELECT > CPU load** (**LOAD**) shows the audio engine's load, for checking how many drum synth voices you can run.
+- **One voice per row (from v1.49):** a kit row on a drum engine plays one voice, like a drum machine. A new hit cuts the last one and starts again, whatever the row's gate length or polyphony setting, so ratchets, Autofill fills and long notes never pile voices up. Choke groups work as before.
 - **Settings > Defaults > High CPU Indicator** (**CPU**) set to **ON** makes the **PLAY** button blink whenever the Deluge runs out of CPU and cuts notes to keep up (voice stealing). It's off until you turn it on.
 - **From v1.17** each hit ends once it's 72 dB down (it was 100 dB, 80 on GIN). The Cyc engines fade out over the last few samples. When the CPU runs short, a hit that's 40 dB down is cut before notes you can still hear. See [New in v1.17](#readme-top) at the top.
 - **From v1.18** the Cycles engines build their sines from a lookup table and cost an estimated third to a quarter of what they did, for the same sound. Metal's feedback is chaotic, so its waveform never comes out exactly the same from one build to the next, but it sounds the same.
@@ -1627,6 +1628,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.49: More room in the Deluge's fast memory.** A TRIBE kit now takes 79 KB of the Deluge's on-chip RAM, down from 135 KB, and a 16-row sample kit loaded next to it stays in on-chip RAM instead of spilling 87 KB into the slower SDRAM. Three changes, and only the first is one you can hear, on hits that used to overlap: each [drum engine](#6-drum-synth) row plays one voice and retriggers it, the store of drum engine voices starts at 8 and grows only as far as a song needs (it made 48 up front), and every kit row and kit fits a 2 KB block again. *Why:* the more of a song that lives in on-chip RAM, the less the Deluge has to fall back on SDRAM, which is slower for voices and, once full, takes room from loaded samples. *Learned:* measure before guessing. The Deluge now streams its CPU load, time per engine and free memory over USB, and can list every block of memory in use, so I could see what each kit really takes. The Deluge hands out memory in power-of-two blocks: Bribeluge's extra settings had pushed every kit row from 1,864 to 2,384 bytes, just past 2 KB, so each row took a 4 KB block. Moving the settings only some sounds use (303, BRUNO106, the newer crush types and saturation, drum engine settings) out of the row put it back at 2,024. The stream also showed a TRIBE voice costs about 1.5 times a sample voice, which is the next thing to work on. See [Measuring CPU and memory](#measuring-cpu-and-memory).
 - **v1.48: The Deluge's menu, whole page, by touch.** With a menu open on the Deluge (a clip's, the song's or SHIFT + SELECT settings), the [companion](#27-bribeluge-companion) shows every open level as a column you can tap: any entry at any level is one tap away, a setting gets its value, steps and named choices as tiles, and the page goes back to what it showed when the menu closes. *Why:* the select knob walks a long menu one entry at a time, and a screen can show the whole tree at once. *Learned:* the companion doesn't need its own copy of the menu: the Deluge sends each level as it is (only what applies to this sound), and a tap is played back as the presses a hand would make (BACK up, turn, SELECT), so everything the Deluge does on the way still happens.
 - **v1.47: A panel for every engine.** The [companion](#27-bribeluge-companion) now has a hardware-style panel for ULTRAKIK, XIA, BRIBERING, the 303, DX7 and the Deluge's own SUBTRACTIVE, FM and RINGMOD, next to the drum machines, BRUNO106, BROPHET and WAVE, and the BRUNO106 panel is rebuilt in three rows that fill the width with clearer names. See [Engine panels](#33-engine-panels). *Why:* once the drum machines had panels, every other engine looked unfinished next to them. *Learned:* the same table that drives the drum panels covers the Deluge's own synth too, once it knows a few more kinds of setting (oscillator types, filter modes, unison, DX7 voice bytes), and a preset or variant can be loaded exactly as its menu does it.
 - **v1.46: Scrolling 7SEG text flashes the short name first.** On **SCROLL**, a menu name or option now flashes its four letter 7SEG name three times, then scrolls the full name, and names where the full one says nothing more (**LFO1**, **ULAW**, **LP18**) show as they always did. See [Scrolling 7SEG text](#31-scrolling-7seg-text). Also has the v1.45.1 kit name fix. *Why:* a suggestion from Sean.Good.Vibes on the community Discord. With only the full name, ENV1 to ENV4 all start "Envelope", so you wait for the scroll to tell them apart; the community docs show both, short then long. *Learned:* the full name isn't always better. Plenty of OLED names are the 7SEG ones with a space added, and scrolling those just costs time.
@@ -1782,6 +1784,12 @@ cd DelugeFirmware
 ```
 
 The firmware is written to `build/Release/deluge.bin`.
+
+### Measuring CPU and memory
+
+For anyone working on the firmware's performance. From v1.49, over USB, the Deluge streams its render load, its slowest render, voices playing and voices cut, free on-chip RAM and SDRAM, the time each engine's voices take, and the time spent in each part of the render (kit rows, kit FX, reverb, song FX and the rest). It can also list every block of memory in use, grouped by size. Nothing is sent or timed unless a computer asks for it.
+
+[`tools/deluge_bench.py`](tools/deluge_bench.py) reads it on a computer (Python 3 with `mido` and `python-rtmidi`): a live readout, a timed run that starts the song and saves the results, a voice count sweep, memory snapshots and maps per kit with the difference between two, and a before and after comparison of two builds on the same song. The protocol is at the top of the script.
 
 [Back to top](#readme-top)
 
