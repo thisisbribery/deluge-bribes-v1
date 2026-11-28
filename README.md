@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.45.1
+# BRIBELUGE: Deluge Bribes FW v1.46
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.45.1`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.45.1), the exact commit the bin was built from, and a full source download on the [v1.45.1 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.45.1). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.46`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.46), the exact commit the bin was built from, and a full source download on the [v1.46 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.46). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -44,7 +44,7 @@ What Bribeluge adds:
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
-31. **[Scrolling 7SEG text](#31-scrolling-7seg-text):** An option for 7-segment Deluges: every menu name and option shows its full name instead of four letters, flashing and then scrolling when it doesn't fit.
+31. **[Scrolling 7SEG text](#31-scrolling-7seg-text):** An option for 7-segment Deluges: every menu name and option flashes its four letter name, then scrolls its full name when there's more to say.
 32. **[Kit mixer](#32-kit-mixer):** A level fader for every kit row: hold **LEVEL/PAN** and press **KEYBOARD**, and each row's pads show and set its level. The same again brings the steps back, untouched.
 33. **[Drum engine panels](#33-drum-engine-panels):** The companion gets a hardware-style panel for each Bribeluge drum engine: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings and GIN in machined gunmetal with a scope of its sound. Both ways, with a key per kit row to pick the voice and hear it. Touch any panel control and the Deluge lights the gold knobs that turn it, or opens its setting with **SHORTCUT**.
 
@@ -60,9 +60,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.45.1.bin`](firmware/deluge-bribes-v1.45.1.bin)
+[`firmware/deluge-bribes-v1.46.bin`](firmware/deluge-bribes-v1.46.bin)
 
-SHA-256: `855aa10e07d950cb199ba513a35866633e36cb05cfc5a5ec7f87fcdca525cb1f`
+SHA-256: `ac12b3ed700f196151f6229a1ad7973b9638cd3f9808ec16638de4e90463f3d7`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -78,7 +78,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.45.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.46.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1449,13 +1449,13 @@ Pitch (MOD1, row 3) is the Deluge's own transpose. The kick, snare and tom put t
 
 ## 31. Scrolling 7SEG text
 
-Four letters don't say much. With **7SEG text** set to **SCROLL**, the 7-segment display shows the full name of every menu item and option instead: **Crush type** rather than **CTYP**, **Elektron P-locks** rather than **ELEK**.
+Four letters don't say much. With **7SEG text** set to **SCROLL**, the 7-segment display flashes each menu item's and option's four letter name, then scrolls its full name: **CTYP** then **Crush type**, **ENV1** then **Envelope 1**. You read the short name at once and get the full one if you wait.
 
 To turn it on: **SHIFT + press SELECT** to open Settings, go to **Community Features** (**FEAT**) and set **7SEG text** (**TEXT**) to **SCROLL**. It starts on **7SEG**, the four letter names, as before.
 
-- **Menu names:** a name that fits shows still, with its dot, as before. A longer one flashes twice, then scrolls back and forth until you move on.
-- **Options:** a setting's choices show their full names and scroll when they don't fit, with no flashing, so turning SELECT reads straight away.
-- **Context menus:** their options show full names too, flashing then scrolling as they already did.
+- **Menu names and options:** the four letter name flashes three times (with its dot), then the full name scrolls back and forth until you move on.
+- **When the full name says nothing more,** the four letter name shows as it always did, with no flash and no scroll: a name that fits (**FX**), the same letters in other case or spacing (**LFO1** for LFO 1, **ULAW** for u-Law), or one that fits once its spaces go (**LP18** for 18 dB).
+- **Context menus:** the four letter option blinks, then its full name scrolls.
 - Turning SELECT replaces the text at once. You never wait for a scroll to finish.
 
 ### Good to know
@@ -1579,7 +1579,7 @@ Every panel works both ways: drag a knob up or down and the Deluge follows, as i
 | **Hold a MIDI row's audition pad + turn a gold knob** | Change that row's channel or note, as before |
 | **CV track on BOTH > CV 2 Source > LOCK** | The gold knobs set CV 2 in semitones, 12 to an octave. Hold a step and turn to lock it (CV2 lock, new in v1.23) |
 | **SETTINGS > Community Features > Elektron P-locks** | Parameter locks stay on their own step (**ELEK**, new in v1.23) |
-| **SETTINGS > Community Features > 7SEG text** | **7SEG**: four letter names. **SCROLL**: full menu names and options, flashed then scrolled (**TEXT**, new in v1.42) |
+| **SETTINGS > Community Features > 7SEG text** | **7SEG**: four letter names. **SCROLL**: the four letter name flashes three times, then the full name scrolls (**TEXT**, new in v1.42, flash first from v1.46) |
 | **In a kit clip: hold LEVEL/PAN + press KEYBOARD** | Kit mixer: each row's pads show and set its level, left at the bottom of the knob, right at the top. The same again goes back to the steps (Kit mixer, new in v1.43) |
 | **SHIFT + turn the delay Amount gold knob** | Delay feedback, 0 to 50. The knob on its own still sets the delay amount (Delay feedback and tone) |
 | **SHIFT + turn the delay Rate gold knob** | Delay tone: lowpass to the left, flat in the middle, highpass to the right (Delay feedback and tone) |
@@ -1607,6 +1607,8 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 ## Changelog
 
 Newest first: what changed in each release, why, and what it taught me.
+
+- **v1.46: Scrolling 7SEG text flashes the short name first.** On **SCROLL**, a menu name or option now flashes its four letter 7SEG name three times, then scrolls the full name, and names where the full one says nothing more (**LFO1**, **ULAW**, **LP18**) show as they always did. See [Scrolling 7SEG text](#31-scrolling-7seg-text). Also has the v1.45.1 kit name fix. *Why:* a suggestion on the community Discord. With only the full name, ENV1 to ENV4 all start "Envelope", so you wait for the scroll to tell them apart; the community docs show both, short then long. *Learned:* the full name isn't always better. Plenty of OLED names are the 7SEG ones with a space added, and scrolling those just costs time.
 
 - **v1.45.1: Preset kits keep their name.** Choosing a preset kit renames the kit to the preset, so the name no longer goes back to **KIT 0xx** on the next audition or in the companion. LXR and Cycles **Default** keeps the kit's name, and the renamed kit is the song's own until saved. See [Kit presets](#kit-presets). *Why:* the preset's name only flashed up, then the kit's old name came back the moment you played a row. *Learned:* showing a name and giving it are different things: the display only shows what the kit is called, so the kit has to carry the name.
 - **v1.45: Row keys you can hear, gold knobs that follow, SHORTCUT.** On the [drum engine panels](#33-drum-engine-panels), holding a row key sounds that row like its audition pad. Touching a control on any companion panel lights the mod button whose gold knobs turn it, and with **SHORTCUT** lit it opens that control's setting on the Deluge too. The kit picker draws the four drum machines as their panels look, and TRIBE's I is solid pink. *Why:* the panel and the hardware should feel like one instrument: pick a sound, hear it, and have the knobs under your hand already on what you touched. *Learned:* the Deluge already knows where every setting lives (its gold knob pairs and its shortcut pads), so the companion only has to say which control was touched, and the Deluge works out the rest.

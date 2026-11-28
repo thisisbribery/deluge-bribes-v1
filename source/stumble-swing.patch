@@ -19094,7 +19094,7 @@ index adbcbc904..25b0e108a 100644
  
  		newHeadBytePos = sample->audioDataStartPosBytes + beamBackEdge * bytesPerSample;
 diff --git a/src/deluge/gui/context_menu/context_menu.cpp b/src/deluge/gui/context_menu/context_menu.cpp
-index c102f75f3..0b33ae863 100644
+index c102f75f3..bc71b6840 100644
 --- a/src/deluge/gui/context_menu/context_menu.cpp
 +++ b/src/deluge/gui/context_menu/context_menu.cpp
 @@ -18,6 +18,7 @@
@@ -19105,16 +19105,23 @@ index c102f75f3..0b33ae863 100644
  #include "gui/ui/ui.h"
  #include "hid/display/display.h"
  #include "hid/display/oled.h"
-@@ -197,10 +198,12 @@ probablyAcceptCurrentOption:
+@@ -197,10 +198,18 @@ probablyAcceptCurrentOption:
  }
  
  void ContextMenu::drawCurrentOption() {
-+	// 7SEG text = SCROLL: the option's full name
-+	deluge::l10n::FullTextLookup fullText;
- 	const auto options = getOptions();
+-	const auto options = getOptions();
  	if (display->have7SEG()) {
  		indicator_leds::ledBlinkTimeout(0, true);
 -		display->setText(options[currentOption], false, 255, true);
++		// 7SEG text = SCROLL: the 4-letter option blinks, then its full name scrolls when it doesn't fit
++		if (deluge::l10n::sevenSegFullText()) {
++			const std::string shortOption{getOptions()[currentOption]};
++			deluge::l10n::FullTextLookup fullText;
++			const auto options = getOptions();
++			display->setFlashScrollText(shortOption, options[currentOption], 255, true);
++			return;
++		}
++		const auto options = getOptions();
 +		display->setBlinkingScrollingText(options[currentOption]);
  	}
  }
@@ -25299,7 +25306,7 @@ index 000000000..d837bc9d6
 +
 +} // namespace deluge::gui::menu_item
 diff --git a/src/deluge/gui/menu_item/menu_item.cpp b/src/deluge/gui/menu_item/menu_item.cpp
-index 014f2b624..f6c95a3e5 100644
+index 014f2b624..5c80fa28e 100644
 --- a/src/deluge/gui/menu_item/menu_item.cpp
 +++ b/src/deluge/gui/menu_item/menu_item.cpp
 @@ -17,6 +17,7 @@
@@ -25310,14 +25317,15 @@ index 014f2b624..f6c95a3e5 100644
  #include "gui/ui/sound_editor.h"
  #include "hid/display/display.h"
  #include "hid/display/oled.h" //todo: this probably shouldn't be needed
-@@ -41,6 +42,12 @@ void MenuItem::renderOLED() {
+@@ -41,6 +42,13 @@ void MenuItem::renderOLED() {
  }
  
  void MenuItem::drawName() {
-+	// 7SEG text = SCROLL: the full name, flashed then scrolled when it doesn't fit
-+	deluge::l10n::FullTextLookup fullText;
-+	if (fullText.on()) {
-+		display->setFlashScrollText(getName(), shouldDrawDotOnName());
++	// 7SEG text = SCROLL: the 4-letter name flashes, then the full name scrolls when it doesn't fit
++	if (deluge::l10n::sevenSegFullText()) {
++		const std::string shortName{getName()}; // copied: getName() may reuse its buffer for the full name
++		deluge::l10n::FullTextLookup fullText;
++		display->setFlashScrollText(shortName, getName(), shouldDrawDotOnName());
 +		return;
 +	}
  	display->setText(getName(), false, shouldDrawDotOnName());
@@ -26002,7 +26010,7 @@ index 000000000..abf8a6d4c
 +};
 +} // namespace deluge::gui::menu_item::sample
 diff --git a/src/deluge/gui/menu_item/selection.cpp b/src/deluge/gui/menu_item/selection.cpp
-index 4f1b80d85..2b45e863e 100644
+index 4f1b80d85..1002de496 100644
 --- a/src/deluge/gui/menu_item/selection.cpp
 +++ b/src/deluge/gui/menu_item/selection.cpp
 @@ -1,4 +1,5 @@
@@ -26011,12 +26019,18 @@ index 4f1b80d85..2b45e863e 100644
  #include "gui/menu_item/menu_item.h"
  #include "gui/ui/sound_editor.h"
  #include "hid/display/display.h"
-@@ -10,6 +11,8 @@ void Selection::drawValue() {
+@@ -10,6 +11,14 @@ void Selection::drawValue() {
  		renderUIsForOled();
  	}
  	if (display->have7SEG()) {
-+		// 7SEG text = SCROLL: the option's full name (it scrolls when it doesn't fit, as always)
-+		deluge::l10n::FullTextLookup fullText;
++		// 7SEG text = SCROLL: the 4-letter option flashes, then its full name scrolls when it doesn't fit
++		if (deluge::l10n::sevenSegFullText()) {
++			const std::string shortOption{this->getOptions()[this->getValue()]};
++			deluge::l10n::FullTextLookup fullText;
++			const auto options = this->getOptions();
++			display->setFlashScrollText(shortOption, options[this->getValue()]);
++			return;
++		}
  		const auto options = this->getOptions();
  		display->setScrollingText(options[this->getValue()].data());
  	}
@@ -33686,10 +33700,10 @@ index 21f193b96..7253d3624 100644
  			else {
  				UI* currentUI = getCurrentUI();
 diff --git a/src/deluge/hid/display/display.h b/src/deluge/hid/display/display.h
-index 2480febb7..53a4cd7ea 100644
+index 2480febb7..e5dbc293a 100644
 --- a/src/deluge/hid/display/display.h
 +++ b/src/deluge/hid/display/display.h
-@@ -103,6 +103,16 @@ public:
+@@ -103,6 +103,18 @@ public:
  	virtual void setTextWithMultipleDots(std::string_view newText, std::vector<uint8_t> dotPositions,
  	                                     bool alignRight = false, bool doBlink = false, uint8_t* newBlinkMask = nullptr,
  	                                     bool blinkImmediately = false) {}
@@ -33698,10 +33712,12 @@ index 2480febb7..53a4cd7ea 100644
 +	virtual void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) {
 +		setText(newText, false, 255, true);
 +	}
-+	/// A menu name: on 7SEG, one that fits shows still (with its dot), one too long blinks `flashes` times and then
-+	/// scrolls back and forth until it's replaced
-+	virtual void setFlashScrollText(std::string_view newText, uint8_t drawDot = 255, int32_t flashes = 2) {
-+		setText(newText, false, drawDot);
++	/// 7SEG text = SCROLL: when `scrollText` (the full name) fits it shows still (blinking if `blinkWhenShort`),
++	/// otherwise `flashText` (the 4-letter name, with its dot) blinks `flashes` times and then `scrollText` scrolls
++	/// back and forth until it's replaced
++	virtual void setFlashScrollText(std::string_view flashText, std::string_view scrollText, uint8_t drawDot = 255,
++	                                bool blinkWhenShort = false, int32_t flashes = 3) {
++		setText(scrollText, false, drawDot, blinkWhenShort);
 +	}
  	virtual NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0,
  	                                                    int32_t initialDelay = 600, int count = -1,
@@ -33779,10 +33795,22 @@ index 005cba944..504937cce 100644
  		popup.drawString(param_value.value().data(), title_start_x + title_width + 8, title_start_y, kTextSpacingX,
  		                 kTextSpacingY);
 diff --git a/src/deluge/hid/display/seven_segment.cpp b/src/deluge/hid/display/seven_segment.cpp
-index 3bbeaefde..d8ecbbd32 100644
+index 3bbeaefde..62dd4ed3e 100644
 --- a/src/deluge/hid/display/seven_segment.cpp
 +++ b/src/deluge/hid/display/seven_segment.cpp
-@@ -181,6 +181,7 @@ void SevenSegment::innerSetText(std::string_view newText, bool alignRight, std::
+@@ -32,9 +32,11 @@
+ #include "model/action/action_logger.h"
+ #include "util/cfunctions.h"
+ #include "util/functions.h"
++#include <cctype>
+ #include <cstdint>
+ #include <cstring>
+ #include <new>
++#include <string>
+ #include <string_view>
+ 
+ extern "C" {
+@@ -181,6 +183,7 @@ void SevenSegment::innerSetText(std::string_view newText, bool alignRight, std::
  		return;
  	}
  	NumericLayerBasicText* newLayer = new (layerSpace) NumericLayerBasicText();
@@ -33790,7 +33818,7 @@ index 3bbeaefde..d8ecbbd32 100644
  
  	encodeText(newText, newLayer->segments, alignRight, dotPositions, true, scrollPos);
  
-@@ -230,6 +231,7 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
+@@ -230,6 +233,7 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
  		return nullptr;
  	}
  	NumericLayerScrollingText* newLayer = new (layerSpace) NumericLayerScrollingText(fixedDot);
@@ -33798,50 +33826,89 @@ index 3bbeaefde..d8ecbbd32 100644
  
  	newLayer->length = encodeText(newText, newLayer->text, false, {}, false);
  
-@@ -253,6 +255,53 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
+@@ -253,6 +257,92 @@ NumericLayerScrollingText* SevenSegment::setScrollingText(char const* newText, i
  	return newLayer;
  }
  
 +void SevenSegment::setBlinkingScrollingText(std::string_view newText, int32_t flashes) {
-+	blinkThenScroll(newText, flashes, true, 255);
++	blinkThenScroll(newText, newText, flashes, true, 255);
 +}
 +
-+void SevenSegment::setFlashScrollText(std::string_view newText, uint8_t drawDot, int32_t flashes) {
-+	blinkThenScroll(newText, flashes, false, drawDot);
++void SevenSegment::setFlashScrollText(std::string_view flashText, std::string_view scrollText, uint8_t drawDot,
++                                      bool blinkWhenShort, int32_t flashes) {
++	blinkThenScroll(flashText, scrollText, flashes, blinkWhenShort, drawDot);
 +}
 +
-+void SevenSegment::blinkThenScroll(std::string_view newText, int32_t flashes, bool blinkWhenShort, uint8_t drawDot) {
++namespace {
++/// The letters and digits of `text`, upper case: "u-Law" and "ULAW", "LFO 1" and "LFO1" come out the same
++std::string lettersOf(std::string_view text) {
++	std::string letters;
++	for (char c : text) {
++		if (std::isalnum(static_cast<unsigned char>(c))) {
++			letters.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
++		}
++	}
++	return letters;
++}
++} // namespace
++
++void SevenSegment::blinkThenScroll(std::string_view flashText, std::string_view scrollText, int32_t flashes,
++                                   bool blinkWhenShort, uint8_t drawDot) {
++	if (flashText != scrollText) {
++		// The full name only says more if it has more to say: when it's the 7SEG name in other case or spacing
++		// (LFO 1 / LFO1, u-Law / ULAW) or fits once its spaces go (18 dB, MPE X), the 7SEG name is shown as it always
++		// was
++		std::string compact{scrollText};
++		std::erase(compact, ' ');
++		uint8_t compactSegments[kNumericDisplayLength * 4]; // room for the up to 8 characters encoded below
++		if (lettersOf(flashText) == lettersOf(scrollText)
++		    || (compact.size() <= kNumericDisplayLength * 2
++		        && encodeText(compact, compactSegments, false, {}, false) <= kNumericDisplayLength)) {
++			scrollText = flashText;
++		}
++	}
++
 +	void* layerSpace = GeneralMemoryAllocator::get().allocLowSpeed(sizeof(NumericLayerScrollingText));
 +	if (!layerSpace) {
-+		setText(newText, false, drawDot, blinkWhenShort);
++		setText(flashText, false, drawDot, blinkWhenShort);
 +		return;
 +	}
 +	auto* scrolling = new (layerSpace) NumericLayerScrollingText(255);
-+	HIDSysex::companionCopyText(scrolling->companionText, newText, scrolling->companionString);
-+	scrolling->length = encodeText(newText, scrolling->text, false, {}, false);
++	HIDSysex::companionCopyText(scrolling->companionText, scrollText, scrolling->companionString);
++	scrolling->length = encodeText(scrollText, scrolling->text, false, {}, false);
 +
-+	if (scrolling->length <= kNumericDisplayLength && !blinkWhenShort) {
-+		// Fits: show it still, like a stock menu name
++	if (scrolling->length <= kNumericDisplayLength) {
++		// The whole thing fits: show it, still like a stock menu name, or blinking like a menu option
 +		scrolling->~NumericLayerScrollingText();
 +		delugeDealloc(scrolling);
-+		setText(newText, false, drawDot);
++		setText(scrollText, false, drawDot, blinkWhenShort);
 +		return;
 +	}
 +
-+	// Blink it like any menu option
-+	setText(newText, false, (scrolling->length <= kNumericDisplayLength) ? drawDot : 255, true);
++	uint8_t flashSegments[sizeof(NumericLayerScrollingText::text)]; // as big as the scrolling layer's, for any name
++	if (encodeText(flashText, flashSegments, false, {}, false) > kNumericDisplayLength) {
++		// The short name doesn't fit either, so blinking it would cut it off: just scroll the full one
++		scrolling->currentPos = 0;
++		scrolling->initialDelay = 600;
++		scrolling->scrollsCount = -1;
++		transitionToNewLayer(scrolling);
++		return;
++	}
++
++	// Blink the short name first, so it reads at once like a stock menu name (with its dot)
++	setText(flashText, false, drawDot, true);
 +
 +	NumericLayer* blinking = topLayer;
 +	while (blinking && blinking->next) {
 +		blinking = blinking->next;
 +	}
-+	if (scrolling->length <= kNumericDisplayLength || !blinking) {
++	if (!blinking) {
 +		scrolling->~NumericLayerScrollingText();
 +		delugeDealloc(scrolling);
 +		return;
 +	}
 +
-+	// Too long to read: after a few blinks the blinking layer gives way to the whole name scrolling under it
++	// After a few blinks the blinking layer gives way to the whole name scrolling under it
 +	static_cast<NumericLayerBasicText*>(blinking)->blinkCount = flashes * 2;
 +	scrolling->currentPos = 0;
 +	scrolling->initialDelay = 600;
@@ -33852,7 +33919,7 @@ index 3bbeaefde..d8ecbbd32 100644
  void SevenSegment::replaceBottomLayer(NumericLayer* newLayer) {
  	NumericLayer** prevPointer = &topLayer;
  	while ((*prevPointer)->next) {
-@@ -588,6 +637,7 @@ void SevenSegment::setNextTransitionDirection(int8_t thisDirection) {
+@@ -588,6 +678,7 @@ void SevenSegment::setNextTransitionDirection(int8_t thisDirection) {
  
  void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool alignRight, uint8_t drawDot,
                                  int32_t blinkSpeed, PopupType type) {
@@ -33860,7 +33927,7 @@ index 3bbeaefde..d8ecbbd32 100644
  	encodeText(newText, popup.segments, alignRight, {drawDot});
  	memset(&popup.blinkedSegments, 0, kNumericDisplayLength);
  	if (numFlashes == 0) {
-@@ -606,6 +656,22 @@ void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool ali
+@@ -606,6 +697,22 @@ void SevenSegment::displayPopup(char const* newText, int8_t numFlashes, bool ali
  	render();
  }
  
@@ -33884,15 +33951,16 @@ index 3bbeaefde..d8ecbbd32 100644
  	if (popupActive) {
  		uiTimerManager.unsetTimer(TimerName::DISPLAY);
 diff --git a/src/deluge/hid/display/seven_segment.h b/src/deluge/hid/display/seven_segment.h
-index 8ba4446a9..ca26b545e 100644
+index 8ba4446a9..b40f41e82 100644
 --- a/src/deluge/hid/display/seven_segment.h
 +++ b/src/deluge/hid/display/seven_segment.h
-@@ -54,12 +54,19 @@ public:
+@@ -54,12 +54,20 @@ public:
  	void removeTopLayer();
  	NumericLayerScrollingText* setScrollingText(char const* newText, int32_t startAtPos = 0, int32_t initialDelay = 600,
  	                                            int count = -1, uint8_t fixedDot = 255) override;
 +	void setBlinkingScrollingText(std::string_view newText, int32_t flashes = 2) override;
-+	void setFlashScrollText(std::string_view newText, uint8_t drawDot = 255, int32_t flashes = 2) override;
++	void setFlashScrollText(std::string_view flashText, std::string_view scrollText, uint8_t drawDot = 255,
++	                        bool blinkWhenShort = false, int32_t flashes = 3) override;
  	int32_t getEncodedPosFromLeft(int32_t textPos, char const* text, bool* andAHalf) override;
  	void render();
  	void displayLoadingAnimation(bool delayed = false, bool transparent = false);
@@ -33907,11 +33975,12 @@ index 8ba4446a9..ca26b545e 100644
  	bool hasPopup() override { return this->popupActive; }
  	bool hasPopupOfType(PopupType type) override { return this->popupActive && type == this->popupType; }
  
-@@ -85,6 +92,7 @@ public:
+@@ -85,6 +93,8 @@ public:
  	void disableLowercase() { use_lowercase = false; }
  
  private:
-+	void blinkThenScroll(std::string_view newText, int32_t flashes, bool blinkWhenShort, uint8_t drawDot);
++	void blinkThenScroll(std::string_view flashText, std::string_view scrollText, int32_t flashes, bool blinkWhenShort,
++	                     uint8_t drawDot);
  	NumericLayerBasicText popup;
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
