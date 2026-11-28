@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.46
+# BRIBELUGE: Deluge Bribes FW v1.47
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.46`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.46), the exact commit the bin was built from, and a full source download on the [v1.46 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.46). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.47`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.47), the exact commit the bin was built from, and a full source download on the [v1.47 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.47). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -40,13 +40,13 @@ What Bribeluge adds:
 24. **[BROPHET](#24-brophet):** A two-oscillator poly synth engine from Pro-54, the open source port of NI's Pro-53: sync, poly mod, analog drift, its filter in every LPF list, and all 512 Pro-53 programs.
 25. **[Pan spread](#25-pan-spread):** Each note of a poly synth gets its own place in the stereo field, like a poly synth's voice pan spread, no unison needed.
 26. **[BRUNO106](#26-bruno106):** A Juno-style poly synth engine from Ultramaster KR-106: one DCO with saw, pulse, sub and noise, its IR3109 filter in every LPF list, the four position HPF with bass boost, and BRUNO CHORUS as a Mod FX type on any track.
-27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, engine drawings, every knob it shows turnable from the screen and following the Deluge (main settings, engine controls, switches and gold knobs), waveforms with draggable markers, picture pickers, a song view you can tap, and panels for BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs) wavetable synths (a 3D view of the table with every note moving through it) and the TRIBE, CYC, LXR and GIN drum engines, all working both ways.
+27. **[BRIBELUGE COMPANION](#27-bribeluge-companion):** A phone or tablet screen for the Deluge over USB: the display spelled out in full, engine drawings, every knob it shows turnable from the screen and following the Deluge (main settings, engine controls, switches and gold knobs), waveforms with draggable markers, picture pickers, a song view you can tap, and a hardware-style panel for every engine: BRUNO106 (Juno-style sliders), BROPHET (Prophet-style knobs), wavetable synths (a 3D view of the table with every note moving through it), every other synth and drum engine, and the Deluge's own SUBTRACTIVE, FM and RINGMOD, all working both ways.
 28. **[Master clip](#28-master-clip):** A clipper or limiter at the very end of the song: five curves and a lookahead limiter, with drive and a ceiling, so the output never hits the Deluge's harsh digital clip.
 29. **[SHIFT](#29-shift):** A three-band frequency shifter as a Mod FX type on any track: each band moves by its own number of hertz, so harmonics stop lining up. Feedback shifts it again on every pass.
 30. **[TRIBE](#30-tribe):** An 808 / 909 drum machine: eight voices, each with an 808 > 909 knob that blends smoothly from one machine to the other, every knob centred on the real machine, extras after Hexinverter's Mutant drums, and eleven kits. Never more CPU than the Cyc engines.
 31. **[Scrolling 7SEG text](#31-scrolling-7seg-text):** An option for 7-segment Deluges: every menu name and option flashes its four letter name, then scrolls its full name when there's more to say.
 32. **[Kit mixer](#32-kit-mixer):** A level fader for every kit row: hold **LEVEL/PAN** and press **KEYBOARD**, and each row's pads show and set its level. The same again brings the steps back, untouched.
-33. **[Drum engine panels](#33-drum-engine-panels):** The companion gets a hardware-style panel for each Bribeluge drum engine: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings and GIN in machined gunmetal with a scope of its sound. Both ways, with a key per kit row to pick the voice and hear it. Touch any panel control and the Deluge lights the gold knobs that turn it, or opens its setting with **SHORTCUT**.
+33. **[Engine panels](#33-engine-panels):** The companion gets a hardware-style panel for every Bribeluge engine and the Deluge's own synth modes. Drum machines: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings, GIN in machined gunmetal with a scope of its sound. Drum voices: ULTRAKIK as a kick drum shell, XIA as silver modules. Synths: BRIBERING with its resonator, the 303, DX7 with its screen and six operators, and SUBTRACTIVE, FM and RINGMOD, next to BRUNO106, BROPHET and WAVE. Both ways, with a key per kit row to pick the voice and hear it. Touch any panel control and the Deluge lights the gold knobs that turn it, or opens its setting with **SHORTCUT**.
 
 **On the web:** [feature overview](https://www.thisisbribery.com/bribeluge/) and this [manual](https://www.thisisbribery.com/bribeluge/manual/) at thisisbribery.com.
 
@@ -60,9 +60,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.46.bin`](firmware/deluge-bribes-v1.46.bin)
+[`firmware/deluge-bribes-v1.47.bin`](firmware/deluge-bribes-v1.47.bin)
 
-SHA-256: `ac12b3ed700f196151f6229a1ad7973b9638cd3f9808ec16638de4e90463f3d7`
+SHA-256: `48acc8965e11db6dc975be438ee31ed3aca920ee59cae0790ec664089e74aa83`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -78,7 +78,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.46.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.47.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -1263,7 +1263,7 @@ It talks plain USB MIDI. The display mirror is the Deluge Community firmware's s
 
 - **Top bar:** Play, Record, the tempo, the Deluge's display mirrored (7SEG or OLED, switchable), Back, the select knob left and right, and a big SELECT button.
 - **Readout:** whatever the display shows, spelled out in full English (no four letter abbreviations), with a menu item's name and value side by side.
-- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. They work both ways (new in v1.41): drag a knob up or down with a finger or the mouse and the Deluge follows, as if you'd turned it there; turn it on the Deluge and the knob moves. Tap a knob without dragging and it opens on the Deluge, as before. Tap a switch to step it to its next setting. BRUNO106, BROPHET, wavetable synths and the TRIBE, CYC, LXR and GIN drum engines get their own panels (below, and [Drum engine panels](#33-drum-engine-panels)).
+- **Track:** a drawing of the engine, the main settings as knobs (greyed out where the Deluge would say **CANT**), and each engine's own controls and switches: a drum engine's controls, the 303's knobs and filter. They work both ways (new in v1.41): drag a knob up or down with a finger or the mouse and the Deluge follows, as if you'd turned it there; turn it on the Deluge and the knob moves. Tap a knob without dragging and it opens on the Deluge, as before. Tap a switch to step it to its next setting. Every engine gets its own panel (below, and [Engine panels](#33-engine-panels)).
 - **Gold knobs:** the two knobs of each of the eight mod buttons, with the lit pair glowing. Drag one to turn it (new in v1.41): if its mod button isn't lit, the Deluge lights it first, as only the lit pair turns. It goes through the Deluge's own knob, so the value popup, affect all on a kit and holding notes for parameter locks work as with your hand on it. A knob on a patch cable covers its whole range, -50 to +50. Tap a pair to light its mod button.
 - **Kits:** every row's engine, and a list of the kit's sample rows that light as they play. Tap one to open its sample's waveform.
 - **Pickers and browsers:** SHIFT + SYNTH and SHIFT + KIT as picture tiles, preset folders as a scrollable list. Tap to choose, tap again to load.
@@ -1303,9 +1303,9 @@ With a synth whose oscillator 1 or 2 plays a wavetable selected (any WAVE preset
 - **Underneath:** **LFO 1** rate, **Env 2** (the one that sweeps the position on the WAVE presets), **Filter** cutoff and resonance, **Amp env**, **Tone** (wavefolder and [Feedback](#22-feedback)) and **Out** (volume and reverb).
 - The Deluge sends a table once, a little at a time, when it's loaded or the panel opens (about a quarter of a second for a big one), then only the positions while they move.
 
-### Drum engine panels
+### Engine panels
 
-TRIBE, CYC, LXR and GIN kit rows (and synths in those SYNTH MODEs) each get a panel of their own, new in v1.44. From v1.45, touching a control on any panel (BRUNO106, BROPHET and WAVE too) lights the mod button whose gold knobs turn it, and **SHORTCUT** opens its setting on the Deluge. See [Drum engine panels](#33-drum-engine-panels).
+TRIBE, CYC, LXR and GIN kit rows (and synths in those SYNTH MODEs) each get a panel of their own, new in v1.44, and from v1.47 so do ULTRAKIK, XIA, BRIBERING, the 303, DX7 and the Deluge's own SUBTRACTIVE, FM and RINGMOD. From v1.45, touching a control on any panel lights the mod button whose gold knobs turn it, and **SHORTCUT** opens its setting on the Deluge. See [Engine panels](#33-engine-panels).
 
 ### Using it
 
@@ -1489,16 +1489,32 @@ In a kit clip, hold the **LEVEL/PAN** gold knob button and press **KEYBOARD**. T
 
 [Back to top](#readme-top)
 
-## 33. Drum engine panels
+## 33. Engine panels
 
-BRUNO106, BROPHET and the wavetable synths had panels on the [companion](#27-bribeluge-companion) that looked and worked like the instruments they come from. The drum engines only had a row of knobs. Now each one gets a panel, laid out like a drum machine, with its name across the top.
+BRUNO106, BROPHET and the wavetable synths had panels on the [companion](#27-bribeluge-companion) that looked and worked like the instruments they come from. The other engines only had a row of knobs. Now every engine gets a panel with its name across the top: the drum machines from v1.44, and every other engine and the Deluge's own synth modes from v1.47.
 
-With a kit row (or a synth) on one of these engines selected, the companion shows its panel:
+With a kit row or a synth on one of these engines selected, the companion shows its panel.
+
+**Drum machines** (built in kits, a row per voice):
 
 - **TRIBE:** an 808 on the left (dark panel, cream knobs, orange lettering) and a 909 on the right (silver panel, black knobs), blending into each other in the middle, where the big **MORPH** knob sits. Pitch sweep, attack and **PUNCH**, the noise (or the kick's sub, the snare's snappy, the clap's tail), the voice's own two, tone, decay, drive and crush, then the row's tuning, level, pan, filters and sends.
 - **CYC:** bone and grey, with the four big machine knobs (**Color**, **Shape**, **Sweep**, **Contour**, or what the machine calls them), decay, drive and **PUNCH**, and a row of lights showing which machine the row plays.
 - **LXR:** black with pink LED rings around every knob. The layout follows the voice: kick and toms (osc, pitch envelope, FM), snare (osc, pitch envelope, noise and its filter) or cymbals and hats (osc and two modulators), then the transient, decay and drive.
 - **GIN:** machined gunmetal with aluminium knobs, and a scope showing the tone's wave bent by its pitch modulation next to the noise burst. Tone, pitch mod, mix, the noise and its filter and envelope, drive, decay, EQ and the row's tuning, level, pan and sends.
+
+**Drum voices** (one engine on a row, new in v1.47):
+
+- **ULTRAKIK:** an oxblood kick drum shell with a chrome hoop and chrome knobs, and a drum head drawing the pitch drop as you turn it. Pitch (a big **PUNCH**, sweep, bend), body (wave, fold, grit, sub, hold), click, drive and its type, crush, decay, tuning and a **PRESET** knob that loads its 16 kicks as its preset menu does.
+- **XIA:** silver modules on black rails. DXIA shows its three operators (blendex and frequency each), DIIA its partials (weight, alloy, shape) and strike, then drive, decay, **PUNCH** and the **VARIANT** (L, B, C or G, I, H), which loads that variant as SYNTH MODE does.
+
+**Synths** (new in v1.47, next to BRUNO106, BROPHET and WAVE):
+
+- **BRIBERING:** deep teal, with a resonator drawn in rings that follow **Structure**, **Brightness** and **Damping** and a string struck at **Position**. Model, strings per voice, bow, drive, the four big knobs, tuning, attack and release, filters and sends.
+- **303:** brushed silver and black knobs: tuning, a big cutoff, resonance, env mod, decay, accent, the saw to square wave, slide, the filter type (303, LP18, DIRT) and its drive, amp decay and sends.
+- **DX7:** a brown body with a green screen showing the voice's name, which operators are on, the algorithm and feedback. Six operator strips (on, ratio and fine beside a tall level fader), the algorithm and feedback, the LFO, transpose and sends.
+- **SUBTRACTIVE, FM and RINGMOD:** the Deluge's own synth modes, in aluminium with dark sections and a strip of pads, pink, teal and amber. SUBTRACTIVE: both oscillators (type, transpose, pulse width, level, sync), noise, both filters and their modes, two envelopes, two LFOs, mod FX, delay, reverb and unison. FM: both modulators (amount, transpose, feedback, where modulator 2 goes) and both carriers, with a drawing of the routing. RINGMOD: both oscillators ring modulated, through the filters. An oscillator can switch between the plain waves here; a wavetable or sample is picked on the Deluge.
+
+The **BRUNO106** panel is rebuilt in v1.47: three rows that fill the width (the synth's own panel, then the amp and both envelopes, then the effects), shorter sliders, and clearer names (**PWM SRC**, **ENV POL**, **ENV AMT**, **SLOP** in its own **VOICE** section).
 
 Every panel works both ways: drag a knob up or down and the Deluge follows, as if you'd turned it there; turn it on the Deluge and the panel's knob moves. Buttons pick a setting (a wave, a filter type, **PUNCH** on or off).
 
@@ -1507,7 +1523,8 @@ Every panel works both ways: drag a knob up or down and the Deluge follows, as i
 - **Gold knobs follow your finger:** touch any control on any engine panel (BRUNO106, BROPHET and WAVE too) and the Deluge lights the mod button whose gold knobs turn it: touch **LPF** and cutoff/resonance lights, touch **Tune** on a drum row and **CUSTOM 1** lights. Controls no gold knob holds (a wave, **PUNCH**) leave the buttons as they are.
 - **SHORTCUT:** a button at the bottom right of every panel. While it's lit, touching a control also opens its setting on the Deluge, as holding **SHIFT** and pressing its shortcut pad would. It stays as you left it on that tablet.
 - **The kit picker** draws TRIBE, CYC, LXR and GIN as these panels look, so a new kit shows what you're about to get.
-- **Every row's own settings** sit on each panel too: tuning (48 semitones each way), level, pan, the filters and the delay and reverb sends.
+- **Every row's own settings** sit on each drum panel too: tuning (48 semitones each way), level, pan, the filters and the delay and reverb sends.
+- **What stays as it was:** sample kit rows and audio inputs keep their own views, and wavetable sounds keep the WAVE panel.
 
 [Back to top](#readme-top)
 
@@ -1609,11 +1626,12 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.47: A panel for every engine.** The [companion](#27-bribeluge-companion) now has a hardware-style panel for ULTRAKIK, XIA, BRIBERING, the 303, DX7 and the Deluge's own SUBTRACTIVE, FM and RINGMOD, next to the drum machines, BRUNO106, BROPHET and WAVE, and the BRUNO106 panel is rebuilt in three rows that fill the width with clearer names. See [Engine panels](#33-engine-panels). *Why:* once the drum machines had panels, every other engine looked unfinished next to them. *Learned:* the same table that drives the drum panels covers the Deluge's own synth too, once it knows a few more kinds of setting (oscillator types, filter modes, unison, DX7 voice bytes), and a preset or variant can be loaded exactly as its menu does it.
 - **v1.46: Scrolling 7SEG text flashes the short name first.** On **SCROLL**, a menu name or option now flashes its four letter 7SEG name three times, then scrolls the full name, and names where the full one says nothing more (**LFO1**, **ULAW**, **LP18**) show as they always did. See [Scrolling 7SEG text](#31-scrolling-7seg-text). Also has the v1.45.1 kit name fix. *Why:* a suggestion from Sean.Good.Vibes on the community Discord. With only the full name, ENV1 to ENV4 all start "Envelope", so you wait for the scroll to tell them apart; the community docs show both, short then long. *Learned:* the full name isn't always better. Plenty of OLED names are the 7SEG ones with a space added, and scrolling those just costs time.
 
 - **v1.45.1: Preset kits keep their name.** Choosing a preset kit renames the kit to the preset, so the name no longer goes back to **KIT 0xx** on the next audition or in the companion. LXR and Cycles **Default** keeps the kit's name, and the renamed kit is the song's own until saved. See [Kit presets](#kit-presets). *Why:* the preset's name only flashed up, then the kit's old name came back the moment you played a row. *Learned:* showing a name and giving it are different things: the display only shows what the kit is called, so the kit has to carry the name.
-- **v1.45: Row keys you can hear, gold knobs that follow, SHORTCUT.** On the [drum engine panels](#33-drum-engine-panels), holding a row key sounds that row like its audition pad. Touching a control on any companion panel lights the mod button whose gold knobs turn it, and with **SHORTCUT** lit it opens that control's setting on the Deluge too. The kit picker draws the four drum machines as their panels look, and TRIBE's I is solid pink. *Why:* the panel and the hardware should feel like one instrument: pick a sound, hear it, and have the knobs under your hand already on what you touched. *Learned:* the Deluge already knows where every setting lives (its gold knob pairs and its shortcut pads), so the companion only has to say which control was touched, and the Deluge works out the rest.
-- **v1.44: Drum engine panels.** The [companion](#27-bribeluge-companion) shows a panel for each Bribeluge drum engine: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings and a layout per voice, and GIN in machined gunmetal with a scope of its tone and noise. Every knob and button works both ways, the labels follow the voice, and a key per kit row selects the row to edit. See [Drum engine panels](#33-drum-engine-panels). *Why:* the synth engines had panels that felt like the instruments, and the drum engines deserved the same. *Learned:* each engine keeps its settings in one of a few ways (a control slot, a choice, a number), so one table per panel covers all four, and the kit's rows come along in the same message so the keys always match the kit.
+- **v1.45: Row keys you can hear, gold knobs that follow, SHORTCUT.** On the [drum engine panels](#33-engine-panels), holding a row key sounds that row like its audition pad. Touching a control on any companion panel lights the mod button whose gold knobs turn it, and with **SHORTCUT** lit it opens that control's setting on the Deluge too. The kit picker draws the four drum machines as their panels look, and TRIBE's I is solid pink. *Why:* the panel and the hardware should feel like one instrument: pick a sound, hear it, and have the knobs under your hand already on what you touched. *Learned:* the Deluge already knows where every setting lives (its gold knob pairs and its shortcut pads), so the companion only has to say which control was touched, and the Deluge works out the rest.
+- **v1.44: Drum engine panels.** The [companion](#27-bribeluge-companion) shows a panel for each Bribeluge drum engine: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings and a layout per voice, and GIN in machined gunmetal with a scope of its tone and noise. Every knob and button works both ways, the labels follow the voice, and a key per kit row selects the row to edit. See [Drum engine panels](#33-engine-panels). *Why:* the synth engines had panels that felt like the instruments, and the drum engines deserved the same. *Learned:* each engine keeps its settings in one of a few ways (a control slot, a choice, a number), so one table per panel covers all four, and the kit's rows come along in the same message so the keys always match the kit.
 
 - **v1.43: Kit mixer.** In a kit clip, hold **LEVEL/PAN** and press **KEYBOARD**: each row's pads become a bar for its level, left at the bottom of the knob, right at the top. Press a pad to set it, as turning that row's gold knob would. The bars follow the level from the knob, automation, MIDI and the companion. The same again brings the steps back, untouched. Works on every kit. See [Kit mixer](#32-kit-mixer). *Why:* balancing a kit meant holding each row and turning a knob, one row at a time, with nothing showing how the rows sat against each other. *Learned:* the bars only had to be a different picture of the same knob. Setting the level the way the gold knob does brings undo, automation and MIDI follow along with it, and the notes are never in play.
 
