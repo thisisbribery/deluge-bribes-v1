@@ -1,6 +1,6 @@
 <a id="readme-top"></a>
 
-# BRIBELUGE: Deluge Bribes FW v1.45
+# BRIBELUGE: Deluge Bribes FW v1.45.1
 
 > **Contributing and beta testing:** anyone is welcome to contribute and beta test. Please send bug reports and feature requests through the [Issues](https://github.com/thisisbribery/deluge-bribes-v1/issues) tab, and code changes through [Pull requests](https://github.com/thisisbribery/deluge-bribes-v1/pulls). Fair warning: I'm not overly responsive, and this won't turn into a wild free-for-all feature set. It's designed to be a contained set of instruments. Open to input though! This repo is for Bribeluge only: to contribute to the Deluge firmware itself, go to the [community firmware](https://github.com/SynthstromAudible/DelugeFirmware) ([delugecommunity.com](https://delugecommunity.com/)).
 
@@ -10,7 +10,7 @@ I build Bribeluge for those who want more wonk, more destruction options, more s
 
 **Built on the community firmware:** Bribeluge is a set of additions. The firmware underneath is the work of Rohan Hill and Synthstrom Audible, who made the Deluge and open sourced its firmware, and of the volunteers who have built the [Deluge Community Firmware](https://delugecommunity.com/) since. Anything Bribeluge does that isn't in the numbered list below is theirs, not mine: see the community firmware's own [feature list](https://github.com/SynthstromAudible/DelugeFirmware/blob/v1.3.0/docs/community_features.md). More in [Design and credit](#design-and-credit).
 
-**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.45`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.45), the exact commit the bin was built from, and a full source download on the [v1.45 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.45). See [Source code](#source-code).
+**Source code (GPL-3.0):** the complete source, with the community firmware's full history and contributors, is at [thisisbribery/DelugeFirmware](https://github.com/thisisbribery/DelugeFirmware), a fork of the community firmware. This release is tag [`bribes-v1.45.1`](https://github.com/thisisbribery/DelugeFirmware/tree/bribes-v1.45.1), the exact commit the bin was built from, and a full source download on the [v1.45.1 release](https://github.com/thisisbribery/deluge-bribes-v1/releases/tag/v1.45.1). See [Source code](#source-code).
 
 What Bribeluge adds:
 
@@ -60,9 +60,9 @@ Names in **bold capitals** in brackets are what the 7-segment display shows.
 
 **Everything in one zip:** the firmware, every preset below and the steps for putting them on the SD card download together from [thisisbribery.com/bribeluge](https://www.thisisbribery.com/bribeluge/#download). The files here are the same ones, piece by piece.
 
-[`firmware/deluge-bribes-v1.45.bin`](firmware/deluge-bribes-v1.45.bin)
+[`firmware/deluge-bribes-v1.45.1.bin`](firmware/deluge-bribes-v1.45.1.bin)
 
-SHA-256: `447edc6dac852c6fda5225bda67bded323a474b7752275eaf119fccd90386d84`
+SHA-256: `855aa10e07d950cb199ba513a35866633e36cb05cfc5a5ec7f87fcdca525cb1f`
 
 Presets (optional), copied to the same place on the SD card:
 
@@ -78,7 +78,7 @@ Presets (optional), copied to the same place on the SD card:
 
 ## Install
 
-1. Copy `deluge-bribes-v1.45.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
+1. Copy `deluge-bribes-v1.45.1.bin` to the top level of the Deluge's SD card. Remove any other `.bin` files from the top level.
 2. Turn the Deluge off.
 3. Hold **SHIFT** and switch the Deluge on. Let go once it starts loading the new firmware.
 
@@ -351,6 +351,7 @@ The list is **Default** (the rows as SHIFT + KIT makes them) and then the preset
 - **LXR presets:** sixteen kits by **Hrtl** from the free [LXR-02 pack Erica Synths released in 2022](https://www.ericasynths.lv/news/fresh-kits-and-patterns-lxr-02-hrtl/), converted for the drum synth: copy [`presets/KITS/LXR`](presets/KITS/LXR) to `KITS/LXR` on the card. Close to the originals rather than identical (see the folder's README). From v1.40 each has an eighth row, **PERC**: the kit's own high tom voice a fifth up and shorter.
 - **Presets with fewer rows:** a preset saved before v1.40 with six or seven rows still loads. The kit's rows above those keep the sounds they had.
 - **Making presets:** a preset is an ordinary kit file. Set the kit up, press **SAVE**, go into `KITS/LXR`, `KITS/CYCLES`, `KITS/GIN` or `KITS/TRIBE` (made the first time you open the list) and save, over an existing preset or under a new name. Only the preset rows are read back. [`tools/lxr_to_deluge.py`](tools/lxr_to_deluge.py) converts LXR-02 .SND kits.
+- **The kit takes the preset's name** (from v1.45.1): keeping a preset renames the kit after it, so the name stays on the display (and in the companion) after the next audition instead of going back to **KIT 0xx**. **Default** on an LXR or Cycles kit keeps the kit's own name. The renamed kit is the song's own until you save it as a kit.
 - **Turning SELECT in the clip** (new in v1.19) steps to the next or previous preset in the same list and keeps it, without opening the list. It goes round at the ends.
 - **Picking LXR, Cycles or GIN** in the New kit menu (new in v1.19) opens that kit's presets on the top one: the first preset in its folder, or Default if there's none (GIN: its first built in kit).
 - Swapping sounds clears the undo history.
@@ -1606,6 +1607,7 @@ My approach to Bribeluge isn't to stack features on top of the Deluge's existing
 
 Newest first: what changed in each release, why, and what it taught me.
 
+- **v1.45.1: Preset kits keep their name.** Choosing a preset kit renames the kit to the preset, so the name no longer goes back to **KIT 0xx** on the next audition or in the companion. LXR and Cycles **Default** keeps the kit's name, and the renamed kit is the song's own until saved. See [Kit presets](#kit-presets). *Why:* the preset's name only flashed up, then the kit's old name came back the moment you played a row. *Learned:* showing a name and giving it are different things: the display only shows what the kit is called, so the kit has to carry the name.
 - **v1.45: Row keys you can hear, gold knobs that follow, SHORTCUT.** On the [drum engine panels](#33-drum-engine-panels), holding a row key sounds that row like its audition pad. Touching a control on any companion panel lights the mod button whose gold knobs turn it, and with **SHORTCUT** lit it opens that control's setting on the Deluge too. The kit picker draws the four drum machines as their panels look, and TRIBE's I is solid pink. *Why:* the panel and the hardware should feel like one instrument: pick a sound, hear it, and have the knobs under your hand already on what you touched. *Learned:* the Deluge already knows where every setting lives (its gold knob pairs and its shortcut pads), so the companion only has to say which control was touched, and the Deluge works out the rest.
 - **v1.44: Drum engine panels.** The [companion](#27-bribeluge-companion) shows a panel for each Bribeluge drum engine: TRIBE as an 808 on the left and a 909 on the right with MORPH on the seam, CYC in bone and grey, LXR in black with pink LED rings and a layout per voice, and GIN in machined gunmetal with a scope of its tone and noise. Every knob and button works both ways, the labels follow the voice, and a key per kit row selects the row to edit. See [Drum engine panels](#33-drum-engine-panels). *Why:* the synth engines had panels that felt like the instruments, and the drum engines deserved the same. *Learned:* each engine keeps its settings in one of a few ways (a control slot, a choice, a number), so one table per panel covers all four, and the kit's rows come along in the same message so the keys always match the kit.
 

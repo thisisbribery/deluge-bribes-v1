@@ -19121,10 +19121,10 @@ index c102f75f3..0b33ae863 100644
  
 diff --git a/src/deluge/gui/context_menu/kit_presets.cpp b/src/deluge/gui/context_menu/kit_presets.cpp
 new file mode 100644
-index 000000000..89f4dde5f
+index 000000000..c0184279a
 --- /dev/null
 +++ b/src/deluge/gui/context_menu/kit_presets.cpp
-@@ -0,0 +1,354 @@
+@@ -0,0 +1,364 @@
 +/*
 + * Copyright © 2026 the Deluge community.
 + *
@@ -19431,6 +19431,16 @@ index 000000000..89f4dde5f
 +	}
 +	else if (option >= firstPresetOption()) {
 +		kit->presetName.set(labels_[option - firstPresetOption()].data());
++	}
++	// The kit takes the preset's name, as the display has just shown it, so the next redraw (an audition, the clip
++	// view, the Companion) doesn't put the old one back. As changing kit type does: no file has that name yet, so the
++	// kit is one of the song's own until it's saved. Default keeps the kit's own name: GIN and TRIBE name their built
++	// in kits, the others' is just "Default".
++	const bool namedBuiltIn = kit_ == preset_kit::PresetKit::GIN || kit_ == preset_kit::PresetKit::TRIBE;
++	if ((option >= firstPresetOption() || (option >= defaultOption() && namedBuiltIn)) && options_[option] != nullptr
++	    && strcmp(kit->name.get(), options_[option]) != 0) {
++		kit->name.set(options_[option]);
++		kit->mightExistOnCard = false;
 +	}
 +}
 +
