@@ -33906,7 +33906,7 @@ index 8ba4446a9..ca26b545e 100644
  	NumericLayer* topLayer = nullptr;
  	int8_t nextTransitionDirection = 0;
 diff --git a/src/deluge/hid/hid_sysex.cpp b/src/deluge/hid/hid_sysex.cpp
-index 51a40bfd2..25cc0b015 100644
+index 51a40bfd2..425a5d5fd 100644
 --- a/src/deluge/hid/hid_sysex.cpp
 +++ b/src/deluge/hid/hid_sysex.cpp
 @@ -1,15 +1,68 @@
@@ -33978,7 +33978,7 @@ index 51a40bfd2..25cc0b015 100644
  #include <cstring>
  
  MIDICable* midiDisplayCable = nullptr;
-@@ -17,6 +70,3531 @@ int32_t midiDisplayUntil = 0;
+@@ -17,6 +70,3887 @@ int32_t midiDisplayUntil = 0;
  uint8_t* oledDeltaImage = nullptr;
  bool oledDeltaForce = true;
  
@@ -35435,7 +35435,9 @@ index 51a40bfd2..25cc0b015 100644
 +uint16_t pendingPanel[NUM_PANEL]; ///< Tablet moves not yet applied: the latest position for each bit set below
 +uint64_t pendingPanelMask = 0;
 +constexpr int32_t kMaxPanelControls = 48; ///< The most any engine's panel has
-+uint8_t lastPanel[3 + 2 * kMaxPanelControls];
++constexpr int32_t kPanelRowsMax = 16;     ///< Kit rows a drum panel lists (TRIBE, CYC, LXR, GIN)
++constexpr int32_t kPanelRowNameMax = 10;  ///< Characters of each row's name sent
++uint8_t lastPanel[3 + 2 * kMaxPanelControls + 3 + kPanelRowsMax * (2 + kPanelRowNameMax)];
 +int32_t lastPanelLen = 0;
 +constexpr int32_t kPanelPollMs = 15; ///< How often an open engine panel is checked for knob turns
 +// What the panel shows for a setting a zero amount leaves open (the Deluge deletes a cable set to 0): kept per sound
@@ -35606,6 +35608,10 @@ index 51a40bfd2..25cc0b015 100644
 +bool isBrophetSound(Sound* sound);
 +void readWavePanel(Sound* sound, ParamManagerForTimeline* params, int32_t* v);
 +bool isWaveSound(Sound* sound);
++uint8_t drumPanelKind(Sound* sound);
++InstrumentClip* currentKitClip();
++int32_t readDrumPanel(Sound* sound, ParamManagerForTimeline* params, uint8_t kind, int32_t* v);
++int32_t putDrumPanelExtras(uint8_t* out, Sound* sound, uint8_t kind);
 +void waveSendsForget();
 +constexpr int32_t kNumWavePanel = 25;
 +
@@ -35619,14 +35625,21 @@ index 51a40bfd2..25cc0b015 100644
 +}
 +constexpr int32_t kNumBrophetPanel = 43;
 +
-+/// PANEL body: version, which panel (0 none, 1 BRUNO106, 2 BROPHET, 3 WAVE), count, then each control's position
-+/// (2 bytes)
++/// PANEL body: version, which panel (0 none, 1 BRUNO106, 2 BROPHET, 3 WAVE, 4 TRIBE, 5 CYC, 6 LXR, 7 GIN), count, then
++/// each control's position (2 bytes). The drum panels then add the voice (see putDrumPanelExtras) and the kit's rows of
++/// that engine family.
 +int32_t buildPanel(uint8_t* out) {
 +	out[0] = kStateVersion;
 +	Sound* sound = nullptr;
 +	ParamManagerForTimeline* params = nullptr;
 +	const bool found = currentSoundAndParams(sound, params) && params->getPatchedParamSet() != nullptr;
-+	const uint8_t kind = !found ? 0 : isBrunoSound(sound) ? 1 : isBrophetSound(sound) ? 2 : isWaveSound(sound) ? 3 : 0;
++	const uint8_t drumKind = found ? drumPanelKind(sound) : 0;
++	const uint8_t kind = !found                  ? 0
++	                     : isBrunoSound(sound)   ? 1
++	                     : isBrophetSound(sound) ? 2
++	                     : drumKind != 0         ? drumKind
++	                     : isWaveSound(sound)    ? 3
++	                                             : 0;
 +	notePanelKind(kind);
 +	if (kind != 3) {
 +		waveSendsForget(); // Showing it again sends its tables again
@@ -35646,9 +35659,12 @@ index 51a40bfd2..25cc0b015 100644
 +		readBrophetPanel(sound, params, v);
 +		count = kNumBrophetPanel;
 +	}
-+	else {
++	else if (kind == 3) {
 +		readWavePanel(sound, params, v);
 +		count = kNumWavePanel;
++	}
++	else {
++		count = readDrumPanel(sound, params, kind, v);
 +	}
 +	out[1] = kind;
 +	out[2] = count;
@@ -35657,6 +35673,9 @@ index 51a40bfd2..25cc0b015 100644
 +		const int32_t pos = std::clamp<int32_t>(v[c], 0, kPanelMax);
 +		out[i++] = (pos >> 7) & 0x7F;
 +		out[i++] = pos & 0x7F;
++	}
++	if (kind >= 4) {
++		i += putDrumPanelExtras(out + i, sound, kind);
 +	}
 +	return i;
 +}
@@ -36149,6 +36168,309 @@ index 51a40bfd2..25cc0b015 100644
 +	}
 +}
 +
++// ---- Drum engine panels: TRIBE (panel 4), CYC (5), LXR (6), GIN (7), for the sound being played (a kit's selected
++// row, or a synth in that SYNTH MODE). Each control is one setting, in a table per panel: the engine's own controls,
++// then the row's tuning, level, pan, filters and sends. The same PANEL message and the tablet's 03 14 <panel> <id> <hi>
++// <lo>; 03 15 <row> selects a kit row, so the tablet's row keys pick the voice the panel edits.
++enum class DKind : uint8_t {
++	NONE,      ///< Not on this voice
++	SLOT,      ///< An engine control (DrumControls slot), 0-127
++	LXR,       ///< An LXR setting (a Patch param, kept in its control slot: lxrControlSlot)
++	CHOICE,    ///< A patch byte picked from options, 0 to max, sent as the option itself
++	NUMBER,    ///< A patch byte, 0-127
++	TRANSPOSE, ///< Osc 1 transpose, -48 to +48 semitones (kit rows sit a long way down)
++	STANDARD,  ///< A patched param on the Deluge's standard 0-50 scale
++};
++struct DrumPanelControl {
++	DKind kind;
++	int32_t param = 0; ///< Slot, Patch param or patched param
++	uint8_t max = 0;   ///< CHOICE: the last option
++};
++constexpr int32_t kNumTribePanel = 21;
++constexpr int32_t kNumCycPanel = 14;
++constexpr int32_t kNumLxrPanel = 22;
++constexpr int32_t kNumGinPanel = 22;
++constexpr int32_t kMaxDrumPanel = 22;
++constexpr int32_t kDrumTranspose = 48;
++// The row's own settings, at the end of every drum panel
++#define DRUM_PANEL_ROW                                                                                                 \
++	{DKind::STANDARD, P::GLOBAL_VOLUME_POST_FX}, {DKind::STANDARD, P::LOCAL_PAN},                                      \
++	    {DKind::STANDARD, P::LOCAL_LPF_FREQ}, {DKind::STANDARD, P::LOCAL_HPF_FREQ},                                    \
++	    {DKind::STANDARD, P::GLOBAL_DELAY_FEEDBACK}, {                                                                 \
++		DKind::STANDARD, P::GLOBAL_REVERB_AMOUNT                                                                       \
++	}
++constexpr DrumPanelControl kTribePanel[kNumTribePanel] = {
++    {DKind::SLOT, DC::TR_MORPH},
++    {DKind::SLOT, DC::TR_TONE},
++    {DKind::SLOT, DC::TR_SWEEP},
++    {DKind::SLOT, DC::TR_SWEEP_TIME},
++    {DKind::SLOT, DC::TR_ATTACK},
++    {DKind::SLOT, DC::TR_NOISE},
++    {DKind::SLOT, DC::TR_NOISE_TONE},
++    {DKind::SLOT, DC::TR_NOISE_DECAY},
++    {DKind::SLOT, DC::TR_SPREAD},
++    {DKind::SLOT, DC::TR_CHARACTER},
++    {DKind::SLOT, DC::TR_DRIVE},
++    {DKind::SLOT, DC::TR_DECAY},
++    {DKind::CHOICE, DP::XIA_PUNCH, 1},
++    {DKind::NUMBER, DP::TR_CRUSH},
++    {DKind::TRANSPOSE},
++    DRUM_PANEL_ROW,
++};
++constexpr DrumPanelControl kCycPanel[kNumCycPanel] = {
++    {DKind::SLOT, DC::CYC_MACRO1},
++    {DKind::SLOT, DC::CYC_MACRO2},
++    {DKind::SLOT, DC::CYC_MACRO3},
++    {DKind::SLOT, DC::CYC_MACRO4},
++    {DKind::SLOT, DC::COMMON_DECAY},
++    {DKind::SLOT, DC::CYC_DRIVE},
++    {DKind::CHOICE, DP::XIA_PUNCH, 1},
++    {DKind::TRANSPOSE},
++    DRUM_PANEL_ROW,
++};
++// LXR: the voice's standard layout slots (the firmware's drumLayouts, by engine), then the row
++constexpr DrumPanelControl kLxrDrumPanel[16] = {
++    {DKind::SLOT, DC::COMMON_DECAY},
++    {DKind::SLOT, DC::LXR_DRIVE},
++    {DKind::TRANSPOSE},
++    {DKind::LXR, DP::PITCH_AMOUNT},
++    {DKind::LXR, DP::PITCH_DECAY},
++    {DKind::LXR, DP::FM_AMOUNT},
++    {DKind::LXR, DP::MOD_COARSE},
++    {DKind::LXR, DP::PITCH_SLOPE},
++    {DKind::CHOICE, DP::OSC_WAVE, 4},
++    {DKind::CHOICE, DP::MIX_MODE, 1},
++    {DKind::CHOICE, DP::MOD_WAVE, 4},
++    {DKind::LXR, DP::MOD_FINE},
++    {DKind::CHOICE, DP::TRANS_MODE, 13},
++    {DKind::LXR, DP::TRANS_VOLUME},
++    {DKind::LXR, DP::TRANS_PITCH},
++    {DKind::NONE},
++};
++constexpr DrumPanelControl kLxrSnarePanel[16] = {
++    {DKind::SLOT, DC::COMMON_DECAY},
++    {DKind::SLOT, DC::LXR_DRIVE},
++    {DKind::TRANSPOSE},
++    {DKind::LXR, DP::PITCH_AMOUNT},
++    {DKind::LXR, DP::PITCH_DECAY},
++    {DKind::LXR, DP::NOISE_MIX},
++    {DKind::LXR, DP::NOISE_CUTOFF},
++    {DKind::LXR, DP::PITCH_SLOPE},
++    {DKind::CHOICE, DP::OSC_WAVE, 4},
++    {DKind::LXR, DP::NOISE_PITCH},
++    {DKind::CHOICE, DP::NOISE_FILTER_TYPE, 3},
++    {DKind::LXR, DP::NOISE_RESONANCE},
++    {DKind::CHOICE, DP::TRANS_MODE, 13},
++    {DKind::LXR, DP::TRANS_VOLUME},
++    {DKind::LXR, DP::TRANS_PITCH},
++    {DKind::NONE},
++};
++constexpr DrumPanelControl kLxrMetalPanel[16] = {
++    {DKind::SLOT, DC::COMMON_DECAY},
++    {DKind::SLOT, DC::LXR_DRIVE},
++    {DKind::TRANSPOSE},
++    {DKind::NONE},
++    {DKind::NONE},
++    {DKind::LXR, DP::FM_AMOUNT},
++    {DKind::LXR, DP::FM2_AMOUNT},
++    {DKind::LXR, DP::MOD2_COARSE},
++    {DKind::CHOICE, DP::OSC_WAVE, 4},
++    {DKind::CHOICE, DP::MOD_WAVE, 4},
++    {DKind::LXR, DP::MOD_COARSE},
++    {DKind::LXR, DP::MOD_FINE},
++    {DKind::CHOICE, DP::TRANS_MODE, 13},
++    {DKind::LXR, DP::TRANS_VOLUME},
++    {DKind::LXR, DP::TRANS_PITCH},
++    {DKind::CHOICE, DP::MOD2_WAVE, 4},
++};
++constexpr DrumPanelControl kLxrRow[6] = {DRUM_PANEL_ROW};
++constexpr DrumPanelControl kGinPanel[kNumGinPanel] = {
++    {DKind::CHOICE, DP::GIN_WAVE, 2},
++    {DKind::SLOT, DC::GIN_TONE_ATTACK},
++    {DKind::SLOT, DC::GIN_TONE_DECAY},
++    {DKind::CHOICE, DP::GIN_MOD_MODE, 2},
++    {DKind::SLOT, DC::GIN_MOD_RATE},
++    {DKind::SLOT, DC::GIN_MOD_AMOUNT},
++    {DKind::SLOT, DC::GIN_MIX},
++    {DKind::CHOICE, DP::NOISE_FILTER_TYPE, 3},
++    {DKind::SLOT, DC::GIN_NOISE_FREQ},
++    {DKind::SLOT, DC::GIN_NOISE_RES},
++    {DKind::CHOICE, DP::GIN_NOISE_ENV, 2},
++    {DKind::SLOT, DC::GIN_NOISE_ATTACK},
++    {DKind::SLOT, DC::GIN_NOISE_DECAY},
++    {DKind::SLOT, DC::GIN_DRIVE},
++    {DKind::SLOT, DC::COMMON_DECAY},
++    {DKind::TRANSPOSE},
++    {DKind::SLOT, DC::GIN_EQ_FREQ},
++    {DKind::NUMBER, DP::GIN_EQ_GAIN},
++    {DKind::STANDARD, P::GLOBAL_VOLUME_POST_FX},
++    {DKind::STANDARD, P::LOCAL_PAN},
++    {DKind::STANDARD, P::GLOBAL_DELAY_FEEDBACK},
++    {DKind::STANDARD, P::GLOBAL_REVERB_AMOUNT},
++};
++#undef DRUM_PANEL_ROW
++static_assert(kMaxDrumPanel <= kMaxPanelControls && kMaxDrumPanel <= 64);
++uint16_t pendingDrum[kMaxDrumPanel];
++uint64_t pendingDrumMask = 0;
++uint8_t pendingDrumKind = 0; ///< The panel the waiting moves were made on
++int32_t pendingDrumRow = -1; ///< Kit row to select (index in the clip's note rows)
++
++/// Which drum panel a sound gets, or 0
++uint8_t drumPanelKind(Sound* sound) {
++	namespace ds = deluge::dsp::drum_synth;
++	if (sound->sources[0].oscType != OscType::DRUM_SYNTH) {
++		return 0;
++	}
++	const auto engine = sound->sources[0].drumPatch.engine();
++	return ds::isTribe(engine) ? 4 : ds::isCyc(engine) ? 5 : ds::isLxr(engine) ? 6 : ds::isGin(engine) ? 7 : 0;
++}
++
++int32_t drumPanelCount(uint8_t kind) {
++	return kind == 4 ? kNumTribePanel : kind == 5 ? kNumCycPanel : kind == 6 ? kNumLxrPanel : kNumGinPanel;
++}
++
++/// A drum panel's control, as the sound's engine has it
++DrumPanelControl drumPanelControl(Sound* sound, uint8_t kind, int32_t id) {
++	using Engine = deluge::dsp::drum_synth::Engine;
++	if (id < 0 || id >= drumPanelCount(kind)) {
++		return {DKind::NONE};
++	}
++	switch (kind) {
++	case 4:
++		return kTribePanel[id];
++	case 5:
++		return kCycPanel[id];
++	case 6: {
++		if (id >= 16) {
++			return kLxrRow[id - 16];
++		}
++		const Engine engine = sound->sources[0].drumPatch.engine();
++		return engine == Engine::SNARE   ? kLxrSnarePanel[id]
++		       : engine == Engine::METAL ? kLxrMetalPanel[id]
++		                                 : kLxrDrumPanel[id];
++	}
++	default:
++		return kGinPanel[id];
++	}
++}
++
++int32_t drumSlotOf(const DrumPanelControl& c) {
++	return c.kind == DKind::LXR ? deluge::dsp::drum_synth::lxrControlSlot(static_cast<DP::Param>(c.param)) : c.param;
++}
++
++int32_t readDrumPanel(Sound* sound, ParamManagerForTimeline* params, uint8_t kind, int32_t* v) {
++	PatchedParamSet* patched = params->getPatchedParamSet();
++	const auto& patch = sound->sources[0].drumPatch;
++	const int32_t count = drumPanelCount(kind);
++	for (int32_t id = 0; id < count; id++) {
++		const DrumPanelControl c = drumPanelControl(sound, kind, id);
++		int32_t pos = 0;
++		switch (c.kind) {
++		case DKind::NONE:
++			break;
++		case DKind::SLOT:
++		case DKind::LXR:
++			pos = panelFromControl(patched->getValue(deluge::dsp::drum_synth::kDrumControlParams[drumSlotOf(c)]));
++			break;
++		case DKind::CHOICE:
++			pos = std::min<int32_t>(patch.get(static_cast<DP::Param>(c.param)), c.max);
++			break;
++		case DKind::NUMBER:
++			pos = panelFromByte(patch.get(static_cast<DP::Param>(c.param)));
++			break;
++		case DKind::TRANSPOSE: {
++			const int32_t t = std::clamp<int32_t>(sound->sources[0].transpose, -kDrumTranspose, kDrumTranspose);
++			pos = ((t + kDrumTranspose) * kPanelMax + kDrumTranspose) / (2 * kDrumTranspose);
++			break;
++		}
++		case DKind::STANDARD:
++			pos = panelFromStandard(patched->getValue(c.param));
++			break;
++		}
++		v[id] = pos;
++	}
++	return count;
++}
++
++/// After a drum panel's controls: the voice (TRIBE: kick, snare, clap, tom, rim, hat, cymbal, cowbell; CYC: kik, snr,
++/// metal, perc, tone, chord, vtg snr, clap; LXR: kick / tom, snare, cymbal / hat; GIN: 0), then the kit's rows that get
++/// this panel: how many, which one is being edited (127: none), and each one's note row index and name. A synth sends
++/// no rows.
++int32_t putDrumPanelExtras(uint8_t* out, Sound* sound, uint8_t kind) {
++	using Engine = deluge::dsp::drum_synth::Engine;
++	const Engine engine = sound->sources[0].drumPatch.engine();
++	int32_t i = 0;
++	out[i++] = kind == 4   ? static_cast<int32_t>(engine) - static_cast<int32_t>(Engine::TR_KICK)
++	           : kind == 5 ? static_cast<int32_t>(engine) - static_cast<int32_t>(Engine::CYC_KIK)
++	           : kind == 6 ? static_cast<int32_t>(engine)
++	                       : 0;
++	const int32_t countAt = i++;
++	const int32_t selectedAt = i++;
++	out[countAt] = 0;
++	out[selectedAt] = 127;
++	InstrumentClip* clip = currentKitClip();
++	if (clip == nullptr) {
++		return i;
++	}
++	int32_t n = 0;
++	for (int32_t r = 0; r < clip->noteRows.getNumElements() && n < kPanelRowsMax && r < 128; r++) {
++		NoteRow* row = clip->noteRows.getElement(r);
++		if (row == nullptr || row->drum == nullptr || row->drum->type != DrumType::SOUND) {
++			continue;
++		}
++		auto* rowSound = static_cast<SoundDrum*>(row->drum);
++		if (drumPanelKind(rowSound) != kind) {
++			continue;
++		}
++		if (static_cast<Sound*>(rowSound) == sound) {
++			out[selectedAt] = n;
++		}
++		out[i++] = r;
++		char name[kPanelRowNameMax + 1];
++		strncpy(name, rowSound->drumName.c_str(), kPanelRowNameMax);
++		name[kPanelRowNameMax] = 0;
++		i += putName(out + i, name);
++		n++;
++	}
++	out[countAt] = n;
++	return i;
++}
++
++void applyDrum(ModelStackWithThreeMainThings* modelStack, Sound* sound, ParamManagerForTimeline* params, uint8_t kind,
++               int32_t id, int32_t pos) {
++	const DrumPanelControl c = drumPanelControl(sound, kind, id);
++	auto& patch = sound->sources[0].drumPatch;
++	pos = std::clamp<int32_t>(pos, 0, kPanelMax);
++	switch (c.kind) {
++	case DKind::NONE:
++		break;
++	case DKind::SLOT:
++	case DKind::LXR:
++		setPatched(modelStack, deluge::dsp::drum_synth::kDrumControlParams[drumSlotOf(c)],
++		           DC::fromKnob(controlKnobFromPanel(pos)));
++		break;
++	case DKind::CHOICE:
++		patch.set(static_cast<DP::Param>(c.param), std::min<int32_t>(pos, c.max));
++		break;
++	case DKind::NUMBER:
++		patch.set(static_cast<DP::Param>(c.param), byteFromPanel(pos));
++		break;
++	case DKind::TRANSPOSE: {
++		Source& source = sound->sources[0];
++		const int32_t transpose = (pos * 2 * kDrumTranspose + kPanelMax / 2) / kPanelMax - kDrumTranspose;
++		if (source.transpose != transpose) {
++			source.transpose = transpose;
++			char memory[MODEL_STACK_MAX_SIZE];
++			sound->recalculateAllVoicePhaseIncrements(panelModelStack(memory, sound, params)->addSoundFlags());
++		}
++		break;
++	}
++	case DKind::STANDARD:
++		setPatched(modelStack, c.param, standardFromPanel(pos));
++		break;
++	}
++}
++
 +bool sendIfChanged(uint8_t const* header, uint8_t const* body, int32_t len, uint8_t* last, int32_t& lastLen, bool force,
 +                   int32_t space);
 +
@@ -36475,12 +36797,16 @@ index 51a40bfd2..25cc0b015 100644
 +	ParamManagerForTimeline* params = nullptr;
 +	// Not while a browser is open: loading a preset swaps the sound over several steps
 +	if (browserIsOpen() || !currentSoundAndParams(sound, params) || params->getPatchedParamSet() == nullptr) {
-+		pendingPanelMask = pendingBrophetMask = pendingWaveMask = 0;
++		pendingPanelMask = pendingBrophetMask = pendingWaveMask = pendingDrumMask = 0;
 +		return;
 +	}
 +	const bool bruno = isBrunoSound(sound);
 +	const bool brophet = isBrophetSound(sound);
-+	const bool wave = !bruno && !brophet && isWaveSound(sound);
++	const uint8_t drumKind = drumPanelKind(sound);
++	const bool wave = !bruno && !brophet && drumKind == 0 && isWaveSound(sound);
++	if (drumKind == 0 || drumKind != pendingDrumKind) {
++		pendingDrumMask = 0; // Moves made on another engine's panel
++	}
 +	if (!bruno) {
 +		pendingPanelMask = 0; // Moves for a panel that isn't this sound's
 +	}
@@ -36490,10 +36816,10 @@ index 51a40bfd2..25cc0b015 100644
 +	if (!wave) {
 +		pendingWaveMask = 0;
 +	}
-+	if (pendingPanelMask == 0 && pendingBrophetMask == 0 && pendingWaveMask == 0) {
++	if (pendingPanelMask == 0 && pendingBrophetMask == 0 && pendingWaveMask == 0 && pendingDrumMask == 0) {
 +		return;
 +	}
-+	notePanelKind(bruno ? 1 : brophet ? 2 : 3);
++	notePanelKind(bruno ? 1 : brophet ? 2 : drumKind != 0 ? drumKind : 3);
 +	panelFlagsFor(sound);
 +	char memory[MODEL_STACK_MAX_SIZE];
 +	ModelStackWithThreeMainThings* modelStack = panelModelStack(memory, sound, params);
@@ -36520,6 +36846,14 @@ index 51a40bfd2..25cc0b015 100644
 +		}
 +		pendingWaveMask &= ~(uint64_t{1} << c);
 +		applyWave(modelStack, sound, params, c, pendingWave[c]);
++		any = true;
++	}
++	for (int32_t c = 0; c < kMaxDrumPanel; c++) {
++		if (!(pendingDrumMask & (uint64_t{1} << c))) {
++			continue;
++		}
++		pendingDrumMask &= ~(uint64_t{1} << c);
++		applyDrum(modelStack, sound, params, drumKind, c, pendingDrum[c]);
 +		any = true;
 +	}
 +	if (any) {
@@ -37225,6 +37559,28 @@ index 51a40bfd2..25cc0b015 100644
 +		}
 +		return;
 +	}
++	if (data[2] == 20) {
++		// 20 <panel> <control> <hi> <lo> = move a drum panel control there (TRIBE 4, CYC 5, LXR 6, GIN 7). Moves for
++		// another panel than the waiting ones replace them.
++		if (len >= 7 && data[3] >= 4 && data[3] <= 7 && data[4] < kMaxDrumPanel) {
++			if (data[3] != pendingDrumKind) {
++				pendingDrumMask = 0;
++				pendingDrumKind = data[3];
++			}
++			pendingDrum[data[4]] = (data[5] << 7) | data[6];
++			pendingDrumMask |= uint64_t{1} << data[4];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
++	if (data[2] == 21) {
++		// 21 <row> = select that kit row (its note row index), as auditioning it would, without a sound
++		if (len >= 4) {
++			pendingDrumRow = data[3];
++			uiTimerManager.setTimer(TimerName::COMPANION_PICK, 1);
++		}
++		return;
++	}
 +	if (data[2] == 16) {
 +		// 16 <group> <x> <y> <hi> <lo> = set that PARAMS knob to a 14-bit position (a switch: to that choice)
 +		if (len >= 8 && data[3] <= 8 && data[4] < kDisplayWidth && data[5] < kDisplayHeight) {
@@ -37328,7 +37684,7 @@ index 51a40bfd2..25cc0b015 100644
 +	    || sdRoutineLock || browserIsOpen()) {
 +		return; // The full state pass starts it again when it's safe
 +	}
-+	if (midiStateCable->sendBufferSpace() >= 200) {
++	if (midiStateCable->sendBufferSpace() >= 360) {
 +		uint8_t panel[sizeof(lastPanel)];
 +		const int32_t panelLen = buildPanel(panel);
 +		sendIfChanged(kPanelHeader, panel, panelLen, lastPanel, lastPanelLen, false, 0);
@@ -37510,7 +37866,7 @@ index 51a40bfd2..25cc0b015 100644
  void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  	if (len < 3) {
  		return;
-@@ -35,6 +3613,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
+@@ -35,6 +3969,10 @@ void HIDSysex::sysexReceived(MIDICable& cable, uint8_t* data, int32_t len) {
  		readBlock(cable);
  		break;
  
@@ -37521,7 +37877,7 @@ index 51a40bfd2..25cc0b015 100644
  	default:
  		break;
  	}
-@@ -79,6 +3661,8 @@ void HIDSysex::sendDisplayIfChanged() {
+@@ -79,6 +4017,8 @@ void HIDSysex::sendDisplayIfChanged() {
  	// NB: timer is only used for throttling, under good conditions sending
  	// is driven by the display subsystem only
  	uiTimerManager.unsetTimer(TimerName::SYSEX_DISPLAY);
@@ -37530,7 +37886,7 @@ index 51a40bfd2..25cc0b015 100644
  	if (midiDisplayCable == nullptr || AudioEngine::audioSampleTimer > midiDisplayUntil) {
  		return;
  	}
-@@ -236,3 +3820,233 @@ void HIDSysex::readBlock(MIDICable& cable) {
+@@ -236,3 +4176,250 @@ void HIDSysex::readBlock(MIDICable& cable) {
  	                                     // 		device->sendSysex(reply, packed + 7); //
  	cable.sendSysex(reply, packed + 10); //
  }
@@ -37605,10 +37961,27 @@ index 51a40bfd2..25cc0b015 100644
 +	if (sdRoutineLock) {
 +		return pendingMarkerType >= 0 || pendingKnobX >= 0 || pendingCommand >= 0 || pendingClip >= 0
 +		       || pendingSection >= 0 || pendingKitRow >= 0 || pendingModButton >= 0 || pendingPanelMask != 0
-+		       || pendingBrophetMask != 0 || pendingWaveMask != 0 || numPendingKnobs != 0 || pendingGoldMask != 0;
++		       || pendingBrophetMask != 0 || pendingWaveMask != 0 || numPendingKnobs != 0 || pendingGoldMask != 0
++		       || pendingDrumMask != 0 || pendingDrumRow >= 0;
 +	}
 +	bool again = false;
-+	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0) {
++	if (pendingDrumRow >= 0) {
++		// Before the moves: they were made for the row the tablet showed, so a row change first would put them on the
++		// new one. Moves made after this tap arrive after it.
++		InstrumentClip* clip = currentKitClip();
++		if (clip != nullptr && getRootUI() == &instrumentClipView && !browserIsOpen()
++		    && pendingDrumRow < clip->noteRows.getNumElements()) {
++			NoteRow* row = clip->noteRows.getElement(pendingDrumRow);
++			if (row != nullptr && row->drum != nullptr) {
++				if (getCurrentUI() != getRootUI()) {
++					getCurrentUI()->close(); // A menu open on the old row would go on editing it
++				}
++				instrumentClipView.setSelectedDrum(row->drum, true);
++			}
++		}
++		pendingDrumRow = -1;
++	}
++	if (pendingPanelMask != 0 || pendingBrophetMask != 0 || pendingWaveMask != 0 || pendingDrumMask != 0) {
 +		runPendingPanel();
 +	}
 +	if (numPendingKnobs != 0) {
